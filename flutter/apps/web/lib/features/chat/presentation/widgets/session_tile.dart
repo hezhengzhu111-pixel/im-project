@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class SessionTile extends StatefulWidget {
@@ -26,100 +25,131 @@ class _SessionTileState extends State<SessionTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     final lastMsg = widget.session.lastMessage;
+    final background = widget.isSelected
+        ? const Color(0xFFD8D8D8)
+        : _isHovered
+            ? const Color(0xFFE9E9E9)
+            : Colors.transparent;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedContainer(
-        duration: glass.animationDuration,
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: widget.isSelected
-              ? ImTokens.brandPurple.withValues(alpha: 0.08)
-              : _isHovered
-                  ? glass.navHoverBackground
-                  : Colors.transparent,
-          borderRadius: BorderRadius.circular(glass.controlRadius),
-        ),
-        child: Semantics(
-          label: widget.session.targetName.isNotEmpty
-              ? widget.session.targetName
-              : AppLocalizations.of(context)!.chatSelectSession,
-          button: true,
-          child: ListTile(
-            selected: widget.isSelected,
-            selectedTileColor: Colors.transparent,
-            leading: CircleAvatar(
-              radius: 24,
-              backgroundImage: widget.session.targetAvatar != null
-                  ? NetworkImage(widget.session.targetAvatar!)
-                  : null,
-              child: widget.session.targetAvatar == null
-                  ? Text(
-                      widget.session.targetName.isNotEmpty
-                          ? widget.session.targetName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(fontSize: 18),
-                    )
-                  : null,
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.session.targetName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-                if (widget.session.lastMessageTime != null)
-                  Text(
-                    _formatTime(widget.session.lastMessageTime!),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-            subtitle: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    lastMsg?.content ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                if (widget.session.unreadCount > 0)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      gradient: ImTokens.brandGradient,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      widget.session.unreadCount > 99
-                          ? '99+'
-                          : '${widget.session.unreadCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+      child: Semantics(
+        label: widget.session.targetName.isNotEmpty
+            ? widget.session.targetName
+            : AppLocalizations.of(context)!.chatSelectSession,
+        button: true,
+        selected: widget.isSelected,
+        child: Material(
+          color: background,
+          child: InkWell(
             onTap: widget.onTap,
+            child: Container(
+              height: 72,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: theme.dividerColor),
+                ),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: const Color(0xFFD9D9D9),
+                    backgroundImage: widget.session.targetAvatar != null
+                        ? NetworkImage(widget.session.targetAvatar!)
+                        : null,
+                    child: widget.session.targetAvatar == null
+                        ? Text(
+                            widget.session.targetName.isNotEmpty
+                                ? widget.session.targetName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              color: Color(0xFF4A4A4A),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.session.targetName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            if (widget.session.lastMessageTime != null)
+                              Text(
+                                _formatTime(widget.session.lastMessageTime!),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                lastMsg?.content ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            if (widget.session.unreadCount > 0)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 5),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: ImTokens.wechatUnread,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Text(
+                                  widget.session.unreadCount > 99
+                                      ? '99+'
+                                      : '${widget.session.unreadCount}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

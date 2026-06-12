@@ -15,6 +15,14 @@ class ImTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: colors.primary,
       brightness: brightness,
+    ).copyWith(
+      primary: colors.primary,
+      secondary: colors.secondary,
+      error: colors.error,
+      surface: colors.surface,
+      surfaceContainerHighest: colors.surfaceVariant,
+      outline: colors.border,
+      outlineVariant: colors.border,
     );
 
     final textTheme =
@@ -25,7 +33,7 @@ class ImTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: ImTokens.pageBackground,
+      scaffoldBackgroundColor: colors.background,
       appBarTheme: AppBarTheme(
         elevation: ImTokens.elevationNone,
         centerTitle: false,
@@ -38,39 +46,39 @@ class ImTheme {
         color: colors.surface,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusXl),
+          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: colors.surfaceVariant,
         contentPadding: const EdgeInsets.symmetric(
             horizontal: ImTokens.space4, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide.none,
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: ImTokens.brandPrimary, width: 2),
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          borderSide: BorderSide(color: colors.primary, width: 1),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         hintStyle: TextStyle(color: colors.textSecondary),
         errorBorder: OutlineInputBorder(
           borderSide: BorderSide(color: colors.error, width: 1),
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderSide: BorderSide(color: colors.error, width: 2),
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
+          backgroundColor: colors.primary,
           foregroundColor: Colors.white,
           elevation: 0,
           shadowColor: Colors.transparent,
@@ -79,21 +87,21 @@ class ImTheme {
             vertical: ImTokens.space3,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+            borderRadius: BorderRadius.circular(ImTokens.radiusSm),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: colors.primary,
-          foregroundColor: colors.textPrimary,
+          foregroundColor: Colors.white,
           padding: EdgeInsets.symmetric(
             horizontal: ImTokens.space6,
             vertical: ImTokens.space3,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+            borderRadius: BorderRadius.circular(ImTokens.radiusSm),
           ),
         ),
       ),
@@ -106,26 +114,45 @@ class ImTheme {
             vertical: ImTokens.space3,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+            borderRadius: BorderRadius.circular(ImTokens.radiusSm),
           ),
         ),
       ),
       dialogTheme: DialogThemeData(
         elevation: ImTokens.elevationLg,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusXl),
+          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
       ),
       dividerTheme: DividerThemeData(
         color: colors.border,
         thickness: 1,
         space: 1,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: colors.surface,
+        indicatorColor: Colors.transparent,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            color: selected ? colors.primary : colors.textSecondary,
+            fontSize: ImTokens.textXs,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? colors.primary : colors.textSecondary,
+            size: 24,
+          );
+        }),
       ),
       tabBarTheme: TabBarThemeData(
         labelColor: colors.primary,
@@ -139,9 +166,7 @@ class ImTheme {
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(
             horizontal: ImTokens.space4, vertical: ImTokens.space1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-        ),
+        shape: const RoundedRectangleBorder(),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: colors.surface,

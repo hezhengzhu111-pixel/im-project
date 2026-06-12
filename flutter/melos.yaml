@@ -9,6 +9,8 @@ packages:
 scripts:
   build:web:
     run: dart run tool/build_web.dart
+  build:all:
+    run: cd .. && python scripts/build.py all
   test:
     run: dart run melos exec -- flutter test
   analyze:

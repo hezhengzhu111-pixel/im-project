@@ -93,12 +93,12 @@ class MomentsCover extends StatelessWidget {
 
   Widget _buildPlaceholder(ThemeData theme) {
     return Container(
-      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+      color: theme.colorScheme.surfaceContainerHighest,
       child: Center(
         child: Icon(
           Icons.landscape,
           size: 64,
-          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
         ),
       ),
     );

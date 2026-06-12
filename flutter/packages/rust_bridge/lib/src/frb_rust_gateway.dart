@@ -7,9 +7,14 @@ import 'rust_error_mapper.dart';
 import 'rust_gateway.dart';
 
 class FrbRustGateway implements RustGateway {
+  FrbRustGateway({Future<void> Function()? initializer})
+      : _initializer = initializer ?? RustBridgeInitializer.init;
+
+  final Future<void> Function() _initializer;
+
   @override
   Future<void> init() {
-    return _run('init', () => RustBridgeInitializer.init());
+    return _run('init', _initializer, requiresInit: false);
   }
 
   @override
@@ -226,8 +231,15 @@ class FrbRustGateway implements RustGateway {
     });
   }
 
-  Future<T> _run<T>(String operation, Future<T> Function() action) async {
+  Future<T> _run<T>(
+    String operation,
+    Future<T> Function() action, {
+    bool requiresInit = true,
+  }) async {
     try {
+      if (requiresInit) {
+        await _initializer();
+      }
       return await action();
     } catch (error, stackTrace) {
       throw mapRustError(operation, error, stackTrace);

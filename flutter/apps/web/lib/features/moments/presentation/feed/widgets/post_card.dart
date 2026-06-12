@@ -46,9 +46,12 @@ class _PostCardState extends ConsumerState<PostCard> {
           ? (details) => _showPostMenu(context, details.globalPosition)
           : null,
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+          side: BorderSide(color: theme.dividerColor),
+        ),
         color: theme.colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.all(16),

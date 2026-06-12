@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
+import 'package:im_ui/im_ui.dart';
 
 class GradientButton extends StatefulWidget {
   const GradientButton({
@@ -18,8 +19,8 @@ class GradientButton extends StatefulWidget {
 }
 
 class _GradientButtonState extends State<GradientButton> {
-  static const _brand = Color(0xFF7B4FD1);
-  static const _brandHover = Color(0xFF6F43C4);
+  static const _brand = ImTokens.wechatGreen;
+  static const _brandHover = ImTokens.wechatGreenPressed;
 
   bool _isHovered = false;
 
@@ -32,19 +33,9 @@ class _GradientButtonState extends State<GradientButton> {
       onExit: (_) => setState(() => _isHovered = false),
       child: AnimatedContainer(
         duration: glass.animationDuration,
-        transform: _isHovered
-            ? Matrix4.translationValues(0.0, -2.0, 0.0)
-            : Matrix4.identity(),
         decoration: BoxDecoration(
           color: _isHovered ? _brandHover : _brand,
           borderRadius: BorderRadius.circular(glass.controlRadius),
-          boxShadow: [
-            BoxShadow(
-              color: _brand.withValues(alpha: _isHovered ? 0.32 : 0.20),
-              blurRadius: _isHovered ? 20 : 12,
-              offset: Offset(0, _isHovered ? 6 : 4),
-            ),
-          ],
         ),
         child: ElevatedButton(
           onPressed: widget.isLoading ? null : widget.onPressed,

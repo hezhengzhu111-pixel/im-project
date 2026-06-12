@@ -905,7 +905,7 @@ def make_session_id(id_a: str, id_b: str) -> str:
     a = int(id_a)
     b = int(id_b)
     smaller, larger = (id_a, id_b) if a < b else (id_b, id_a)
-    return f"{smaller}_{larger}"
+    return f"p_{smaller}_{larger}"
 
 
 # ============================================================================

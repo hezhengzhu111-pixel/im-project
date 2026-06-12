@@ -9,7 +9,6 @@ import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
-import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
@@ -182,24 +181,18 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   }
 
   Widget _buildDesktopLayout(AuthState authState, AppLocalizations loc) {
-    return Row(
-      children: [
-        const Expanded(
-          child: BrandShowcase(),
-        ),
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(40),
-              child: AuthCard(
-                title: loc.registerTitle,
-                subtitle: loc.registerSubtitle,
-                child: _buildForm(authState, loc),
-              ),
-            ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: AuthCard(
+            title: loc.registerTitle,
+            subtitle: loc.registerSubtitle,
+            child: _buildForm(authState, loc),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -252,7 +245,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
                       _agreementAccepted = value ?? false;
                     });
                   },
-                  activeColor: const Color(0xFF667eea),
+                  activeColor: Theme.of(context).colorScheme.primary,
                 ),
               ),
               const SizedBox(width: 8),
@@ -271,8 +264,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
                       ),
                       child: Text(
                         loc.registerUserAgreement,
-                        style: const TextStyle(
-                          color: Color(0xFF667eea),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 14,
                           decoration: TextDecoration.underline,
                         ),
@@ -290,8 +283,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
                       ),
                       child: Text(
                         loc.registerPrivacyPolicy,
-                        style: const TextStyle(
-                          color: Color(0xFF667eea),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 14,
                           decoration: TextDecoration.underline,
                         ),

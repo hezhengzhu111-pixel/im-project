@@ -75,12 +75,12 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
     final showSidebar = context.isLarge;
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           Expanded(
             child: GlassPanel(
-              backgroundColor: Colors.white.withValues(alpha: 0.18),
+              backgroundColor: Theme.of(context).colorScheme.surface,
               child: Column(
                 children: [
                   MomentsTopbar(

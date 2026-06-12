@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_ui/im_ui.dart';
 
 class Segment<T> {
@@ -23,12 +22,11 @@ class SegmentedControl<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: glass.segmentedBackground,
-        borderRadius: BorderRadius.circular(glass.controlRadius),
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -43,18 +41,8 @@ class SegmentedControl<T> extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isActive ? imGlassBrand : Colors.transparent,
-                  borderRadius: BorderRadius.circular(glass.controlRadius - 2),
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: glass.segmentedActiveBackground
-                                .withValues(alpha: 0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
+                  color: isActive ? ImTokens.wechatGreen : Colors.transparent,
+                  borderRadius: BorderRadius.circular(3),
                 ),
                 child: Text(
                   segment.label,

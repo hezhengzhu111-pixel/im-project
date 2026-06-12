@@ -15,16 +15,20 @@ Future<void> main() async {
     [
       repoRoot.path,
       'build',
-      'flutter',
+      'dist',
+      'frontend',
       'web',
     ].join(Platform.pathSeparator),
   );
+
+  await _buildWasmBridge(repoRoot);
 
   await _run(
     'flutter',
     [
       'build',
       'web',
+      '--release',
       '--pwa-strategy=none',
       '--no-wasm-dry-run',
       '--output=${outputDir.path}',
@@ -33,10 +37,79 @@ Future<void> main() async {
   );
 }
 
+Future<void> _buildWasmBridge(Directory repoRoot) async {
+  final bridgeDir = Directory(
+    [
+      repoRoot.path,
+      'rust',
+      'crates',
+      'im-flutter-bridge',
+    ].join(Platform.pathSeparator),
+  );
+  final pkgDir = Directory(
+    [
+      repoRoot.path,
+      'flutter',
+      'apps',
+      'web',
+      'web',
+      'pkg',
+    ].join(Platform.pathSeparator),
+  );
+  final patchScript = File(
+    [
+      bridgeDir.path,
+      'patch_wasm_js.py',
+    ].join(Platform.pathSeparator),
+  );
+
+  await _run(
+    'wasm-pack',
+    [
+      'build',
+      '--target',
+      'no-modules',
+      '--out-dir',
+      pkgDir.path,
+      '--no-default-features',
+    ],
+    workingDirectory: bridgeDir.path,
+    environment: const {
+      'RUSTFLAGS': '-C target-feature=-atomics,-bulk-memory,-mutable-globals',
+      'WASM_OPT': '0',
+    },
+  );
+  await _run(
+    Platform.isWindows ? 'python' : 'python3',
+    [
+      patchScript.path,
+      File([pkgDir.path, 'im_rust_bridge.js'].join(Platform.pathSeparator)).path
+    ],
+    workingDirectory: bridgeDir.path,
+  );
+  _assertWasmBridgeAssets(pkgDir);
+}
+
+void _assertWasmBridgeAssets(Directory pkgDir) {
+  final required = [
+    File([pkgDir.path, 'im_rust_bridge.js'].join(Platform.pathSeparator)),
+    File([pkgDir.path, 'im_rust_bridge_bg.wasm'].join(Platform.pathSeparator)),
+  ];
+  for (final file in required) {
+    if (!file.existsSync()) {
+      throw StateError(
+        'Rust bridge web asset was not generated: ${file.path}. '
+        'Install wasm-pack and rebuild the web bridge before Flutter web.',
+      );
+    }
+  }
+}
+
 Future<void> _run(
   String executable,
   List<String> arguments, {
   required String workingDirectory,
+  Map<String, String>? environment,
 }) async {
   stdout.writeln(
     '> $executable ${arguments.join(' ')}'
@@ -47,6 +120,12 @@ Future<void> _run(
     arguments,
     workingDirectory: workingDirectory,
     runInShell: Platform.isWindows,
+    environment: environment == null
+        ? null
+        : {
+            ...Platform.environment,
+            ...environment,
+          },
   );
   await Future.wait([
     stdout.addStream(process.stdout),

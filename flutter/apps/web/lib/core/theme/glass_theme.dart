@@ -51,80 +51,62 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
   /// Input field background color.
   final Color inputBackground;
 
-  static const _darkShadow = [
-    BoxShadow(
-      color: Color(0x33000000),
-      blurRadius: 24,
-      offset: Offset(0, 8),
-    ),
-    BoxShadow(
-      color: Color(0x1A000000),
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
-  ];
-
   static final light = GlassTheme(
     cardBackground: const Color(0xCCFFFFFF),
     cardBorder: const Color(0x4DFFFFFF),
     softShadow: [
       BoxShadow(
         color: Colors.black.withValues(alpha: 0.03),
-        blurRadius: 20,
-        offset: const Offset(0, 4),
+        blurRadius: 0,
+        offset: Offset.zero,
       ),
     ],
-    pageRadius: 16,
-    controlRadius: 10,
+    pageRadius: 4,
+    controlRadius: 4,
     accentGradient: const LinearGradient(
       colors: [
-        Color(0xFF667eea),
-        Color(0xFF764BA2),
-        Color(0xFF23a6d5),
-        Color(0xFF23d5ab)
+        ImTokens.wechatGreen,
+        ImTokens.wechatGreenPressed,
       ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
-    segmentedBackground: const Color(0x6BFFFFFF),
-    segmentedActiveBackground: const Color(0xFF764BA2), // brand purple
-    dividerColor: const Color(0x1A000000),
-    navHoverBackground: const Color(0x0A000000),
-    blurIntensity: 12,
+    segmentedBackground: const Color(0xFFF2F2F2),
+    segmentedActiveBackground: ImTokens.wechatGreen,
+    dividerColor: ImTokens.wechatDivider,
+    navHoverBackground: const Color(0xFFE9E9E9),
+    blurIntensity: 0,
     gradientColors: const [
-      Color(0xFF667eea),
-      Color(0xFF764ba2),
-      Color(0xFF23a6d5),
-      Color(0xFF23d5ab),
+      ImTokens.pageBackground,
+      Color(0xFFF5F5F5),
     ],
-    neumorphicShadow: ImTokens.neumorphicRaised,
+    neumorphicShadow: const [],
     animationDuration: const Duration(milliseconds: 200),
     navBackground: Colors.white,
-    inputBackground: const Color(0xFFF5F5F5), // grey.shade100
+    inputBackground: const Color(0xFFFFFFFF),
   );
 
   static final dark = GlassTheme(
-    cardBackground: const Color(0xCC1E1E1E),
-    cardBorder: const Color(0x33FFFFFF),
-    softShadow: _darkShadow,
-    pageRadius: 16,
-    controlRadius: 10,
+    cardBackground: const Color(0xFF1F1F1F),
+    cardBorder: const Color(0xFF343434),
+    softShadow: const [],
+    pageRadius: 4,
+    controlRadius: 4,
     accentGradient: const LinearGradient(
-      colors: [Color(0xFF065F46), Color(0xFF1E3A5F)],
+      colors: [ImTokens.wechatGreen, ImTokens.wechatGreenPressed],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
-    segmentedBackground: const Color(0x33FFFFFF),
-    segmentedActiveBackground: const Color(0xFF16A34A),
-    dividerColor: const Color(0x1AFFFFFF),
-    navHoverBackground: const Color(0x0DFFFFFF),
-    blurIntensity: 16,
+    segmentedBackground: const Color(0xFF2A2A2A),
+    segmentedActiveBackground: ImTokens.wechatGreen,
+    dividerColor: const Color(0xFF343434),
+    navHoverBackground: const Color(0xFF2A2A2A),
+    blurIntensity: 0,
     gradientColors: const [
-      Color(0xFF1e1b4b),
-      Color(0xFF0f172a),
-      Color(0xFF042f2e),
+      Color(0xFF111111),
+      Color(0xFF1F1F1F),
     ],
-    neumorphicShadow: ImTokens.neumorphicFlat,
+    neumorphicShadow: const [],
     animationDuration: const Duration(milliseconds: 200),
     navBackground: const Color(0xE61E1E1E),
     inputBackground: const Color(0xB31E1E1E),

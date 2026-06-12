@@ -106,22 +106,30 @@ class ImTokens {
   // ── Brand Colors ──
 
   /// 核心品牌紫
-  static const Color brandPrimary = Color(0xFF764BA2);
+  static const Color brandPrimary = Color(0xFF07C160);
 
   /// 品牌紫色 (别名，保持向后兼容)
   static const Color brandPurple = brandPrimary;
 
   /// 极浅灰紫色，用于所有内部内容页底色
-  static const Color pageBackground = Color(0xFFF7F8FA);
+  static const Color pageBackground = Color(0xFFEDEDED);
 
   /// 纯白，用于悬浮卡片面板
   static const Color surfaceWhite = Colors.white;
+  static const Color wechatGreen = Color(0xFF07C160);
+  static const Color wechatGreenPressed = Color(0xFF06AD56);
+  static const Color wechatOwnBubble = Color(0xFF95EC69);
+  static const Color wechatOtherBubble = Color(0xFFFFFFFF);
+  static const Color wechatDivider = Color(0xFFE5E5E5);
+  static const Color wechatUnread = Color(0xFFFA5151);
+  static const Color wechatSidebar = Color(0xFF2E2E2E);
+  static const Color wechatSidebarSelected = Color(0xFF07C160);
 
   // ── Brand Gradients ──
 
   /// 交互组件双色渐变 (用于主按钮、操作类组件)
   static const LinearGradient brandActionGradient = LinearGradient(
-    colors: [Color(0xFF6B48FF), Color(0xFF00E5FF)],
+    colors: [wechatGreen, wechatGreenPressed],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
@@ -129,10 +137,8 @@ class ImTokens {
   /// 外层大背景四色渐变 (仅用于最外层页面背景)
   static const LinearGradient brandBackgroundGradient = LinearGradient(
     colors: [
-      Color(0xFF667EEA),
-      Color(0xFF764BA2),
-      Color(0xFF23A6D5),
-      Color(0xFF23D5AB)
+      pageBackground,
+      Color(0xFFF5F5F5),
     ],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
@@ -142,10 +148,8 @@ class ImTokens {
   static const LinearGradient brandGradient = brandBackgroundGradient;
 
   static const List<Color> _brandGradientColors = [
-    Color(0xFF667EEA),
-    Color(0xFF764BA2),
-    Color(0xFF23A6D5),
-    Color(0xFF23D5AB),
+    pageBackground,
+    Color(0xFFF5F5F5),
   ];
 
   /// 卡片微弱阴影
@@ -164,7 +168,7 @@ class ImTokens {
 
   /// 导航胶囊发光阴影
   static const BoxShadow capsuleGlowShadow = BoxShadow(
-    color: Color(0x66764BA2),
+    color: Color(0x6607C160),
     blurRadius: 15,
     spreadRadius: 0,
     offset: Offset(0, 4),
@@ -227,52 +231,52 @@ class ImColors {
   final List<Color> brandGradient;
 
   static const light = ImColors._(
-    primary: ImTokens.brandPurple,
-    secondary: Color(0xFF4CAF50),
+    primary: ImTokens.wechatGreen,
+    secondary: ImTokens.wechatGreen,
     error: Color(0xFFF44336),
     warning: Color(0xFFFF9800),
     success: Color(0xFF4CAF50),
-    info: ImTokens.brandPurple,
-    background: Color(0xFFF7F8FA),
+    info: ImTokens.wechatGreen,
+    background: ImTokens.pageBackground,
     surface: Color(0xFFFFFFFF),
     surfaceVariant: Color(0xFFF5F5F5),
     textPrimary: Color(0xFF212121),
     textSecondary: Color(0xFF757575),
     textDisabled: Color(0xFFBDBDBD),
     border: Color(0xFFE0E0E0),
-    borderFocus: ImTokens.brandPurple,
+    borderFocus: ImTokens.wechatGreen,
     borderError: Color(0xFFF44336),
     overlay: Color(0x54000000),
-    ownMessageBubble: Color(0xFFDCF8C6),
+    ownMessageBubble: ImTokens.wechatOwnBubble,
     otherMessageBubble: Color(0xFFFFFFFF),
-    systemMessageBubble: Color(0xFFE1F5FE),
-    online: Color(0xFF4CAF50),
+    systemMessageBubble: Color(0xFFE9E9E9),
+    online: ImTokens.wechatGreen,
     offline: Color(0xFF9E9E9E),
     busy: Color(0xFFF44336),
     brandGradient: ImTokens._brandGradientColors,
   );
 
   static const dark = ImColors._(
-    primary: Color(0xFF90CAF9),
-    secondary: Color(0xFF81C784),
+    primary: Color(0xFF07C160),
+    secondary: Color(0xFF07C160),
     error: Color(0xFFEF5350),
     warning: Color(0xFFFFB74D),
     success: Color(0xFF66BB6A),
     info: Color(0xFF64B5F6),
-    background: Color(0xFF121212),
-    surface: Color(0xFF1E1E1E),
-    surfaceVariant: Color(0xFF2C2C2C),
-    textPrimary: Color(0xFFE0E0E0),
-    textSecondary: Color(0xFF9E9E9E),
+    background: Color(0xFF111111),
+    surface: Color(0xFF1F1F1F),
+    surfaceVariant: Color(0xFF2A2A2A),
+    textPrimary: Color(0xFFEDEDED),
+    textSecondary: Color(0xFFA6A6A6),
     textDisabled: Color(0xFF616161),
     border: Color(0xFF424242),
-    borderFocus: Color(0xFF90CAF9),
+    borderFocus: Color(0xFF07C160),
     borderError: Color(0xFFEF5350),
     overlay: Color(0x80000000),
-    ownMessageBubble: Color(0xFF005C4B),
-    otherMessageBubble: Color(0xFF1F2C33),
-    systemMessageBubble: Color(0xFF0D2137),
-    online: Color(0xFF66BB6A),
+    ownMessageBubble: Color(0xFF1F8F45),
+    otherMessageBubble: Color(0xFF2A2A2A),
+    systemMessageBubble: Color(0xFF252525),
+    online: Color(0xFF07C160),
     offline: Color(0xFF757575),
     busy: Color(0xFFEF5350),
     brandGradient: ImTokens._brandGradientColors,
@@ -290,7 +294,7 @@ class ImComponentTokens {
   static final Color buttonPrimaryBg = ImColors.light.primary;
   static final Color buttonPrimaryText = const Color(0xFFFFFFFF);
   static final Color buttonPrimaryDisabledBg =
-      const Color(0x61764BA2); // brand purple @ 38% opacity
+      const Color(0x6107C160); // brand green @ 38% opacity
   static final Color buttonPrimaryDisabledText = const Color(0x61FFFFFF);
   static final Color buttonSecondaryBg = const Color(0x00000000);
   static final Color buttonSecondaryText = ImColors.light.primary;

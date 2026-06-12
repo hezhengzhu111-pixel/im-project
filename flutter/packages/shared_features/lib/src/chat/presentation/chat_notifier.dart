@@ -590,7 +590,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (index == -1) {
       updated.add(message);
     } else {
-      updated[index] = message;
+      updated[index] = _mergeMessageReplacement(updated[index], message);
     }
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
@@ -614,10 +614,29 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
     final updated = List<Message>.from(currentMessages);
-    updated[index] = newMessage;
+    updated[index] = _mergeMessageReplacement(updated[index], newMessage);
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
     );
+  }
+
+  Message _mergeMessageReplacement(Message existing, Message incoming) {
+    return incoming.copyWith(
+      content:
+          incoming.content.isNotEmpty ? incoming.content : existing.content,
+      clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
+      encrypted: incoming.encrypted ?? existing.encrypted,
+      e2eeDeviceId: _nonEmptyOr(incoming.e2eeDeviceId, existing.e2eeDeviceId),
+      e2eeEnvelope: incoming.e2eeEnvelope ?? existing.e2eeEnvelope,
+      decryptStatus:
+          _nonEmptyOr(incoming.decryptStatus, existing.decryptStatus),
+    );
+  }
+
+  String? _nonEmptyOr(String? value, String? fallback) {
+    final trimmed = value?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return value;
+    return fallback;
   }
 
   void _updateMessageStatus(

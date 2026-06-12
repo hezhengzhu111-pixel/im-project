@@ -429,8 +429,8 @@ services:
   im-frontend:
     image: im-project-sit/im-frontend:latest
     build:
-      context: ../../flutter
-      dockerfile: apps/web/Dockerfile
+      context: ../..
+      dockerfile: flutter/apps/web/Dockerfile
       args:
         FRONTEND_BUILD_MODE: "${FRONTEND_BUILD_MODE:-sit}"
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
