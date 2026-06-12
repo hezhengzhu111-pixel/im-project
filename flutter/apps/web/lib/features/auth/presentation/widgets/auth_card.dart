@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 class AuthCard extends StatelessWidget {
-  final Widget child;
-  final String title;
-  final String subtitle;
-
   const AuthCard({
-    super.key,
     required this.child,
     required this.title,
     required this.subtitle,
+    super.key,
   });
+
+  final Widget child;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -18,41 +18,51 @@ class AuthCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(36),
+      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        // 纯白色背景 — 绝对纯净
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        // 柔和弥散阴影 — 悬浮感
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000), // Colors.black.withOpacity(0.08)
-            blurRadius: 40,
-            spreadRadius: 0,
-            offset: Offset(0, 10),
-          ),
-        ],
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Align(
+            alignment: Alignment.center,
+            child: Container(
+              width: 58,
+              height: 58,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFF07C160),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
           Text(
             title,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Colors.blueGrey.shade900,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             subtitle,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.blueGrey.shade400,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
           child,
         ],
       ),

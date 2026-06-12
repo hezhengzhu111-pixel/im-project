@@ -16,8 +16,8 @@ class E2eeStatusPill extends StatelessWidget {
           label: '明文聊天',
           icon: Icons.lock_open_outlined,
           fg: const Color(0xFF73798B),
-          bg: Colors.white.withValues(alpha: 0.66),
-          border: Colors.white.withValues(alpha: 0.72),
+          bg: Theme.of(context).colorScheme.surface,
+          border: Theme.of(context).dividerColor,
         ),
       E2eeSessionStatus.negotiating => (
           label: '协商中',
@@ -29,9 +29,9 @@ class E2eeStatusPill extends StatelessWidget {
       E2eeSessionStatus.encrypted => (
           label: '已端到端加密',
           icon: Icons.lock_outline,
-          fg: const Color(0xFF6841BD),
-          bg: const Color(0xFFEFE7FF).withValues(alpha: 0.92),
-          border: imGlassBrand.withValues(alpha: 0.24),
+          fg: ImTokens.wechatGreen,
+          bg: const Color(0xFFE6F8EE),
+          border: ImTokens.wechatGreen.withValues(alpha: 0.24),
         ),
       E2eeSessionStatus.failed => (
           label: '加密失败',
@@ -47,15 +47,8 @@ class E2eeStatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: data.bg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: data.border),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF222646).withValues(alpha: 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -440,28 +433,38 @@ class MessageBubbleE2eeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isMe ? Colors.white.withValues(alpha: 0.82) : imGlassBrand;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: isMe
-            ? Colors.white.withValues(alpha: 0.16)
-            : imGlassBrand.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.lock_outline, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(
-            'E2EE',
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
+    const label = 'End-to-end encrypted message';
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: isMe
+                ? Colors.white.withValues(alpha: 0.16)
+                : imGlassBrand.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(999),
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 11, color: color),
+              const SizedBox(width: 3),
+              Text(
+                'E2EE',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

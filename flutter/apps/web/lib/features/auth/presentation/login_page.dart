@@ -7,7 +7,6 @@ import 'package:im_web/core/forms/form_schema.dart';
 import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
-import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/settings/presentation/settings_providers.dart';
@@ -176,20 +175,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
   Widget _buildDesktopLayout(AppLocalizations loc) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1200),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: Row(
             children: [
               // 左侧品牌展示区 — 限制最大宽度防止拉伸
-              Expanded(
-                flex: 5,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: const BrandShowcase(),
-                ),
-              ),
-              const SizedBox(width: 60),
               // 右侧登录卡片 — 固定宽度，居中对齐
               Expanded(
                 flex: 4,
@@ -226,6 +217,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
             name: 'username',
             label: loc.loginUsername,
             icon: Icons.person_outline,
+            textInputAction: TextInputAction.next,
           ),
           SizedBox(height: ImTokens.space4),
           ValidatedFormField(
@@ -234,6 +226,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
             label: loc.loginPassword,
             icon: Icons.lock_outline,
             obscureText: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: _login,
           ),
           SizedBox(height: ImTokens.space3),
           Row(
@@ -272,11 +266,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   Widget _buildLanguageToggle() {
     final currentLang = ref.watch(languageProvider);
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -298,13 +293,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.3) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          color: isSelected
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(3),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: Colors.white,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 13,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
           ),
@@ -314,6 +313,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   void _login() async {
+    if (ref.read(authStateProvider).isLoading) return;
     final valid = await _formController.validate();
     if (!valid) return;
 

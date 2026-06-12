@@ -148,7 +148,8 @@ void main() {
 
   group('Redirect logic simulation', () {
     test('hideForAuth redirects authenticated user to /chat', () {
-      const meta = RouteMeta(title: 'Login', requiresAuth: false, hideForAuth: true);
+      const meta =
+          RouteMeta(title: 'Login', requiresAuth: false, hideForAuth: true);
       const isAuth = true;
 
       String? result;
@@ -174,7 +175,8 @@ void main() {
       final userPermissions = <String>{};
 
       String? result;
-      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+      if (meta.permission != null &&
+          !userPermissions.contains(meta.permission)) {
         result = '/chat';
       }
 
@@ -186,7 +188,8 @@ void main() {
       final userPermissions = {'admin:read'};
 
       String? result;
-      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+      if (meta.permission != null &&
+          !userPermissions.contains(meta.permission)) {
         result = '/chat';
       }
 
@@ -314,7 +317,8 @@ void main() {
       final userPermissions = <String>{}; // empty like AuthState.permissions
 
       String? result;
-      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+      if (meta.permission != null &&
+          !userPermissions.contains(meta.permission)) {
         result = '/chat';
       }
 
@@ -326,7 +330,8 @@ void main() {
       final userPermissions = {'admin:read'}; // has permission
 
       String? result;
-      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+      if (meta.permission != null &&
+          !userPermissions.contains(meta.permission)) {
         result = '/chat';
       }
 

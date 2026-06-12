@@ -142,6 +142,11 @@ class MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     final response = await _httpClient.post<Message>(
       MessageEndpoints.sendPrivate,
@@ -152,6 +157,11 @@ class MessageApi {
         'encrypted': true,
         'e2eeEnvelope': e2eeEnvelope,
         'e2eeDeviceId': e2eeDeviceId,
+        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        if (mediaName != null) 'mediaName': mediaName,
+        if (mediaSize != null) 'mediaSize': mediaSize,
+        if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+        if (duration != null) 'duration': duration,
       },
       fromJson: Message.fromJson,
     );

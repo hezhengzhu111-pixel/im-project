@@ -35,7 +35,8 @@ class MomentsInteractionsState {
   }
 }
 
-class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState> {
+class MomentsInteractionsNotifier
+    extends StateNotifier<MomentsInteractionsState> {
   MomentsInteractionsNotifier(this._repository, this._postId)
       : super(const MomentsInteractionsState());
 
@@ -62,9 +63,11 @@ class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState
     }
   }
 
-  Future<MomentComment?> addComment({required String content, String? parentId}) async {
+  Future<MomentComment?> addComment(
+      {required String content, String? parentId}) async {
     try {
-      final comment = await _repository.addComment(_postId, content: content, parentId: parentId);
+      final comment = await _repository.addComment(_postId,
+          content: content, parentId: parentId);
       await loadComments();
       return comment;
     } catch (e) {
@@ -85,7 +88,10 @@ class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState
   }
 }
 
-final momentsInteractionsProvider = StateNotifierProvider.family<MomentsInteractionsNotifier, MomentsInteractionsState, String>((ref, postId) {
+final momentsInteractionsProvider = StateNotifierProvider.family<
+    MomentsInteractionsNotifier,
+    MomentsInteractionsState,
+    String>((ref, postId) {
   return MomentsInteractionsNotifier(
     ref.watch(momentsRepositoryProvider),
     postId,

@@ -81,11 +81,13 @@ class _MomentVideoPlayerState extends State<MomentVideoPlayer> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+                Icon(Icons.error_outline,
+                    size: 48, color: theme.colorScheme.error),
                 const SizedBox(height: 8),
                 Text(
                   _errorMsg ?? '播放失败',
-                  style: TextStyle(color: theme.colorScheme.error, fontSize: 13),
+                  style:
+                      TextStyle(color: theme.colorScheme.error, fontSize: 13),
                 ),
               ],
             ),
@@ -141,7 +143,8 @@ class _MomentVideoPlayerState extends State<MomentVideoPlayer> {
                       shape: BoxShape.circle,
                     ),
                     padding: const EdgeInsets.all(12),
-                    child: const Icon(Icons.play_arrow, color: Colors.white, size: 36),
+                    child: const Icon(Icons.play_arrow,
+                        color: Colors.white, size: 36),
                   ),
                 ),
               ),
@@ -152,7 +155,8 @@ class _MomentVideoPlayerState extends State<MomentVideoPlayer> {
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -179,12 +183,14 @@ class _MomentVideoPlayerState extends State<MomentVideoPlayer> {
                       const SizedBox(width: 4),
                       Text(
                         _formatDuration(_controller.value.position),
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 11),
                       ),
                       Expanded(
                         child: SliderTheme(
                           data: SliderThemeData(
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                            thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 5),
                             trackHeight: 2,
                             activeTrackColor: Colors.white,
                             inactiveTrackColor: Colors.white30,
@@ -196,20 +202,23 @@ class _MomentVideoPlayerState extends State<MomentVideoPlayer> {
                                 .toDouble()
                                 .clamp(
                                   0.0,
-                                  _controller.value.duration.inMilliseconds.toDouble(),
+                                  _controller.value.duration.inMilliseconds
+                                      .toDouble(),
                                 ),
                             max: _controller.value.duration.inMilliseconds
                                 .toDouble()
                                 .clamp(1.0, double.infinity),
                             onChanged: (v) {
-                              _controller.seekTo(Duration(milliseconds: v.toInt()));
+                              _controller
+                                  .seekTo(Duration(milliseconds: v.toInt()));
                             },
                           ),
                         ),
                       ),
                       Text(
                         _formatDuration(_controller.value.duration),
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 11),
                       ),
                     ],
                   ),

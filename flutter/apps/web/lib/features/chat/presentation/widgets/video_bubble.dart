@@ -34,7 +34,8 @@ class VideoBubble extends StatelessWidget {
                 color: Colors.black45,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.play_arrow, color: Colors.white, size: 32),
+              child:
+                  const Icon(Icons.play_arrow, color: Colors.white, size: 32),
             ),
           ],
         ),

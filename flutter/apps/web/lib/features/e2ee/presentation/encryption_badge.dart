@@ -10,10 +10,26 @@ class EncryptionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     final (color, icon, label) = switch (status) {
-      E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, loc.e2eeEncryptedBadge),
-      E2eeSessionStatus.negotiating => (Colors.amber, Icons.sync, loc.e2eeNegotiatingBadge),
-      E2eeSessionStatus.failed => (Colors.red, Icons.lock_outline, loc.e2eeFailedBadge),
-      E2eeSessionStatus.plaintext => (Colors.grey, Icons.lock_open, loc.e2eePlaintextBadge),
+      E2eeSessionStatus.encrypted => (
+          Colors.green,
+          Icons.lock,
+          loc.e2eeEncryptedBadge
+        ),
+      E2eeSessionStatus.negotiating => (
+          Colors.amber,
+          Icons.sync,
+          loc.e2eeNegotiatingBadge
+        ),
+      E2eeSessionStatus.failed => (
+          Colors.red,
+          Icons.lock_outline,
+          loc.e2eeFailedBadge
+        ),
+      E2eeSessionStatus.plaintext => (
+          Colors.grey,
+          Icons.lock_open,
+          loc.e2eePlaintextBadge
+        ),
     };
 
     return Container(
@@ -27,11 +43,16 @@ class EncryptionBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (status == E2eeSessionStatus.negotiating)
-            SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: color))
+            SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color))
           else
             Icon(icon, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
         ],
       ),
     );

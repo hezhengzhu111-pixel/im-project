@@ -42,8 +42,7 @@ void main() {
       await tester.pumpWidget(wrapInApp(
         const ImTextField(obscure: true),
       ));
-      final textField =
-          tester.widget<TextField>(find.byType(TextField));
+      final textField = tester.widget<TextField>(find.byType(TextField));
       expect(textField.obscureText, isTrue);
     });
   });

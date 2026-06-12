@@ -15,7 +15,8 @@ class MockFilePickerAdapter implements FilePickerPort {
   }
 
   @override
-  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+  Future<Result<PickedFile>> pickImage(
+      {ImageSource source = ImageSource.gallery}) async {
     if (_mockError != null) {
       return Failure(_mockError!);
     }

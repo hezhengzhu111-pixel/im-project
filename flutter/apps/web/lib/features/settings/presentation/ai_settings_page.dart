@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,8 @@ class AiSettingsPage extends ConsumerStatefulWidget {
 class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   bool _showAddForm = false;
   final _personaController = TextEditingController();
+  Timer? _personaDebounce;
+  bool _personaHydrated = false;
 
   @override
   void initState() {
@@ -31,6 +35,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
 
   @override
   void dispose() {
+    _personaDebounce?.cancel();
     _personaController.dispose();
     super.dispose();
   }
@@ -40,6 +45,13 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
     final aiState = ref.watch(aiSettingsStateProvider);
     final loc = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+    final loadedPersona = aiState.aiSettings?.autoReplyPersona;
+    if (!_personaHydrated && loadedPersona != null) {
+      _personaHydrated = true;
+      if (_personaController.text.isEmpty) {
+        _personaController.text = loadedPersona;
+      }
+    }
 
     return ListView(
       padding: const EdgeInsets.all(ImTokens.space4),
@@ -67,6 +79,20 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
             ],
           ),
         ),
+        if (aiState.loading || aiState.savingSettings) ...[
+          const LinearProgressIndicator(minHeight: 2),
+          const SizedBox(height: ImTokens.space3),
+        ],
+        if (aiState.errorMessage != null) ...[
+          _AiStatusBanner(
+            message: aiState.errorMessage!,
+            isError: true,
+          ),
+          const SizedBox(height: ImTokens.space3),
+        ] else if (aiState.successMessage != null) ...[
+          _AiStatusBanner(message: aiState.successMessage!),
+          const SizedBox(height: ImTokens.space3),
+        ],
 
         // Two-column layout
         Row(
@@ -90,65 +116,57 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: FilledButton.tonalIcon(
-                            onPressed: () => setState(
-                                () => _showAddForm = !_showAddForm),
-                            icon: Icon(
-                                _showAddForm ? Icons.close : Icons.add),
-                            label: Text(_showAddForm
-                                ? loc.commonCancel
-                                : loc.aiAddKey),
+                            onPressed: aiState.creatingKey
+                                ? null
+                                : () => setState(
+                                      () => _showAddForm = !_showAddForm,
+                                    ),
+                            icon: Icon(_showAddForm ? Icons.close : Icons.add),
+                            label: Text(
+                                _showAddForm ? loc.commonCancel : loc.aiAddKey),
                           ),
                         ),
                       ),
                       if (_showAddForm) ...[
                         const SizedBox(height: 12),
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: AddApiKeyForm(
                             onSubmit: (provider, key, label) async {
-                              try {
-                                await ref
-                                    .read(aiSettingsStateProvider
-                                        .notifier)
-                                    .createKey(
-                                  AiApiKeyCreateRequest(
-                                    provider: provider,
-                                    key: key,
-                                    label:
-                                        label.isEmpty ? null : label,
-                                  ),
-                                );
-                                setState(
-                                    () => _showAddForm = false);
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context)
-                                      .showSnackBar(
-                                    SnackBar(
-                                        content: Text(e.toString())),
+                              final saved = await ref
+                                  .read(aiSettingsStateProvider.notifier)
+                                  .createKey(
+                                    AiApiKeyCreateRequest(
+                                      provider: provider,
+                                      key: key,
+                                      label: label.isEmpty ? null : label,
+                                    ),
                                   );
-                                }
+                              if (saved && mounted) {
+                                setState(() => _showAddForm = false);
                               }
+                              return saved;
                             },
                           ),
                         ),
                       ],
-                      if (aiState.keys.isEmpty && !_showAddForm)
+                      if (aiState.loading && aiState.keys.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(ImTokens.space4),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (aiState.keys.isEmpty && !_showAddForm)
                         Padding(
                           padding: const EdgeInsets.all(ImTokens.space4),
                           child: Center(
                             child: Text(
                               loc.aiNoKeys,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(
-                                color: theme
-                                    .colorScheme.onSurfaceVariant,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -158,53 +176,33 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                                 horizontal: 16, vertical: 4),
                             child: ApiKeyCard(
                               apiKey: key,
-                              isTesting:
-                                  aiState.testingKeyId == key.id,
+                              isTesting: aiState.testingKeyId == key.id,
                               onTest: () async {
-                                try {
-                                  await ref
-                                      .read(aiSettingsStateProvider
-                                          .notifier)
-                                      .testKey(key.id);
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
-                                      SnackBar(
-                                          content:
-                                              Text(e.toString())),
-                                    );
-                                  }
-                                }
+                                await ref
+                                    .read(aiSettingsStateProvider.notifier)
+                                    .testKey(key.id);
                               },
                               onDelete: () async {
-                                final confirm =
-                                    await showDialog<bool>(
+                                final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: Text(loc.aiDeleteKey),
-                                    content: Text(
-                                        loc.aiDeleteConfirm),
+                                    content: Text(loc.aiDeleteConfirm),
                                     actions: [
                                       TextButton(
                                           onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, false),
-                                          child: Text(
-                                              loc.commonCancel)),
+                                              Navigator.pop(ctx, false),
+                                          child: Text(loc.commonCancel)),
                                       FilledButton(
                                           onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, true),
-                                          child: Text(
-                                              loc.commonConfirm)),
+                                              Navigator.pop(ctx, true),
+                                          child: Text(loc.commonConfirm)),
                                     ],
                                   ),
                                 );
                                 if (confirm == true) {
                                   await ref
-                                      .read(aiSettingsStateProvider
-                                          .notifier)
+                                      .read(aiSettingsStateProvider.notifier)
                                       .deleteKey(key.id);
                                 }
                               },
@@ -227,43 +225,37 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                     title: Text(loc.aiAutoReplyEnabled),
                     subtitle: Text(loc.aiAutoReplyDesc,
                         style: const TextStyle(fontSize: 12)),
-                    value: aiState.aiSettings?.autoReplyEnabled ??
-                        false,
-                    onChanged: (v) {
-                      final current = aiState.aiSettings;
-                      ref
-                          .read(aiSettingsStateProvider.notifier)
-                          .updateAiSettings(
-                        AiSettings(
-                          autoReplyEnabled: v,
-                          autoReplyPersona:
-                              current?.autoReplyPersona ?? '',
-                        ),
-                      );
-                    },
+                    value: aiState.aiSettings?.autoReplyEnabled ?? false,
+                    onChanged: aiState.savingSettings
+                        ? null
+                        : (v) {
+                            final current = aiState.aiSettings;
+                            ref
+                                .read(aiSettingsStateProvider.notifier)
+                                .updateAiSettings(
+                                  AiSettings(
+                                    autoReplyEnabled: v,
+                                    autoReplyPersona:
+                                        current?.autoReplyPersona ?? '',
+                                  ),
+                                );
+                          },
                   ),
-                  if (aiState.aiSettings?.autoReplyEnabled ==
-                      true) ...[
+                  if (aiState.aiSettings?.autoReplyEnabled == true) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          16, 0, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(loc.aiAutoReplyPersona,
                               style: theme.textTheme.titleSmall),
                           const SizedBox(height: 8),
                           TextField(
-                            controller: _personaController
-                              ..text = aiState.aiSettings
-                                      ?.autoReplyPersona ??
-                                  '',
+                            controller: _personaController,
+                            enabled: !aiState.savingSettings,
                             decoration: InputDecoration(
-                              hintText:
-                                  loc.aiAutoReplyPersonaPlaceholder,
-                              border:
-                                  const OutlineInputBorder(),
+                              hintText: loc.aiAutoReplyPersonaPlaceholder,
+                              border: const OutlineInputBorder(),
                             ),
                             maxLines: 5,
                             onChanged: _onPersonaChanged,
@@ -282,20 +274,57 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   }
 
   void _onPersonaChanged(String value) {
-    Future.delayed(const Duration(milliseconds: 500), () {
+    _personaDebounce?.cancel();
+    _personaDebounce = Timer(const Duration(milliseconds: 500), () {
       if (_personaController.text == value && mounted) {
-        final current =
-            ref.read(aiSettingsStateProvider).aiSettings;
-        ref
-            .read(aiSettingsStateProvider.notifier)
-            .updateAiSettings(
-          AiSettings(
-            autoReplyEnabled:
-                current?.autoReplyEnabled ?? false,
-            autoReplyPersona: value,
-          ),
-        );
+        final current = ref.read(aiSettingsStateProvider).aiSettings;
+        ref.read(aiSettingsStateProvider.notifier).updateAiSettings(
+              AiSettings(
+                autoReplyEnabled: current?.autoReplyEnabled ?? false,
+                autoReplyPersona: value,
+              ),
+            );
       }
     });
+  }
+}
+
+class _AiStatusBanner extends StatelessWidget {
+  const _AiStatusBanner({
+    required this.message,
+    this.isError = false,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = isError ? theme.colorScheme.error : theme.colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

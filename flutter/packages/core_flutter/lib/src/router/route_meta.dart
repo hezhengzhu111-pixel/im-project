@@ -45,8 +45,7 @@ RouteMeta? resolveRouteMeta(
   for (final key in map.keys) {
     if (location.startsWith(key) &&
         key.length > bestMatch.length &&
-        (key.length == location.length ||
-            location[key.length] == '/')) {
+        (key.length == location.length || location[key.length] == '/')) {
       bestMatch = key;
     }
   }

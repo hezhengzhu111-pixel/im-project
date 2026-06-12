@@ -25,13 +25,29 @@ class AdaptivePane extends StatelessWidget {
   Widget _resolve(Breakpoint bp) {
     switch (bp) {
       case Breakpoint.compact:
-        return compact ?? medium ?? expanded ?? large ?? const SizedBox.shrink();
+        return compact ??
+            medium ??
+            expanded ??
+            large ??
+            const SizedBox.shrink();
       case Breakpoint.medium:
-        return medium ?? expanded ?? large ?? compact ?? const SizedBox.shrink();
+        return medium ??
+            expanded ??
+            large ??
+            compact ??
+            const SizedBox.shrink();
       case Breakpoint.expanded:
-        return expanded ?? large ?? medium ?? compact ?? const SizedBox.shrink();
+        return expanded ??
+            large ??
+            medium ??
+            compact ??
+            const SizedBox.shrink();
       case Breakpoint.large:
-        return large ?? expanded ?? medium ?? compact ?? const SizedBox.shrink();
+        return large ??
+            expanded ??
+            medium ??
+            compact ??
+            const SizedBox.shrink();
     }
   }
 }

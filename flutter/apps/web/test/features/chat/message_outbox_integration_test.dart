@@ -59,6 +59,11 @@ class MockMessageApi extends Mock implements MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     encryptedCallCount++;
     lastEncryptedArgs = {
@@ -67,6 +72,11 @@ class MockMessageApi extends Mock implements MessageApi {
       'messageType': messageType,
       'e2eeEnvelope': e2eeEnvelope,
       'e2eeDeviceId': e2eeDeviceId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     };
     if (sendPrivateEncryptedException != null) {
       throw sendPrivateEncryptedException!;
@@ -78,6 +88,11 @@ class MockMessageApi extends Mock implements MessageApi {
         #messageType: messageType,
         #e2eeEnvelope: e2eeEnvelope,
         #e2eeDeviceId: e2eeDeviceId,
+        #mediaUrl: mediaUrl,
+        #mediaName: mediaName,
+        #mediaSize: mediaSize,
+        #thumbnailUrl: thumbnailUrl,
+        #duration: duration,
       }),
       returnValue: Future.value(_createDummyMessage()),
       returnValueForMissingStub: Future.value(_createDummyMessage()),

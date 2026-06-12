@@ -1,0 +1,54 @@
+name: Build Artifacts
+
+on:
+  push:
+    paths:
+      - 'rust/**'
+      - 'flutter/**'
+      - 'scripts/build.py'
+      - 'scripts/check_build_outputs.py'
+      - '.github/workflows/build-artifacts.yml'
+  pull_request:
+    paths:
+      - 'rust/**'
+      - 'flutter/**'
+      - 'scripts/build.py'
+      - 'scripts/check_build_outputs.py'
+      - '.github/workflows/build-artifacts.yml'
+  workflow_dispatch:
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: |
+          rustup update stable
+          rustup default stable
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Build local artifacts
+        run: python scripts/build.py all
+
+      - name: Check local artifacts
+        run: python scripts/check_build_outputs.py
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: im-build-artifacts
+          path: |
+            build/dist
+            build/manifest.json

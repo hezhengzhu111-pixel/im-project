@@ -87,7 +87,8 @@ class FakeHttpClientPort implements HttpClientPort {
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    return ApiResponse(code: 200, message: 'ok', data: <String, dynamic>{} as T);
+    return ApiResponse(
+        code: 200, message: 'ok', data: <String, dynamic>{} as T);
   }
 
   @override
@@ -96,7 +97,8 @@ class FakeHttpClientPort implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    return ApiResponse(code: 200, message: 'ok', data: <String, dynamic>{} as T);
+    return ApiResponse(
+        code: 200, message: 'ok', data: <String, dynamic>{} as T);
   }
 
   @override
@@ -105,7 +107,8 @@ class FakeHttpClientPort implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    return ApiResponse(code: 200, message: 'ok', data: <String, dynamic>{} as T);
+    return ApiResponse(
+        code: 200, message: 'ok', data: <String, dynamic>{} as T);
   }
 
   @override
@@ -115,7 +118,8 @@ class FakeHttpClientPort implements HttpClientPort {
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    return ApiResponse(code: 200, message: 'ok', data: <String, dynamic>{} as T);
+    return ApiResponse(
+        code: 200, message: 'ok', data: <String, dynamic>{} as T);
   }
 }
 
@@ -199,7 +203,8 @@ void main() {
     fakeHttp = FakeHttpClientPort();
     fakeAnalytics = FakeAnalyticsPort();
     fakeCache = FakeE2eeSentMessageCache();
-    notifier = AuthNotifier(fakeRepo, fakeWs, fakeHttp, fakeAnalytics, fakeCache);
+    notifier =
+        AuthNotifier(fakeRepo, fakeWs, fakeHttp, fakeAnalytics, fakeCache);
   });
 
   tearDown(() {

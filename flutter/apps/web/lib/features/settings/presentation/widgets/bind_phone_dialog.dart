@@ -66,7 +66,10 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
         FilledButton(
           onPressed: _loading ? null : _submit,
           child: _loading
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : Text(loc.commonConfirm),
         ),
       ],
@@ -81,7 +84,8 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
       _startCountdown();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -100,15 +104,16 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
     setState(() => _loading = true);
     try {
       await ref.read(profileStateProvider.notifier).bindPhone(
-        BindPhoneRequest(
-          phone: _phoneController.text.trim(),
-          code: _codeController.text.trim(),
-        ),
-      );
+            BindPhoneRequest(
+              phone: _phoneController.text.trim(),
+              code: _codeController.text.trim(),
+            ),
+          );
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _loading = false);

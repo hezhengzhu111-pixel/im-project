@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
+import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/e2ee_glass_widgets.dart';
+import 'chat_provider_with_outbox.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -27,6 +31,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _scrollController = ScrollController();
   final _messageInputFocusNode = FocusNode();
   bool _messageInputFocused = false;
+  bool _initialLoadStarted = false;
+  ProviderSubscription<AuthState>? _authSubscription;
   List<GroupMember> _groupMembers = [];
 
   void _handleEsc() {
@@ -40,21 +46,40 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(chatStateProvider.notifier).loadSessions();
-      if (!mounted) return;
-
-      if (widget.sessionId != null) {
-        await _openDeepLinkedSession(widget.sessionId!);
-      } else {
-        // No route sessionId: keep existing active session, or select first.
-        final chatState = ref.read(chatStateProvider);
-        if (chatState.activeSessionId == null &&
-            chatState.sessions.isNotEmpty) {
-          await _selectSession(chatState.sessions.first);
+    _authSubscription = ref.listenManual<AuthState>(
+      authStateProvider,
+      (_, next) {
+        if (next.isAuthenticated) {
+          _scheduleInitialLoad();
         }
-      }
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleInitialLoad();
     });
+  }
+
+  void _scheduleInitialLoad() {
+    if (!mounted || _initialLoadStarted) return;
+    final authState = ref.read(authStateProvider);
+    if (!authState.isAuthenticated) return;
+    _initialLoadStarted = true;
+    unawaited(_loadInitialChatState());
+  }
+
+  Future<void> _loadInitialChatState() async {
+    await ref.read(chatStateProvider.notifier).loadSessions();
+    if (!mounted) return;
+
+    if (widget.sessionId != null) {
+      await _openDeepLinkedSession(widget.sessionId!);
+    } else {
+      // No route sessionId: keep existing active session, or select first.
+      final chatState = ref.read(chatStateProvider);
+      if (chatState.activeSessionId == null && chatState.sessions.isNotEmpty) {
+        await _selectSession(chatState.sessions.first);
+      }
+    }
   }
 
   @override
@@ -62,7 +87,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.didUpdateWidget(oldWidget);
     if (widget.sessionId != null && widget.sessionId != oldWidget.sessionId) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (mounted) {
+        if (mounted && ref.read(authStateProvider).isAuthenticated) {
           await _openDeepLinkedSession(widget.sessionId!);
         }
       });
@@ -70,22 +95,40 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _openDeepLinkedSession(String rawSessionId) async {
-    final notifier = ref.read(chatStateProvider.notifier);
-    notifier.setActiveSession(rawSessionId);
-    final activeSessionId = ref.read(chatStateProvider).activeSessionId;
-    if (activeSessionId == null) return;
-
-    final session = ref
-        .read(chatStateProvider)
-        .sessions
-        .where((s) => s.id == activeSessionId)
-        .firstOrNull;
+    final session =
+        _resolveDeepLinkedSession(rawSessionId, ref.read(chatStateProvider));
     if (session == null) return;
 
     await _selectSession(session);
   }
 
-  Future<void> _selectSession(dynamic session) async {
+  ChatSession? _resolveDeepLinkedSession(
+    String rawSessionId,
+    ChatStateWithOutbox chatState,
+  ) {
+    if (rawSessionId.isEmpty) return null;
+
+    String groupTargetId(String value) {
+      if (value.startsWith('group_')) return value.substring('group_'.length);
+      if (value.startsWith('g_')) return value.substring('g_'.length);
+      return value;
+    }
+
+    final normalizedGroupId = groupTargetId(rawSessionId);
+    return chatState.sessions.where((session) {
+      if (session.id == rawSessionId ||
+          session.conversationId == rawSessionId ||
+          session.targetId == rawSessionId) {
+        return true;
+      }
+
+      final isGroup =
+          session.conversationType == 'group' || session.type == 'group';
+      return isGroup && session.targetId == normalizedGroupId;
+    }).firstOrNull;
+  }
+
+  Future<void> _selectSession(ChatSession session) async {
     final notifier = ref.read(chatStateProvider.notifier);
     notifier.setActiveSession(session.id);
     final isGroup =
@@ -116,6 +159,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+    if (!authState.authReady) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (!authState.isAuthenticated) {
+      return const SizedBox.shrink();
+    }
+
     final chatState = ref.watch(chatStateProvider);
     final activeId = chatState.activeSessionId;
     final sessions = chatState.sessions.where((s) {
@@ -152,7 +203,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       large: ImTokens.layoutChatSidebarWidth,
                     )
                     .toDouble(),
-                color: Colors.transparent, // 透出外层 #F7F8FA 背景
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    right: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                ),
                 child: _buildSessionList(sessions, activeId, loc),
               ),
               Expanded(
@@ -168,61 +224,109 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildSessionList(
-      List<dynamic> sessions, String? activeId, AppLocalizations loc) {
+      List<ChatSession> sessions, String? activeId, AppLocalizations loc) {
+    final chatState = ref.watch(chatStateProvider);
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(ImTokens.layoutSectionGap),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: loc.chatSearchHint,
-              prefixIcon: const Icon(Icons.search, size: ImTokens.textXl),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(ImTokens.radiusFull),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: ImTokens.space4,
-                vertical: 10,
-              ),
-              isDense: true,
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).dividerColor),
             ),
-            onChanged: (v) => setState(() => _searchQuery = v),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      loc.navChat,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.person_add_alt_1, size: 20),
+                    tooltip: loc.contactsAddFriend,
+                    onPressed: () => context.go('/contacts/add'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: loc.chatSearchHint,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  filled: true,
+                  fillColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+            ],
           ),
         ),
         Expanded(
-          child: ref.watch(chatStateProvider).isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : sessions.isEmpty
-                  ? Center(child: Text(loc.chatNoSessions))
-                  : ListView.builder(
-                      itemCount: sessions.length,
-                      itemBuilder: (context, index) {
-                        final session = sessions[index];
-                        return SessionTile(
-                          session: session,
-                          isSelected: session.id == activeId,
-                          onTap: () => _selectSession(session),
-                        );
-                      },
-                    ),
+          child: chatState.isLoading && sessions.isEmpty
+              ? const _SessionListSkeleton()
+              : sessions.isEmpty && chatState.error != null
+                  ? _SessionListError(
+                      message: loc.loadingFailed(chatState.error!),
+                      onRetry: () =>
+                          ref.read(chatStateProvider.notifier).loadSessions(),
+                    )
+                  : sessions.isEmpty
+                      ? Center(child: Text(loc.chatNoSessions))
+                      : ListView.builder(
+                          itemCount: sessions.length,
+                          itemBuilder: (context, index) {
+                            final session = sessions[index];
+                            return SessionTile(
+                              session: session,
+                              isSelected: session.id == activeId,
+                              onTap: () => _selectSession(session),
+                            );
+                          },
+                        ),
         ),
       ],
     );
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels <= 180;
+  }
+
+  void _scrollToBottom({bool force = false}) {
+    if (!_scrollController.hasClients) return;
+    if (!force && !_isNearBottom()) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   String? _e2eeSessionIdForSession(ChatSession session) {
@@ -276,11 +380,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildChatView(String sessionId, AppLocalizations loc) {
-    final glass = Theme.of(context).extension<GlassTheme>()!;
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
       if (next != null && (prev == null || next.length > prev.length)) {
-        _scrollToBottom();
+        final currentUserId = ref.read(authStateProvider).user?.id ?? '';
+        final fromCurrentUser =
+            next.isNotEmpty && next.last.senderId == currentUserId;
+        _scrollToBottom(force: prev == null || fromCurrentUser);
       }
     });
 
@@ -346,196 +452,316 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             .read(chatStateProvider.notifier)
             .pendingNegotiationForSession(session.id);
 
-    return Column(
-      children: [
-        // Network status banner
-        const NetworkStatusBanner(),
-        // Header
-        _GlassChatHeader(
-          session: session,
-          isMobile: isMobile,
-          onBackPressed: () {
-            ref.read(chatStateProvider.notifier).setActiveSession(null);
-          },
-          e2eeStatus: e2eeStatusAsync?.whenOrNull(
-            data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
-          ),
-          onStartEncryption: e2eeSessionId == null
-              ? null
-              : () => _startEncryption(session, e2eeSessionId),
-          onShowGroupEncryptionUnavailable:
-              isGroup ? _showGroupE2eeUnavailable : null,
-        ),
-        // E2EE encryption banner (private chats only)
-        if (e2eeStatusAsync != null)
-          e2eeStatusAsync.when(
-            data: (statusStr) => E2eeNegotiationBanner(
-              status: E2eeSessionStatus.fromString(statusStr),
-              pending: pendingNegotiation,
-              onAccept: pendingNegotiation == null
-                  ? null
-                  : () async {
-                      final accepted = await ref
-                          .read(chatStateProvider.notifier)
-                          .acceptPendingNegotiation(session.id);
-                      ref.invalidate(
-                        e2eeSessionStatusProvider(privateE2eeSessionId),
-                      );
-                      if (!accepted && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('接受加密请求失败')),
-                        );
-                      }
-                    },
-              onReject: pendingNegotiation == null
-                  ? null
-                  : () async {
-                      await ref
-                          .read(chatStateProvider.notifier)
-                          .rejectPendingNegotiation(session.id);
-                      ref.invalidate(
-                        e2eeSessionStatusProvider(privateE2eeSessionId),
-                      );
-                    },
-              onStart: () => _startEncryption(session, privateE2eeSessionId),
-              onExit: () async {
-                await ref
-                    .read(chatStateProvider.notifier)
-                    .disableEncryptionForSession(privateE2eeSessionId);
-                ref.invalidate(
-                  e2eeSessionStatusProvider(privateE2eeSessionId),
-                );
-              },
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Column(
+        children: [
+          // Network status banner
+          const NetworkStatusBanner(),
+          // Header
+          _GlassChatHeader(
+            session: session,
+            isMobile: isMobile,
+            onBackPressed: () {
+              ref.read(chatStateProvider.notifier).setActiveSession(null);
+            },
+            e2eeStatus: e2eeStatusAsync?.whenOrNull(
+              data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
             ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            onStartEncryption: e2eeSessionId == null
+                ? null
+                : () => _startEncryption(session, e2eeSessionId),
+            onShowGroupEncryptionUnavailable:
+                isGroup ? _showGroupE2eeUnavailable : null,
           ),
-        // Messages
-        Expanded(
-          child: messages.isEmpty
-              ? Center(child: Text(loc.noData))
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: ImTokens.space2),
-                  itemCount: messages.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return LoadMoreHistoryButton(sessionId: sessionId);
-                    }
-                    final msg = messages[index - 1];
-                    final currentUserId =
-                        ref.watch(authStateProvider).user?.id ?? '';
-                    return AnimatedEntrance(
-                      duration: glass.animationDuration,
-                      offset: 8,
-                      child: MessageBubble(
-                        message: msg,
-                        isMe: msg.senderId == currentUserId,
-                      ),
+          // E2EE encryption banner (private chats only)
+          if (e2eeStatusAsync != null)
+            e2eeStatusAsync.when(
+              data: (statusStr) => E2eeNegotiationBanner(
+                status: E2eeSessionStatus.fromString(statusStr),
+                pending: pendingNegotiation,
+                onAccept: pendingNegotiation == null
+                    ? null
+                    : () async {
+                        final accepted = await ref
+                            .read(chatStateProvider.notifier)
+                            .acceptPendingNegotiation(session.id);
+                        ref.invalidate(
+                          e2eeSessionStatusProvider(privateE2eeSessionId),
+                        );
+                        if (!accepted && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Failed to accept encryption request.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                onReject: pendingNegotiation == null
+                    ? null
+                    : () async {
+                        await ref
+                            .read(chatStateProvider.notifier)
+                            .rejectPendingNegotiation(session.id);
+                        ref.invalidate(
+                          e2eeSessionStatusProvider(privateE2eeSessionId),
+                        );
+                      },
+                onStart: () => _startEncryption(session, privateE2eeSessionId),
+                onExit: () async {
+                  await ref
+                      .read(chatStateProvider.notifier)
+                      .disableEncryptionForSession(privateE2eeSessionId);
+                  ref.invalidate(
+                    e2eeSessionStatusProvider(privateE2eeSessionId),
+                  );
+                },
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+          // Messages
+          Expanded(
+            child: messages.isEmpty
+                ? Center(child: Text(loc.noData))
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    itemCount: messages.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return LoadMoreHistoryButton(sessionId: sessionId);
+                      }
+                      final msg = messages[index - 1];
+                      final currentUserId =
+                          ref.watch(authStateProvider).user?.id ?? '';
+                      return AnimatedEntrance(
+                        duration: ImTokens.animFast,
+                        offset: 4,
+                        child: MessageBubble(
+                          message: msg,
+                          isMe: msg.senderId == currentUserId,
+                          onRetry: () => ref
+                              .read(chatStateProvider.notifier)
+                              .retryMessage(
+                                sessionId,
+                                msg.clientMessageId ?? msg.messageId ?? msg.id,
+                              ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          // Input
+          MessageInput(
+            focusNode: _messageInputFocusNode,
+            onFocusChanged: (focused) =>
+                setState(() => _messageInputFocused = focused),
+            members: isGroup ? _groupMembers : null,
+            onSend: (text, mentionedUserIds) {
+              if (isGroup) {
+                return ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      text,
+                      mentionedUserIds:
+                          mentionedUserIds.isNotEmpty ? mentionedUserIds : null,
                     );
-                  },
-                ),
-        ),
-        // Input
-        MessageInput(
-          focusNode: _messageInputFocusNode,
-          onFocusChanged: (focused) =>
-              setState(() => _messageInputFocused = focused),
-          members: isGroup ? _groupMembers : null,
-          onSend: (text, mentionedUserIds) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    text,
-                    mentionedUserIds:
-                        mentionedUserIds.isNotEmpty ? mentionedUserIds : null,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    text,
-                  );
-            }
-          },
-          onSendImage: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'IMAGE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'IMAGE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            }
-          },
-          onSendFile: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'FILE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'FILE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            }
-          },
-          onSendVoice: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'VOICE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'VOICE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                  );
-            }
-          },
-        ),
-      ],
+              } else {
+                return ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      text,
+                    );
+              }
+            },
+            onSendImage: (result) {
+              if (isGroup) {
+                return ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'IMAGE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              } else {
+                return ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'IMAGE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              }
+            },
+            onSendFile: (result) {
+              if (isGroup) {
+                return ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'FILE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              } else {
+                return ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'FILE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              }
+            },
+            onSendVoice: (result) {
+              if (isGroup) {
+                return ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'VOICE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                    );
+              } else {
+                return ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'VOICE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                    );
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
   @override
   void dispose() {
+    _authSubscription?.close();
     _searchController.dispose();
     _scrollController.dispose();
     _messageInputFocusNode.dispose();
     super.dispose();
+  }
+}
+
+class _SessionListSkeleton extends StatelessWidget {
+  const _SessionListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.10);
+    return ListView.builder(
+      itemCount: 7,
+      itemBuilder: (context, index) {
+        return Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: theme.dividerColor)),
+          ),
+          child: Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(width: 46, height: 46),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FractionallySizedBox(
+                      widthFactor: index.isEven ? 0.58 : 0.42,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const SizedBox(height: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    FractionallySizedBox(
+                      widthFactor: index.isEven ? 0.74 : 0.60,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const SizedBox(height: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SessionListError extends StatelessWidget {
+  const _SessionListError({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.wifi_off,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.tonalIcon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: Text(loc.retry),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -565,30 +791,25 @@ class _GlassChatHeader extends StatelessWidget {
     final status = e2eeStatus ?? E2eeSessionStatus.plaintext;
     final subtitle = isGroup
         ? (session.memberCount == null
-            ? '群聊'
+            ? 'Group chat'
             : loc.chatMemberCount(session.memberCount!))
         : switch (status) {
-            E2eeSessionStatus.encrypted => '安全会话',
-            E2eeSessionStatus.negotiating => '正在协商安全会话',
-            E2eeSessionStatus.failed => '加密状态异常',
-            E2eeSessionStatus.plaintext => '在线 / 明文聊天',
+            E2eeSessionStatus.encrypted => loc.e2eeEncrypted,
+            E2eeSessionStatus.negotiating => loc.e2eeNegotiating,
+            E2eeSessionStatus.failed => loc.e2eeFailed,
+            E2eeSessionStatus.plaintext => loc.e2eePlaintext,
           };
 
+    final theme = Theme.of(context);
+
     return Container(
-      height: 76,
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: theme.dividerColor),
+        ),
       ),
       child: Row(
         children: [
@@ -598,15 +819,22 @@ class _GlassChatHeader extends StatelessWidget {
               onPressed: onBackPressed,
             ),
           CircleAvatar(
-            radius: 20,
+            radius: 18,
+            backgroundColor: const Color(0xFFD9D9D9),
             backgroundImage: session.targetAvatar != null
                 ? NetworkImage(session.targetAvatar!)
                 : null,
             child: session.targetAvatar == null
-                ? Text(sessionName.isNotEmpty ? sessionName[0] : '?')
+                ? Text(
+                    sessionName.isNotEmpty ? sessionName[0] : '?',
+                    style: const TextStyle(
+                      color: Color(0xFF4A4A4A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
                 : null,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -616,18 +844,18 @@ class _GlassChatHeader extends StatelessWidget {
                   sessionName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -638,7 +866,7 @@ class _GlassChatHeader extends StatelessWidget {
                 onStartEncryption != null) ...[
               const SizedBox(width: 10),
               PrimarySolidButton(
-                label: '开启加密',
+                label: loc.e2eeInitiate,
                 icon: Icons.lock_outline,
                 compact: true,
                 onPressed: onStartEncryption,

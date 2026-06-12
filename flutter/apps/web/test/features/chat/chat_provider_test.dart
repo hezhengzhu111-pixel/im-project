@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
 import 'package:im_core/core.dart';
@@ -114,6 +114,11 @@ class FakeMessageOutbox extends MessageOutbox {
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     final message = OutboxMessage(
       id: 'outbox_test_$clientMessageId',
@@ -129,6 +134,11 @@ class FakeMessageOutbox extends MessageOutbox {
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
       e2eeDeviceId: e2eeDeviceId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
     _eventsController.add(OutboxEvent(
       type: OutboxEventType.messageAdded,

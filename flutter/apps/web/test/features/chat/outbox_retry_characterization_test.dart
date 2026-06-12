@@ -1,4 +1,4 @@
-﻿/// Characterization tests for outbox retry behavior.
+/// Characterization tests for outbox retry behavior.
 ///
 /// These tests document and lock down the current behavior of:
 /// - Private message send failure → outbox enqueue
@@ -93,6 +93,11 @@ class TestMessageApi extends MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     sendPrivateEncryptedCallCount++;
     lastEncryptedArgs = {
@@ -101,6 +106,11 @@ class TestMessageApi extends MessageApi {
       'messageType': messageType,
       'e2eeEnvelope': e2eeEnvelope,
       'e2eeDeviceId': e2eeDeviceId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     };
     if (errorToThrow != null) throw errorToThrow!;
     return sendPrivateEncryptedResponse ?? _dummyMessage();
@@ -230,6 +240,11 @@ class SpyMessageOutbox extends MessageOutbox {
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     enqueueCalls.add({
       'sessionKey': sessionKey,
@@ -242,6 +257,11 @@ class SpyMessageOutbox extends MessageOutbox {
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope,
       'e2eeDeviceId': e2eeDeviceId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     });
 
     return OutboxMessage(
@@ -258,6 +278,11 @@ class SpyMessageOutbox extends MessageOutbox {
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
       e2eeDeviceId: e2eeDeviceId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
   }
 
@@ -582,7 +607,8 @@ void main() {
   // =========================================================================
 
   group('group message: non-network error → immediate failure', () {
-    test('generic exception does not enqueue group message to outbox', () async {
+    test('generic exception does not enqueue group message to outbox',
+        () async {
       notifier = createNotifier();
       testApi.errorToThrow = Exception('Permission denied');
 

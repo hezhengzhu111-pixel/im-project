@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
@@ -5,7 +7,8 @@ import 'package:im_web/l10n/app_localizations.dart';
 class AddApiKeyForm extends StatefulWidget {
   const AddApiKeyForm({required this.onSubmit, super.key});
 
-  final void Function(String provider, String key, String label) onSubmit;
+  final FutureOr<bool> Function(String provider, String key, String label)
+      onSubmit;
 
   @override
   State<AddApiKeyForm> createState() => _AddApiKeyFormState();
@@ -15,6 +18,7 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
   String _provider = 'DeepSeek';
   final _keyController = TextEditingController();
   final _labelController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -75,8 +79,14 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: _submit,
-                child: Text(loc.aiSave),
+                onPressed: _isSubmitting ? null : _submit,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(loc.aiSave),
               ),
             ),
           ],
@@ -85,14 +95,23 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_keyController.text.trim().isEmpty) return;
-    widget.onSubmit(
-      _provider,
-      _keyController.text.trim(),
-      _labelController.text.trim(),
-    );
-    _keyController.clear();
-    _labelController.clear();
+    setState(() => _isSubmitting = true);
+    try {
+      final saved = await Future.sync(
+        () => widget.onSubmit(
+          _provider,
+          _keyController.text.trim(),
+          _labelController.text.trim(),
+        ),
+      );
+      if (saved) {
+        _keyController.clear();
+        _labelController.clear();
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 }

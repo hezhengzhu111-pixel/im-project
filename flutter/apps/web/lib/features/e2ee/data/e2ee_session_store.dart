@@ -2,14 +2,17 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:idb_shim/idb_browser.dart' as idb;
+import 'package:im_shared_features/e2ee.dart' as shared;
 import 'package:im_web/features/e2ee/data/e2ee_indexed_db.dart';
+
+typedef SessionLookupResult = shared.SessionLookupResult;
 
 /// Stores E2EE ratchet session states in IndexedDB.
 /// Database: "e2ee_keys", version 3
 /// Object store: "sessions" — keyed by sessionId, value is v3 envelope object
 ///
 /// Matches Vue implementation with v3 envelope structure and context validation.
-class E2eeSessionStore {
+class E2eeSessionStore implements shared.E2eeSessionStore {
   E2eeSessionStore();
 
   static const _storeName = 'sessions';
@@ -123,7 +126,7 @@ class E2eeSessionStore {
   // Find session by local device (fallback)
   // ---------------------------------------------------------------------------
 
-  Future<SessionLookupResult?> findSessionByLocalDevice({
+  Future<shared.SessionLookupResult?> findSessionByLocalDevice({
     required String sessionId,
     required String localDeviceId,
   }) async {
@@ -154,7 +157,7 @@ class E2eeSessionStore {
 
       if (stateBase64 == null || stateBase64.isEmpty) return null;
 
-      return SessionLookupResult(
+      return shared.SessionLookupResult(
         stateBase64: stateBase64,
         remoteDeviceId: remoteDeviceId,
       );
@@ -192,14 +195,4 @@ class E2eeSessionStore {
     final digest = sha256.convert(bytes);
     return digest.toString().substring(0, 16);
   }
-}
-
-class SessionLookupResult {
-  final String stateBase64;
-  final String remoteDeviceId;
-
-  SessionLookupResult({
-    required this.stateBase64,
-    required this.remoteDeviceId,
-  });
 }

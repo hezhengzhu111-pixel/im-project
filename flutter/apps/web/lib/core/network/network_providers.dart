@@ -15,8 +15,7 @@ final secureStorageProvider = Provider<SecureStoragePort>((ref) {
 });
 
 final storageProvider = Provider<StoragePort>((ref) {
-  throw UnimplementedError(
-      'storageProvider must be overridden at app startup');
+  throw UnimplementedError('storageProvider must be overridden at app startup');
 });
 
 final httpClientProvider = Provider<HttpClientPort>((ref) {

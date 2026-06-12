@@ -4,14 +4,14 @@ import 'route_registry.dart';
 /// Derive routeMetaMap from registry for GoRouter redirect logic.
 Map<String, RouteMeta> get routeMetaMap => routeRegistry.map(
       (path, entry) => MapEntry(
-            path,
-            RouteMeta(
-              title: entry.titleKey,
-              requiresAuth: entry.requiresAuth,
-              hideForAuth: entry.hideForAuth,
-              permission: entry.permission,
-            ),
-          ),
+        path,
+        RouteMeta(
+          title: entry.titleKey,
+          requiresAuth: entry.requiresAuth,
+          hideForAuth: entry.hideForAuth,
+          permission: entry.permission,
+        ),
+      ),
     );
 
 /// Resolve [RouteMeta] for a given location by longest-prefix match.

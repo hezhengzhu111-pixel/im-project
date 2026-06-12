@@ -30,14 +30,12 @@ getrandom = "0.2"
 hkdf = "0.12"
 hmac = "0.12"
 jsonwebtoken = "9"
-keyring = "2"
 log = "0.4"
 lru = "0.11"
 mime_guess = "2"
 rand_core = { version = "0.6", features = ["getrandom"] }
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "streams"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

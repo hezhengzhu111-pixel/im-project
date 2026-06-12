@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -74,6 +74,11 @@ class _TestMessageApi extends MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     sendPrivateEncryptedCallCount++;
     lastEncryptedArgs = {
@@ -82,6 +87,11 @@ class _TestMessageApi extends MessageApi {
       'messageType': messageType,
       'e2eeEnvelope': e2eeEnvelope,
       'e2eeDeviceId': e2eeDeviceId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     };
     if (errorToThrow != null) throw errorToThrow!;
     return sendPrivateEncryptedResponse ?? _dummyMessage();
@@ -144,6 +154,11 @@ class _SpyMessageOutbox extends MessageOutbox {
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     enqueueCalls.add({
       'sessionKey': sessionKey,
@@ -153,6 +168,11 @@ class _SpyMessageOutbox extends MessageOutbox {
       'clientMessageId': clientMessageId,
       'isGroupChat': isGroupChat,
       'groupId': groupId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     });
     return OutboxMessage(
       id: 'outbox_spy_$clientMessageId',
@@ -165,6 +185,11 @@ class _SpyMessageOutbox extends MessageOutbox {
       groupId: groupId,
       status: OutboxMessageStatus.pending,
       createdAt: DateTime.now(),
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
   }
 
@@ -221,8 +246,7 @@ class _TestableE2eeManager extends E2eeManager {
 
 /// Fake NetworkStatusNotifier.
 class _FakeNetworkStatusNotifier extends NetworkStatusNotifier {
-  _FakeNetworkStatusNotifier()
-      : super(dataSource: _FakeNetworkDataSource());
+  _FakeNetworkStatusNotifier() : super(dataSource: _FakeNetworkDataSource());
 }
 
 class _FakeNetworkDataSource implements NetworkStatusDataSource {

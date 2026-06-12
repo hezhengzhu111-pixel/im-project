@@ -61,8 +61,7 @@ class ReadReceiptHandler {
       // that were sent by the current user.
       final lastReadIndex = sessionMessages.indexWhere(
         (m) =>
-            m.id == lastReadMessageId ||
-            m.clientMessageId == lastReadMessageId,
+            m.id == lastReadMessageId || m.clientMessageId == lastReadMessageId,
       );
       if (lastReadIndex != -1) {
         for (var i = 0; i <= lastReadIndex; i++) {

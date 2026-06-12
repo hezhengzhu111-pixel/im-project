@@ -146,8 +146,7 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       pageRadius: pageRadius ?? this.pageRadius,
       controlRadius: controlRadius ?? this.controlRadius,
       accentGradient: accentGradient ?? this.accentGradient,
-      segmentedBackground:
-          segmentedBackground ?? this.segmentedBackground,
+      segmentedBackground: segmentedBackground ?? this.segmentedBackground,
       segmentedActiveBackground:
           segmentedActiveBackground ?? this.segmentedActiveBackground,
       dividerColor: dividerColor ?? this.dividerColor,
@@ -172,8 +171,7 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     return GlassTheme(
       cardBackground: Color.lerp(cardBackground, other.cardBackground, t)!,
       cardBorder: Color.lerp(cardBorder, other.cardBorder, t)!,
-      softShadow:
-          BoxShadow.lerpList(softShadow, other.softShadow, t) ?? [],
+      softShadow: BoxShadow.lerpList(softShadow, other.softShadow, t) ?? [],
       pageRadius: lerpDouble(pageRadius, other.pageRadius, t)!,
       controlRadius: lerpDouble(controlRadius, other.controlRadius, t)!,
       accentGradient:
@@ -189,16 +187,12 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       navHoverBackground:
           Color.lerp(navHoverBackground, other.navHoverBackground, t)!,
       blurIntensity: lerpDouble(blurIntensity, other.blurIntensity, t)!,
-      gradientColors:
-          _lerpColorList(gradientColors, other.gradientColors, t),
+      gradientColors: _lerpColorList(gradientColors, other.gradientColors, t),
       neumorphicShadow:
-          BoxShadow.lerpList(neumorphicShadow, other.neumorphicShadow, t) ??
-              [],
-      animationDuration:
-          t < 0.5 ? animationDuration : other.animationDuration,
+          BoxShadow.lerpList(neumorphicShadow, other.neumorphicShadow, t) ?? [],
+      animationDuration: t < 0.5 ? animationDuration : other.animationDuration,
       navBackground: Color.lerp(navBackground, other.navBackground, t)!,
-      inputBackground:
-          Color.lerp(inputBackground, other.inputBackground, t)!,
+      inputBackground: Color.lerp(inputBackground, other.inputBackground, t)!,
     );
   }
 }

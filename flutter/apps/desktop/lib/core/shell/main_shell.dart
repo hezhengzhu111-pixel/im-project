@@ -15,11 +15,31 @@ class _MainShellState extends ConsumerState<MainShell> {
   int _selectedIndex = 0;
 
   final _navItems = [
-    _NavItem(icon: Icons.chat_outlined, selectedIcon: Icons.chat, label: '聊天', route: '/chat'),
-    _NavItem(icon: Icons.people_outlined, selectedIcon: Icons.people, label: '联系人', route: '/contacts'),
-    _NavItem(icon: Icons.group_outlined, selectedIcon: Icons.group, label: '群组', route: '/groups'),
-    _NavItem(icon: Icons.camera_alt_outlined, selectedIcon: Icons.camera_alt, label: '朋友圈', route: '/moments'),
-    _NavItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置', route: '/settings'),
+    _NavItem(
+        icon: Icons.chat_outlined,
+        selectedIcon: Icons.chat,
+        label: '聊天',
+        route: '/chat'),
+    _NavItem(
+        icon: Icons.people_outlined,
+        selectedIcon: Icons.people,
+        label: '联系人',
+        route: '/contacts'),
+    _NavItem(
+        icon: Icons.group_outlined,
+        selectedIcon: Icons.group,
+        label: '群组',
+        route: '/groups'),
+    _NavItem(
+        icon: Icons.camera_alt_outlined,
+        selectedIcon: Icons.camera_alt,
+        label: '朋友圈',
+        route: '/moments'),
+    _NavItem(
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
+        label: '设置',
+        route: '/settings'),
   ];
 
   @override
@@ -87,7 +107,8 @@ class _MainShellState extends ConsumerState<MainShell> {
                       final isSelected = _selectedIndex == index;
 
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         child: Material(
                           color: isSelected
                               ? colorScheme.primaryContainer
@@ -118,7 +139,9 @@ class _MainShellState extends ConsumerState<MainShell> {
                                       color: isSelected
                                           ? colorScheme.onPrimaryContainer
                                           : colorScheme.onSurfaceVariant,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
                                     ),
                                   ),
                                 ],

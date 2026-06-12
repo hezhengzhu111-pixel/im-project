@@ -139,7 +139,8 @@ void main() {
     test('has correct values', () {
       expect(OutboxMessageStatus.values.length, 4);
       expect(OutboxMessageStatus.values, contains(OutboxMessageStatus.pending));
-      expect(OutboxMessageStatus.values, contains(OutboxMessageStatus.retrying));
+      expect(
+          OutboxMessageStatus.values, contains(OutboxMessageStatus.retrying));
       expect(OutboxMessageStatus.values, contains(OutboxMessageStatus.failed));
       expect(OutboxMessageStatus.values, contains(OutboxMessageStatus.sent));
     });
@@ -186,7 +187,8 @@ void main() {
       expect(OutboxEventType.values, contains(OutboxEventType.messageSent));
       expect(OutboxEventType.values, contains(OutboxEventType.messageFailed));
       expect(OutboxEventType.values, contains(OutboxEventType.retryAllStarted));
-      expect(OutboxEventType.values, contains(OutboxEventType.retryAllCompleted));
+      expect(
+          OutboxEventType.values, contains(OutboxEventType.retryAllCompleted));
     });
   });
 }

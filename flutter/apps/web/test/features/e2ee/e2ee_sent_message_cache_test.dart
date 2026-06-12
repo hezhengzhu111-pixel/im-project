@@ -27,8 +27,7 @@ class MockSentMessageCacheStorage implements SentMessageCacheStorage {
 
   @override
   Future<void> deleteBySession(String e2eeSessionId) async {
-    _store.removeWhere((key, value) =>
-        value['e2eeSessionId'] == e2eeSessionId);
+    _store.removeWhere((key, value) => value['e2eeSessionId'] == e2eeSessionId);
   }
 
   @override

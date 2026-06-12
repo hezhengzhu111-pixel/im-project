@@ -28,8 +28,10 @@ class MomentsNotificationsState {
   }
 }
 
-class MomentsNotificationsNotifier extends StateNotifier<MomentsNotificationsState> {
-  MomentsNotificationsNotifier(this._repository) : super(const MomentsNotificationsState());
+class MomentsNotificationsNotifier
+    extends StateNotifier<MomentsNotificationsState> {
+  MomentsNotificationsNotifier(this._repository)
+      : super(const MomentsNotificationsState());
 
   final MomentsRepository _repository;
 
@@ -47,7 +49,8 @@ class MomentsNotificationsNotifier extends StateNotifier<MomentsNotificationsSta
     try {
       await _repository.markNotificationsRead();
       state = state.copyWith(
-        notifications: state.notifications.map((n) => n.copyWith(isRead: true)).toList(),
+        notifications:
+            state.notifications.map((n) => n.copyWith(isRead: true)).toList(),
       );
     } catch (e) {
       state = state.copyWith(error: e.toString());

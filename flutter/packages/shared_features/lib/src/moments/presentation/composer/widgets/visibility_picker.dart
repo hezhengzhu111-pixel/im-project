@@ -26,8 +26,7 @@ class VisibilityPicker extends StatelessWidget {
       segments: MomentVisibility.values.map((v) {
         return ButtonSegment<MomentVisibility>(
           value: v,
-          label: Text(visibilityLabel(v),
-              style: const TextStyle(fontSize: 12)),
+          label: Text(visibilityLabel(v), style: const TextStyle(fontSize: 12)),
           icon: Icon(v.icon, size: 16),
         );
       }).toList(),

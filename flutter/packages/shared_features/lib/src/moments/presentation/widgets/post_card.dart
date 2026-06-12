@@ -98,7 +98,8 @@ class PostCard extends ConsumerWidget {
 
     // 最多显示 9 个媒体
     final displayMedia = media.take(9).toList();
-    final crossAxisCount = displayMedia.length <= 1 ? 1 : (displayMedia.length <= 4 ? 2 : 3);
+    final crossAxisCount =
+        displayMedia.length <= 1 ? 1 : (displayMedia.length <= 4 ? 2 : 3);
 
     return GridView.builder(
       shrinkWrap: true,

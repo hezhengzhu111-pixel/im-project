@@ -52,8 +52,7 @@ class _MockAuthRepository implements AuthRepository {
       const UserAuthResponse(success: true);
 
   @override
-  Future<AuthResult> restoreSession() async =>
-      const AuthFailure(error: 'mock');
+  Future<AuthResult> restoreSession() async => const AuthFailure(error: 'mock');
 
   @override
   Future<void> logout() async {}
@@ -170,7 +169,8 @@ void main() {
         await _startApp(
           tester,
           overrides: [
-            authStateProvider.overrideWith((ref) => MockAuthenticatedNotifier()),
+            authStateProvider
+                .overrideWith((ref) => MockAuthenticatedNotifier()),
           ],
         );
 
@@ -190,7 +190,8 @@ void main() {
         await _startApp(
           tester,
           overrides: [
-            authStateProvider.overrideWith((ref) => MockAuthenticatedNotifier()),
+            authStateProvider
+                .overrideWith((ref) => MockAuthenticatedNotifier()),
           ],
         );
 
@@ -224,7 +225,8 @@ void main() {
         await _startApp(
           tester,
           overrides: [
-            authStateProvider.overrideWith((ref) => MockAuthenticatedNotifier()),
+            authStateProvider
+                .overrideWith((ref) => MockAuthenticatedNotifier()),
           ],
         );
 

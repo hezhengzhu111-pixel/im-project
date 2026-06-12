@@ -94,37 +94,40 @@ final routerProvider = Provider<GoRouter>((ref) {
           final l10n = AppLocalizations.of(context);
           final selectedIndex = _indexFromPath(state.uri.path);
 
-          return ResponsiveScaffold(
-            destinations: [
-              ResponsiveNavDestination(
-                icon: Icons.chat_outlined,
-                selectedIcon: Icons.chat,
-                label: l10n?.navChat ?? '聊天',
-              ),
-              ResponsiveNavDestination(
-                icon: Icons.people_outlined,
-                selectedIcon: Icons.people,
-                label: l10n?.navContacts ?? '联系人',
-              ),
-              ResponsiveNavDestination(
-                icon: Icons.group_outlined,
-                selectedIcon: Icons.group,
-                label: l10n?.navGroups ?? '群组',
-              ),
-              ResponsiveNavDestination(
-                icon: Icons.camera_alt_outlined,
-                selectedIcon: Icons.camera_alt,
-                label: l10n?.navMoments ?? '朋友圈',
-              ),
-              ResponsiveNavDestination(
-                icon: Icons.settings_outlined,
-                selectedIcon: Icons.settings,
-                label: l10n?.navSettings ?? '设置',
-              ),
-            ],
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (index) => _onNavigate(context, index),
-            child: child,
+          return _ProtectedShellGate(
+            location: state.uri.toString(),
+            child: ResponsiveScaffold(
+              destinations: [
+                ResponsiveNavDestination(
+                  icon: Icons.chat_outlined,
+                  selectedIcon: Icons.chat,
+                  label: l10n?.navChat ?? '聊天',
+                ),
+                ResponsiveNavDestination(
+                  icon: Icons.people_outlined,
+                  selectedIcon: Icons.people,
+                  label: l10n?.navContacts ?? '联系人',
+                ),
+                ResponsiveNavDestination(
+                  icon: Icons.group_outlined,
+                  selectedIcon: Icons.group,
+                  label: l10n?.navGroups ?? '群组',
+                ),
+                ResponsiveNavDestination(
+                  icon: Icons.camera_alt_outlined,
+                  selectedIcon: Icons.camera_alt,
+                  label: l10n?.navMoments ?? '朋友圈',
+                ),
+                ResponsiveNavDestination(
+                  icon: Icons.settings_outlined,
+                  selectedIcon: Icons.settings,
+                  label: l10n?.navSettings ?? '设置',
+                ),
+              ],
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (index) => _onNavigate(context, index),
+              child: child,
+            ),
           );
         },
         routes: [
@@ -215,6 +218,39 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class _ProtectedShellGate extends ConsumerWidget {
+  const _ProtectedShellGate({
+    required this.location,
+    required this.child,
+  });
+
+  final String location;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authStateProvider);
+    if (authState.status == AuthStatus.initial ||
+        authState.status == AuthStatus.loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!authState.isAuthenticated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/login?redirect=${Uri.encodeComponent(location)}');
+      });
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return child;
+  }
+}
 
 class _RouterRefreshListenable extends ChangeNotifier {
   void refresh() => notifyListeners();

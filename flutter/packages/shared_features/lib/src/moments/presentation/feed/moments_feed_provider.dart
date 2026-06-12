@@ -107,7 +107,8 @@ class MomentsFeedNotifier extends StateNotifier<MomentsFeedState> {
   }
 
   void updatePost(PostWithDetails updatedPost) {
-    final index = state.posts.indexWhere((p) => p.post.id == updatedPost.post.id);
+    final index =
+        state.posts.indexWhere((p) => p.post.id == updatedPost.post.id);
     if (index == -1) return;
     final updatedPosts = [...state.posts];
     updatedPosts[index] = updatedPost;

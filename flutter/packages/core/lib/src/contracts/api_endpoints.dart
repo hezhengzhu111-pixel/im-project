@@ -89,10 +89,10 @@ class FileEndpoints {
 }
 
 class AiEndpoints {
-  static const keys = '/ai/keys';
-  static String keyById(String id) => '/ai/keys/$id';
-  static String keyTest(String id) => '/ai/keys/$id/test';
-  static const settings = '/ai/settings';
+  static const keys = '/api/ai/keys';
+  static String keyById(String id) => '/api/ai/keys/$id';
+  static String keyTest(String id) => '/api/ai/keys/$id/test';
+  static const settings = '/api/ai/settings';
 }
 
 class PushEndpoints {

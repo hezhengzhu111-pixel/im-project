@@ -11,6 +11,8 @@ class ValidatedFormField extends StatefulWidget {
   final int maxLines;
   final Widget? prefix;
   final Widget? suffix;
+  final VoidCallback? onSubmitted;
+  final TextInputAction? textInputAction;
 
   const ValidatedFormField({
     super.key,
@@ -23,6 +25,8 @@ class ValidatedFormField extends StatefulWidget {
     this.maxLines = 1,
     this.prefix,
     this.suffix,
+    this.onSubmitted,
+    this.textInputAction,
   });
 
   @override
@@ -66,6 +70,7 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
           initialValue: field.value,
           obscureText: widget.obscureText ? _obscured : false,
           keyboardType: widget.keyboardType,
+          textInputAction: widget.textInputAction,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
           style: const TextStyle(
             fontSize: 15,
@@ -79,7 +84,8 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
             ),
             prefixIcon: widget.prefix ??
                 (widget.icon != null
-                    ? Icon(widget.icon, size: 20, color: Colors.blueGrey.shade400)
+                    ? Icon(widget.icon,
+                        size: 20, color: Colors.blueGrey.shade400)
                     : null),
             suffixIcon: _buildSuffix(field),
             contentPadding: const EdgeInsets.symmetric(
@@ -129,6 +135,7 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
           onFieldSubmitted: (_) {
             widget.controller.touchField(widget.name);
             widget.controller.validateField(widget.name);
+            widget.onSubmitted?.call();
           },
         );
       },

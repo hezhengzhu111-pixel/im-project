@@ -168,7 +168,8 @@ class NetworkStatusNotifier extends StateNotifier<NetworkState> {
     }
 
     try {
-      final reachable = await _dataSource.checkServerReachable(_connectivityCheckUrl);
+      final reachable =
+          await _dataSource.checkServerReachable(_connectivityCheckUrl);
       state = state.copyWith(
         status: reachable ? NetworkStatus.online : NetworkStatus.limited,
         lastChecked: DateTime.now(),

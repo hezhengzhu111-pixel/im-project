@@ -30,9 +30,8 @@ class ImNavItem extends StatelessWidget {
 
     final iconColor = isSelected ? colors.primary : colors.textSecondary;
     final textColor = isSelected ? colors.primary : colors.textSecondary;
-    final currentIcon = isSelected && selectedIcon != null
-        ? selectedIcon!
-        : icon;
+    final currentIcon =
+        isSelected && selectedIcon != null ? selectedIcon! : icon;
 
     return InkWell(
       onTap: onTap,

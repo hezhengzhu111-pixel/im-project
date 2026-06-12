@@ -31,6 +31,11 @@ class OutboxMessage {
     this.isEncrypted = false,
     this.e2eeEnvelope,
     this.e2eeDeviceId,
+    this.mediaUrl,
+    this.mediaName,
+    this.mediaSize,
+    this.thumbnailUrl,
+    this.duration,
   });
 
   final String id;
@@ -49,6 +54,11 @@ class OutboxMessage {
   final bool isEncrypted;
   final Map<String, dynamic>? e2eeEnvelope;
   final String? e2eeDeviceId;
+  final String? mediaUrl;
+  final String? mediaName;
+  final int? mediaSize;
+  final String? thumbnailUrl;
+  final int? duration;
 
   OutboxMessage copyWith({
     OutboxMessageStatus? status,
@@ -73,6 +83,11 @@ class OutboxMessage {
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
       e2eeDeviceId: e2eeDeviceId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
   }
 
@@ -94,6 +109,11 @@ class OutboxMessage {
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope != null ? jsonEncode(e2eeEnvelope) : null,
       'e2eeDeviceId': e2eeDeviceId,
+      'mediaUrl': mediaUrl,
+      'mediaName': mediaName,
+      'mediaSize': mediaSize,
+      'thumbnailUrl': thumbnailUrl,
+      'duration': duration,
     };
   }
 
@@ -124,6 +144,11 @@ class OutboxMessage {
           ? jsonDecode(map['e2eeEnvelope'] as String) as Map<String, dynamic>
           : null,
       e2eeDeviceId: map['e2eeDeviceId'] as String?,
+      mediaUrl: map['mediaUrl'] as String?,
+      mediaName: map['mediaName'] as String?,
+      mediaSize: map['mediaSize'] as int?,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      duration: map['duration'] as int?,
     );
   }
 }
@@ -217,6 +242,11 @@ class MessageOutbox {
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     // 检查是否已存在相同 clientMessageId 的消息（防重）
     final existing = await _getByClientMessageId(clientMessageId);
@@ -238,6 +268,11 @@ class MessageOutbox {
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
       e2eeDeviceId: e2eeDeviceId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
 
     await _saveToDb(message);
@@ -371,6 +406,11 @@ class MessageOutbox {
           messageType: message.messageType,
           e2eeEnvelope: message.e2eeEnvelope!,
           e2eeDeviceId: message.e2eeDeviceId ?? '',
+          mediaUrl: message.mediaUrl,
+          mediaName: message.mediaName,
+          mediaSize: message.mediaSize,
+          thumbnailUrl: message.thumbnailUrl,
+          duration: message.duration,
         );
       } else if (message.isGroupChat) {
         await _messageApi.sendGroupMessage(
@@ -379,6 +419,11 @@ class MessageOutbox {
             content: message.content,
             messageType: message.messageType,
             clientMessageId: message.clientMessageId,
+            mediaUrl: message.mediaUrl,
+            mediaName: message.mediaName,
+            mediaSize: message.mediaSize,
+            thumbnailUrl: message.thumbnailUrl,
+            duration: message.duration,
           ),
         );
       } else {
@@ -388,6 +433,11 @@ class MessageOutbox {
             content: message.content,
             messageType: message.messageType,
             clientMessageId: message.clientMessageId,
+            mediaUrl: message.mediaUrl,
+            mediaName: message.mediaName,
+            mediaSize: message.mediaSize,
+            thumbnailUrl: message.thumbnailUrl,
+            duration: message.duration,
           ),
         );
       }

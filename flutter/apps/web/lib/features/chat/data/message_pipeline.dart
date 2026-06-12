@@ -17,8 +17,8 @@ class MessagePipeline {
   void _cleanup() {
     final now = DateTime.now();
     // Remove expired entries
-    _recentIds.removeWhere(
-        (_, timestamp) => now.difference(timestamp) > _expiry);
+    _recentIds
+        .removeWhere((_, timestamp) => now.difference(timestamp) > _expiry);
     // Remove oldest if over capacity
     while (_recentIds.length > _maxSize) {
       _recentIds.remove(_recentIds.keys.first);

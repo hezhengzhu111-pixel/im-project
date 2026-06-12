@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
+
 import '../theme/im_tokens.dart';
 
-/// 四色渐变主按钮
-///
-/// 用于所有主要操作（保存、确认、退出登录等）。
-/// 渐变色：#667eea → #764BA2 → #23a6d5 → #23d5ab
 class GradientButton extends StatelessWidget {
   const GradientButton({
-    super.key,
     required this.onPressed,
     required this.child,
     this.width,
     this.height = 48,
     this.borderRadius,
     this.enabled = true,
+    super.key,
   });
 
   final VoidCallback? onPressed;
@@ -25,7 +22,7 @@ class GradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = borderRadius ?? ImTokens.radiusLg;
+    final radius = borderRadius ?? ImTokens.radiusSm;
 
     return Opacity(
       opacity: enabled ? 1.0 : 0.5,
@@ -33,17 +30,8 @@ class GradientButton extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: enabled ? ImTokens.brandPurple : Colors.grey.shade300,
+          color: enabled ? ImTokens.wechatGreen : Colors.grey.shade300,
           borderRadius: BorderRadius.circular(radius),
-          boxShadow: enabled
-              ? [
-                  BoxShadow(
-                    color: ImTokens.brandPurple.withValues(alpha: 0.24),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
         ),
         child: ElevatedButton(
           onPressed: enabled ? onPressed : null,
@@ -57,7 +45,7 @@ class GradientButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius),
             ),
             textStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
               fontSize: 16,
             ),
           ),
@@ -68,12 +56,11 @@ class GradientButton extends StatelessWidget {
   }
 }
 
-/// 渐变文字按钮（无背景，文字带渐变色）
 class GradientTextButton extends StatelessWidget {
   const GradientTextButton({
-    super.key,
     required this.onPressed,
     required this.child,
+    super.key,
   });
 
   final VoidCallback? onPressed;
@@ -84,7 +71,7 @@ class GradientTextButton extends StatelessWidget {
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: ImTokens.brandPurple,
+        foregroundColor: ImTokens.wechatGreen,
       ),
       child: child,
     );

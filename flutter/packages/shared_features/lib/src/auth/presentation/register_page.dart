@@ -49,10 +49,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
     try {
       await ref.read(authStateProvider.notifier).register(
-        _usernameController.text,
-        _emailController.text,
-        _passwordController.text,
-      );
+            _usernameController.text,
+            _emailController.text,
+            _passwordController.text,
+          );
 
       if (mounted) {
         final authState = ref.read(authStateProvider);
@@ -100,7 +100,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 32),
-
               TextField(
                 controller: _usernameController,
                 decoration: const InputDecoration(
@@ -110,7 +109,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -121,7 +119,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
               TextField(
                 controller: _passwordController,
                 obscureText: true,
@@ -132,7 +129,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
               TextField(
                 controller: _confirmPasswordController,
                 obscureText: true,
@@ -143,7 +139,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -159,7 +154,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
               TextButton(
                 onPressed: () => context.go('/login'),
                 child: const Text('已有账号？立即登录'),

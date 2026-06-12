@@ -20,7 +20,9 @@ void main() {
             child: Builder(
               builder: (context) {
                 final provided = ValidatedForm.of(context);
-                return Text(provided.field('field1').value.isEmpty ? 'empty' : 'has value');
+                return Text(provided.field('field1').value.isEmpty
+                    ? 'empty'
+                    : 'has value');
               },
             ),
           ),
@@ -44,7 +46,9 @@ void main() {
             child: Builder(
               builder: (context) {
                 final provided = ValidatedForm.of(context);
-                return Text(provided.field('field1').value.isEmpty ? 'empty' : 'filled');
+                return Text(provided.field('field1').value.isEmpty
+                    ? 'empty'
+                    : 'filled');
               },
             ),
           ),
@@ -79,7 +83,8 @@ void main() {
       expect(find.text('Test error'), findsOneWidget);
     });
 
-    testWidgets('hides FormErrorBanner when showErrorBanner is false', (tester) async {
+    testWidgets('hides FormErrorBanner when showErrorBanner is false',
+        (tester) async {
       final controller = FormController(
         FormSchema(fields: [FormFieldSchema(name: 'field1')]),
       );

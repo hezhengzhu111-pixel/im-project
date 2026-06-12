@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -159,6 +159,11 @@ class SpyMessageOutbox extends MessageOutbox {
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
   }) async {
     return OutboxMessage(
       id: 'outbox_spy_$clientMessageId',
@@ -173,6 +178,11 @@ class SpyMessageOutbox extends MessageOutbox {
       createdAt: DateTime.now(),
       isEncrypted: isEncrypted,
       e2eeDeviceId: e2eeDeviceId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
   }
 
@@ -412,8 +422,7 @@ void main() {
   // =========================================================================
 
   group('markRead: sorted private session key not sent to backend', () {
-    test(
-        'canonical key with reversed user order resolves to conversationId',
+    test('canonical key with reversed user order resolves to conversationId',
         () async {
       notifier = createNotifier();
 

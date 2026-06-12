@@ -1,9 +1,8 @@
-import 'dart:ui';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
@@ -22,10 +21,11 @@ class MessageInput extends ConsumerStatefulWidget {
     this.members,
   });
 
-  final void Function(String text, List<String> mentionedUserIds) onSend;
-  final void Function(UploadResult result) onSendImage;
-  final void Function(UploadResult result) onSendFile;
-  final void Function(UploadResult result) onSendVoice;
+  final FutureOr<void> Function(String text, List<String> mentionedUserIds)
+      onSend;
+  final FutureOr<void> Function(UploadResult result) onSendImage;
+  final FutureOr<void> Function(UploadResult result) onSendFile;
+  final FutureOr<void> Function(UploadResult result) onSendVoice;
   final FocusNode? focusNode;
   final ValueChanged<bool>? onFocusChanged;
   final List<GroupMember>? members;
@@ -37,7 +37,9 @@ class MessageInput extends ConsumerStatefulWidget {
 class _MessageInputState extends ConsumerState<MessageInput> {
   final _controller = TextEditingController();
   bool _isUploading = false;
+  bool _isSending = false;
   bool _isRecording = false;
+  bool _showEmojiPanel = false;
 
   // @ mention state
   bool _showMention = false;
@@ -207,16 +209,23 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   Future<void> _uploadAndSend(
     PickedFile file,
-    void Function(UploadResult) callback,
+    FutureOr<void> Function(UploadResult) callback,
   ) async {
     setState(() => _isUploading = true);
 
     try {
       final fileApi = ref.read(fileApiProvider);
       final uploadResult = await _uploadFile(fileApi, file);
-      callback(uploadResult);
+      await Future.sync(() => callback(uploadResult));
+    } catch (_) {
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.commonFailed)),
+        );
+      }
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -263,94 +272,158 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final glass = Theme.of(context).extension<GlassTheme>()!;
+    final theme = Theme.of(context);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_showMention) _buildMentionDropdown(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: glass.inputBackground,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: glass.dividerColor),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+        if (_showEmojiPanel) _buildEmojiPanel(),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(top: BorderSide(color: theme.dividerColor)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: OutboxIndicator(),
                 ),
-                child: Row(
-                  children: [
-                    const OutboxIndicator(),
-                    Semantics(
-                      label: loc.a11yAddAttachment,
-                      button: true,
-                      child: IconButton(
-                        icon: const Icon(Icons.add_circle_outline),
-                        onPressed: _isUploading ? null : _showAttachmentMenu,
-                        tooltip: loc.a11yAddAttachment,
-                      ),
-                    ),
-                    Semantics(
-                      label: loc.a11yVoiceInput,
-                      button: true,
-                      child: IconButton(
-                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                        onPressed: _isUploading
-                            ? null
-                            : () {
-                                if (_isRecording) {
-                                  _stopRecordingAndSend();
-                                } else {
-                                  _recordAndSendVoice();
-                                }
-                              },
-                        tooltip: loc.a11yVoiceInput,
-                        color: _isRecording ? Colors.red : null,
-                      ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: widget.focusNode,
-                        decoration: InputDecoration(
-                          hintText: loc.chatInputHint,
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12),
+                Semantics(
+                  label: loc.a11yAddAttachment,
+                  button: true,
+                  child: IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: _isUploading ? null : _showAttachmentMenu,
+                    tooltip: loc.a11yAddAttachment,
+                  ),
+                ),
+                Semantics(
+                  label: 'Emoji',
+                  button: true,
+                  child: IconButton(
+                    icon: const Icon(Icons.emoji_emotions_outlined),
+                    onPressed: _isUploading || _isSending
+                        ? null
+                        : () => setState(
+                              () => _showEmojiPanel = !_showEmojiPanel,
+                            ),
+                    tooltip: 'Emoji',
+                  ),
+                ),
+                Semantics(
+                  label: loc.a11yVoiceInput,
+                  button: true,
+                  child: IconButton(
+                    icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                    onPressed: _isUploading
+                        ? null
+                        : () {
+                            if (_isRecording) {
+                              _stopRecordingAndSend();
+                            } else {
+                              _recordAndSendVoice();
+                            }
+                          },
+                    tooltip: loc.a11yVoiceInput,
+                    color: _isRecording ? Colors.red : null,
+                  ),
+                ),
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 42),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: widget.focusNode,
+                      textInputAction: TextInputAction.send,
+                      keyboardType: TextInputType.multiline,
+                      decoration: InputDecoration(
+                        hintText: loc.chatInputHint,
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: BorderSide.none,
                         ),
-                        minLines: 1,
-                        maxLines: 4,
-                        onSubmitted: (_) => _handleSend(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
+                      minLines: 1,
+                      maxLines: 4,
+                      onSubmitted: (_) => _handleSend(),
                     ),
-                    Semantics(
-                      label: loc.a11ySendMessage,
-                      button: true,
-                      child: IconButton(
-                        icon: const Icon(Icons.send),
-                        onPressed: _isUploading ? null : _handleSend,
-                        tooltip: loc.a11ySendMessage,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Semantics(
+                  label: loc.a11ySendMessage,
+                  button: true,
+                  child: FilledButton(
+                    onPressed: _isUploading || _isSending ? null : _handleSend,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(46, 42),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send, size: 20),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmojiPanel() {
+    const emojis = ['😀', '😂', '👍', '🙏', '❤️', '🎉', '😮', '😢'];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final emoji in emojis)
+            InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () {
+                final selection = _controller.selection;
+                final text = _controller.text;
+                final offset =
+                    selection.isValid ? selection.baseOffset : text.length;
+                _controller.text = text.replaceRange(offset, offset, emoji);
+                _controller.selection = TextSelection.collapsed(
+                  offset: offset + emoji.length,
+                );
+                widget.focusNode?.requestFocus();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(emoji, style: const TextStyle(fontSize: 22)),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -403,14 +476,21 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     );
   }
 
-  void _handleSend() {
+  Future<void> _handleSend() async {
+    if (_isSending || _isUploading) return;
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     final ids = List<String>.from(_mentionedIds);
-    _mentionedIds.clear();
-    widget.onSend(text, ids);
-    _controller.clear();
-    _resetMention();
+    setState(() => _isSending = true);
+    try {
+      await Future.sync(() => widget.onSend(text, ids));
+      _mentionedIds.clear();
+      _controller.clear();
+      _resetMention();
+      if (_showEmojiPanel) setState(() => _showEmojiPanel = false);
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
   }
 
   String _mapError(FailureError error, AppLocalizations loc) {

@@ -18,8 +18,7 @@ class FormController extends ChangeNotifier {
 
   FormFieldState field(String name) => _fields[name]!;
   String? get formError => _formError;
-  Map<String, String> get values =>
-      _fields.map((k, v) => MapEntry(k, v.value));
+  Map<String, String> get values => _fields.map((k, v) => MapEntry(k, v.value));
 
   Future<bool> validate() async {
     bool valid = true;
@@ -63,8 +62,7 @@ class FormController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void applyServerErrors(Map<String, String> fieldErrors,
-      {String? formError}) {
+  void applyServerErrors(Map<String, String> fieldErrors, {String? formError}) {
     for (final entry in fieldErrors.entries) {
       if (_fields.containsKey(entry.key)) {
         _fields[entry.key]!.setError(entry.value);
@@ -84,8 +82,7 @@ class FormController extends ChangeNotifier {
 
   Future<void> _validateSingleField(String name) async {
     final field = _fields[name]!;
-    final fieldSchema =
-        schema.fields.firstWhere((f) => f.name == name);
+    final fieldSchema = schema.fields.firstWhere((f) => f.name == name);
 
     _runSyncValidators(name);
 
@@ -105,8 +102,7 @@ class FormController extends ChangeNotifier {
 
   void _runSyncValidators(String name) {
     final field = _fields[name]!;
-    final fieldSchema =
-        schema.fields.firstWhere((f) => f.name == name);
+    final fieldSchema = schema.fields.firstWhere((f) => f.name == name);
     final composed = composeValidators(fieldSchema.validators);
     field.setError(composed(field.value));
   }

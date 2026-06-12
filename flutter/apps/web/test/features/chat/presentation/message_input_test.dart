@@ -151,10 +151,10 @@ void main() {
   });
 
   Widget buildSubject({
-    void Function(String, List<String>)? onSend,
-    void Function(UploadResult)? onSendImage,
-    void Function(UploadResult)? onSendFile,
-    void Function(UploadResult)? onSendVoice,
+    FutureOr<void> Function(String, List<String>)? onSend,
+    FutureOr<void> Function(UploadResult)? onSendImage,
+    FutureOr<void> Function(UploadResult)? onSendFile,
+    FutureOr<void> Function(UploadResult)? onSendVoice,
   }) {
     final fakeHttpClient = FakeHttpClientPort();
     fakeHttpClient.onPost = <T>(
@@ -267,6 +267,32 @@ void main() {
       // MockFilePickerAdapter returns OperationCancelled by default,
       // so onSendFile should NOT have been called
       expect(uploadCalled, false);
+    });
+
+    testWidgets('slow send disables duplicate sends', (tester) async {
+      final completer = Completer<void>();
+      var sendCount = 0;
+
+      await tester.pumpWidget(buildSubject(
+        onSend: (_, __) {
+          sendCount++;
+          return completer.future;
+        },
+      ));
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      final sendButton = find.byType(FilledButton);
+      await tester.tap(sendButton);
+      await tester.pump();
+
+      expect(sendCount, 1);
+      await tester.tap(sendButton);
+      await tester.pump();
+      expect(sendCount, 1);
+
+      completer.complete();
+      await tester.pump();
+      expect(find.text('hello'), findsNothing);
     });
   });
 }

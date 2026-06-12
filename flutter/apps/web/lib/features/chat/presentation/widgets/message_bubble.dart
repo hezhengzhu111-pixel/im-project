@@ -1,126 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../e2ee/presentation/e2ee_glass_widgets.dart';
-import 'image_bubble.dart';
 import 'file_bubble.dart';
-import 'voice_bubble.dart';
+import 'image_bubble.dart';
 import 'video_bubble.dart';
+import 'voice_bubble.dart';
 
-class MessageBubble extends StatefulWidget {
+class MessageBubble extends StatelessWidget {
   const MessageBubble({
     required this.message,
     required this.isMe,
+    this.onRetry,
     super.key,
   });
 
   final Message message;
   final bool isMe;
-
-  @override
-  State<MessageBubble> createState() => _MessageBubbleState();
-}
-
-class _MessageBubbleState extends State<MessageBubble> {
-  bool _hovered = false;
-
-  Message get message => widget.message;
-  bool get isMe => widget.isMe;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final maxWidth =
+        (MediaQuery.of(context).size.width * 0.58).clamp(260, 560).toDouble();
+    final senderLabel = _senderLabel;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.55,
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 18),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
           children: [
-            if (!isMe) ...[
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: message.senderAvatar != null
-                    ? NetworkImage(message.senderAvatar!)
-                    : null,
-                child: message.senderAvatar == null
-                    ? Text(
-                        (message.senderName ?? message.senderId)
-                            .substring(0, 1)
-                            .toUpperCase(),
-                        style: const TextStyle(fontSize: 12),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 8),
-            ],
+            _Avatar(
+              avatar: message.senderAvatar,
+              fallback: message.senderName ?? message.senderId,
+            ),
+            const SizedBox(width: 8),
             Flexible(
-              child: MouseRegion(
-                onEnter: (_) => setState(() => _hovered = true),
-                onExit: (_) => setState(() => _hovered = false),
-                child: AnimatedContainer(
-                  duration: ImTokens.animNormal,
-                  curve: Curves.easeOut,
-                  transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
-                  child: _BubbleWithArrow(
+              child: Column(
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (senderLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8, bottom: 3),
+                      child: Text(
+                        senderLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  _BubbleWithArrow(
                     isMe: isMe,
                     color: _bubbleColor(context),
-                    shadow: [
-                      BoxShadow(
-                        color: const Color(0xFF191C40)
-                            .withValues(alpha: _hovered ? 0.18 : 0.08),
-                        blurRadius: _hovered ? 28 : 14,
-                        offset: Offset(0, _hovered ? 14 : 6),
-                      ),
-                    ],
                     child: _buildMessageContent(context),
                   ),
-                ),
+                ],
               ),
             ),
-            if (isMe) ...[
-              const SizedBox(width: 8),
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: message.senderAvatar != null
-                    ? NetworkImage(message.senderAvatar!)
-                    : null,
-                child: message.senderAvatar == null
-                    ? Text(
-                        (message.senderName ?? message.senderId)
-                            .substring(0, 1)
-                            .toUpperCase(),
-                        style: const TextStyle(fontSize: 12),
-                      )
-                    : null,
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
+  String? get _senderLabel {
+    if (isMe || !message.isGroupChat) return null;
+    final name = message.senderName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final id = message.senderId.trim();
+    return id.isEmpty ? null : id;
+  }
+
   Widget _buildMessageContent(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final decryptFailed =
         (message.decryptStatus ?? '').toLowerCase() == 'failed';
-    final isE2ee = message.encrypted == true ||
+    final hasE2eeMetadata = message.encrypted == true ||
         message.e2eeEnvelope != null ||
         (message.decryptStatus?.isNotEmpty ?? false);
-    final isMedia = switch (message.messageType.toUpperCase()) {
-      'IMAGE' || 'FILE' || 'VOICE' || 'VIDEO' => true,
-      _ => false,
-    };
+    final isMedia = _isMedia(message.messageType);
+    final failed = message.status.toUpperCase() == 'FAILED';
 
     return Container(
       padding: isMedia
           ? const EdgeInsets.all(4)
-          : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: isMedia ? null : const BoxDecoration(),
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -136,9 +114,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '消息解密失败',
+                  loc.e2eeFailedBadge,
                   style: TextStyle(
-                    color: isMe ? Colors.white : const Color(0xFFBA3247),
+                    color: isMe ? Colors.black : const Color(0xFFBA3247),
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -154,13 +132,16 @@ class _MessageBubbleState extends State<MessageBubble> {
               _ => Text(
                   message.content,
                   style: TextStyle(
-                    color: isMe
-                        ? theme.colorScheme.onPrimary
-                        : theme.colorScheme.onSurface,
+                    color: theme.colorScheme.onSurface,
                     fontSize: 15,
+                    height: 1.38,
                   ),
                 ),
             },
+          if (isMedia) ...[
+            const SizedBox(height: 6),
+            const _MediaProtectionLabel(),
+          ],
           const SizedBox(height: 4),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -168,25 +149,24 @@ class _MessageBubbleState extends State<MessageBubble> {
               Text(
                 _formatTime(message.sendTime),
                 style: TextStyle(
-                  color: isMe
-                      ? theme.colorScheme.onPrimary.withAlpha(170)
-                      : theme.colorScheme.onSurfaceVariant,
+                  color: theme.colorScheme.onSurfaceVariant,
                   fontSize: 11,
                 ),
               ),
-              if (isE2ee) ...[
+              if (!isMedia && hasE2eeMetadata) ...[
                 const SizedBox(width: 6),
                 MessageBubbleE2eeBadge(isMe: isMe),
               ],
               if (isMe) ...[
                 const SizedBox(width: 4),
-                Icon(
-                  _statusIcon(message.status),
-                  size: 14,
-                  color: message.status == 'READ'
-                      ? Colors.blue
-                      : theme.colorScheme.onPrimary.withAlpha(170),
-                ),
+                if (failed && onRetry != null)
+                  _RetryStatusButton(onRetry: onRetry!)
+                else
+                  Icon(
+                    _statusIcon(message.status),
+                    size: 14,
+                    color: _statusColor(context, message.status),
+                  ),
               ],
             ],
           ),
@@ -195,29 +175,51 @@ class _MessageBubbleState extends State<MessageBubble> {
     );
   }
 
+  bool _isMedia(String type) {
+    return switch (type.toUpperCase()) {
+      'IMAGE' || 'FILE' || 'VOICE' || 'VIDEO' => true,
+      _ => false,
+    };
+  }
+
   Color _bubbleColor(BuildContext context) {
     final decryptFailed =
         (message.decryptStatus ?? '').toLowerCase() == 'failed';
     if (decryptFailed) {
-      return isMe
-          ? const Color(0xFFBA3247)
-          : const Color(0xFFFFE8EC).withValues(alpha: 0.92);
+      return const Color(0xFFFFE8EC);
     }
-    return isMe ? imGlassBrand : Colors.white.withValues(alpha: 0.68);
+    final brightness = Theme.of(context).brightness;
+    if (brightness == Brightness.dark) {
+      return isMe ? const Color(0xFF1F8F45) : const Color(0xFF2A2A2A);
+    }
+    return isMe ? ImTokens.wechatOwnBubble : ImTokens.wechatOtherBubble;
   }
 
   IconData _statusIcon(String status) {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'SENT':
         return Icons.check;
       case 'DELIVERED':
-        return Icons.done_all;
       case 'READ':
         return Icons.done_all;
+      case 'FAILED':
+        return Icons.error_outline;
+      case 'PENDING':
       case 'SENDING':
-        return Icons.access_time;
       default:
         return Icons.access_time;
+    }
+  }
+
+  Color _statusColor(BuildContext context, String status) {
+    final theme = Theme.of(context);
+    switch (status.toUpperCase()) {
+      case 'READ':
+        return ImTokens.wechatGreen;
+      case 'FAILED':
+        return theme.colorScheme.error;
+      default:
+        return theme.colorScheme.onSurfaceVariant;
     }
   }
 
@@ -231,47 +233,125 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 }
 
+class _MediaProtectionLabel extends StatelessWidget {
+  const _MediaProtectionLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lock_open,
+              size: 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Media not E2EE',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RetryStatusButton extends StatelessWidget {
+  const _RetryStatusButton({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    return Tooltip(
+      message: loc.chatRetry,
+      child: InkResponse(
+        onTap: onRetry,
+        radius: 13,
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: Icon(
+            Icons.refresh,
+            size: 15,
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({
+    required this.avatar,
+    required this.fallback,
+  });
+
+  final String? avatar;
+  final String fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final safeFallback = fallback.isEmpty ? '?' : fallback;
+    return CircleAvatar(
+      radius: 18,
+      backgroundColor: const Color(0xFFD9D9D9),
+      backgroundImage: avatar != null ? NetworkImage(avatar!) : null,
+      child: avatar == null
+          ? Text(
+              safeFallback.substring(0, 1).toUpperCase(),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF4A4A4A)),
+            )
+          : null,
+    );
+  }
+}
+
 class _BubbleWithArrow extends StatelessWidget {
   const _BubbleWithArrow({
     required this.isMe,
     required this.color,
     required this.child,
-    required this.shadow,
   });
 
   final bool isMe;
   final Color color;
   final Widget child;
-  final List<BoxShadow> shadow;
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(18),
-      topRight: const Radius.circular(18),
-      bottomLeft: Radius.circular(isMe ? 18 : 6),
-      bottomRight: Radius.circular(isMe ? 6 : 18),
-    );
-
+    final border = Border.all(color: Theme.of(context).dividerColor);
     return Row(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
-        if (!isMe) _Arrow(color: color, isMe: false),
+        _Arrow(color: color, isMe: isMe),
         Flexible(
           child: Container(
             decoration: BoxDecoration(
               color: color,
-              borderRadius: radius,
-              border: isMe
-                  ? null
-                  : Border.all(color: Colors.white.withValues(alpha: 0.56)),
-              boxShadow: shadow,
+              borderRadius: BorderRadius.circular(4),
+              border: isMe ? null : border,
             ),
             child: child,
           ),
         ),
-        if (isMe) _Arrow(color: color, isMe: true),
       ],
     );
   }
@@ -286,40 +366,59 @@ class _Arrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(8, 12),
-      painter: _ArrowPainter(color: color, isMe: isMe),
+      size: const Size(7, 10),
+      painter: _ArrowPainter(
+        color: color,
+        borderColor: isMe ? null : Theme.of(context).dividerColor,
+        isMe: isMe,
+      ),
     );
   }
 }
 
 class _ArrowPainter extends CustomPainter {
-  const _ArrowPainter({required this.color, required this.isMe});
+  const _ArrowPainter({
+    required this.color,
+    required this.isMe,
+    this.borderColor,
+  });
 
   final Color color;
+  final Color? borderColor;
   final bool isMe;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
     final path = Path();
     if (isMe) {
       path
         ..moveTo(0, 0)
-        ..lineTo(size.width, size.height)
-        ..lineTo(0, size.height * 0.72)
+        ..lineTo(size.width, 5)
+        ..lineTo(0, 10)
         ..close();
     } else {
       path
         ..moveTo(size.width, 0)
-        ..lineTo(0, size.height)
-        ..lineTo(size.width, size.height * 0.72)
+        ..lineTo(0, 5)
+        ..lineTo(size.width, 10)
         ..close();
     }
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, Paint()..color = color);
+    if (borderColor != null) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = borderColor!
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant _ArrowPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.isMe != isMe;
+    return oldDelegate.color != color ||
+        oldDelegate.borderColor != borderColor ||
+        oldDelegate.isMe != isMe;
   }
 }

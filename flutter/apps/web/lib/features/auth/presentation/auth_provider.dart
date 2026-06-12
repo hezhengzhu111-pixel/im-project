@@ -47,7 +47,8 @@ class AuthState {
   bool get isLoading => status == AuthStatus.loading;
 
   /// 便捷 getter：认证流程是否已就绪（已检查过认证状态）
-  bool get authReady => status != AuthStatus.initial && status != AuthStatus.loading;
+  bool get authReady =>
+      status != AuthStatus.initial && status != AuthStatus.loading;
 
   /// 创建当前状态的副本，仅修改传入的字段，其余字段保持不变。
   AuthState copyWith({
@@ -97,7 +98,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> login(String username, String password,
       {bool rememberMe = false}) async {
     if (state.isLoading) return;
-    state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
+    state = state.copyWith(
+        status: AuthStatus.loading, error: null, errorCode: null);
     try {
       final response = await _repository.login(
         LoginRequest(
@@ -132,7 +134,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// 注册成功后状态切换为 [AuthStatus.unauthenticated]，引导用户登录。
   Future<void> register(String username, String email, String password) async {
-    state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
+    if (state.isLoading) return;
+    state = state.copyWith(
+        status: AuthStatus.loading, error: null, errorCode: null);
     try {
       await _repository.register(
         RegisterRequest(
@@ -171,7 +175,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       try {
         await _sentMessageCache?.clearAll();
       } catch (e, st) {
-        AppLogger.instance.error('Failed to clear E2EE sent message cache on logout', e, st, 'e2ee');
+        AppLogger.instance.error(
+            'Failed to clear E2EE sent message cache on logout', e, st, 'e2ee');
       }
       state = const AuthState(status: AuthStatus.unauthenticated);
     }
@@ -285,16 +290,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
     } catch (e, st) {
-      AppLogger.instance.error(
-          'WS ticket fetch failed', e, st, 'ws');
+      AppLogger.instance.error('WS ticket fetch failed', e, st, 'ws');
     }
 
     // Only allow unauthenticated WS connection in development mode.
     // Empty APP_ENV defaults to production (safe by default).
-    const appEnv = String.fromEnvironment('APP_ENV', defaultValue: 'production');
-    final isDev = appEnv == 'dev' ||
-        appEnv == 'development' ||
-        appEnv == 'test';
+    const appEnv =
+        String.fromEnvironment('APP_ENV', defaultValue: 'production');
+    final isDev =
+        appEnv == 'dev' || appEnv == 'development' || appEnv == 'test';
     if (isDev) {
       AppLogger.instance.warn(
           'WS ticket unavailable, falling back to no-ticket connection (dev only)');

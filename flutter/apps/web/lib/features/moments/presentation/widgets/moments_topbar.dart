@@ -13,28 +13,33 @@ class MomentsTopbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SizedBox(
       height: 56,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Text(
-            AppLocalizations.of(context)!.momentsTitle,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              shadows: [Shadow(blurRadius: 3, color: Colors.black45)],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(bottom: BorderSide(color: theme.dividerColor)),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(
+              AppLocalizations.of(context)!.momentsTitle,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
+              ),
             ),
-          ),
-          Positioned(
-            right: 16,
-            child: IconButton(
-              onPressed: onComposeTap,
-              icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
+            Positioned(
+              right: 12,
+              child: IconButton(
+                onPressed: onComposeTap,
+                icon: const Icon(Icons.camera_alt_outlined),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

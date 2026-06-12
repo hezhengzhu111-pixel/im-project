@@ -52,7 +52,8 @@ void main() {
       expect(find.text('current_theme:light'), findsOneWidget);
     });
 
-    testWidgets('should support switching between all theme modes', (tester) async {
+    testWidgets('should support switching between all theme modes',
+        (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           child: const MaterialApp(

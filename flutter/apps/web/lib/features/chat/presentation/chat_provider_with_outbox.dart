@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/e2ee.dart' show E2eeManager, E2eeMetaStore;
 import '../../../core/network/network_status_provider.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
@@ -12,8 +13,6 @@ import '../data/read_receipt_handler.dart';
 import '../data/session_key_codec.dart';
 import '../data/e2ee_history_recovery.dart';
 import '../data/retryable_error_classifier.dart';
-import '../../e2ee/data/e2ee_manager.dart';
-import '../../e2ee/data/e2ee_meta_store.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
 import 'chat_state.dart';
 import '../../../core/logging/app_logger.dart';
@@ -1187,6 +1186,12 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           recipientDeviceId: recipientDeviceId,
           plaintext: content,
         );
+        _updateMessageE2eeMetadata(
+          sessionKey: sessionKey,
+          messageId: cid,
+          envelope: encryptedEnvelope,
+          deviceId: senderDeviceId,
+        );
 
         serverMessage = await _messageApi.sendPrivateEncrypted(
           receiverId: receiverId,
@@ -1194,6 +1199,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           messageType: messageType,
           e2eeEnvelope: encryptedEnvelope,
           e2eeDeviceId: senderDeviceId,
+          mediaUrl: mediaUrl,
+          mediaName: mediaName,
+          mediaSize: mediaSize,
+          thumbnailUrl: thumbnailUrl,
+          duration: duration,
         );
       } else {
         serverMessage = await _messageApi.sendPrivateMessage(
@@ -1253,6 +1263,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           isEncrypted: e2eeStatus == 'encrypted',
           e2eeEnvelope: encryptedEnvelope,
           e2eeDeviceId: encryptedDeviceId,
+          mediaUrl: mediaUrl,
+          mediaName: mediaName,
+          mediaSize: mediaSize,
+          thumbnailUrl: thumbnailUrl,
+          duration: duration,
         );
         _updateMessageStatus(sessionKey, cid, 'PENDING');
       } else {
@@ -1387,6 +1402,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           clientMessageId: cid,
           isGroupChat: true,
           groupId: groupId,
+          mediaUrl: mediaUrl,
+          mediaName: mediaName,
+          mediaSize: mediaSize,
+          thumbnailUrl: thumbnailUrl,
+          duration: duration,
         );
         _updateMessageStatus(sessionKey, cid, 'PENDING');
       } else {
@@ -1424,6 +1444,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
+            mediaUrl: msg.mediaUrl,
+            mediaName: msg.mediaName,
+            mediaSize: msg.mediaSize,
+            thumbnailUrl: msg.thumbnailUrl,
+            duration: msg.duration,
           ),
         );
       } else {
@@ -1434,6 +1459,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
+            mediaUrl: msg.mediaUrl,
+            mediaName: msg.mediaName,
+            mediaSize: msg.mediaSize,
+            thumbnailUrl: msg.thumbnailUrl,
+            duration: msg.duration,
           ),
         );
       }
@@ -1485,7 +1515,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (index == -1) {
       updated.add(message);
     } else {
-      updated[index] = message;
+      updated[index] = _mergeMessageReplacement(updated[index], message);
     }
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
@@ -1509,10 +1539,62 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return;
     }
     final updated = List<Message>.from(currentMessages);
-    updated[index] = newMessage;
+    updated[index] = _mergeMessageReplacement(updated[index], newMessage);
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
     );
+  }
+
+  Message _mergeMessageReplacement(Message existing, Message incoming) {
+    return incoming.copyWith(
+      content:
+          incoming.content.isNotEmpty ? incoming.content : existing.content,
+      clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
+      encrypted: incoming.encrypted ?? existing.encrypted,
+      e2eeDeviceId: _nonEmptyOr(incoming.e2eeDeviceId, existing.e2eeDeviceId),
+      e2eeEnvelope: incoming.e2eeEnvelope ?? existing.e2eeEnvelope,
+      decryptStatus:
+          _nonEmptyOr(incoming.decryptStatus, existing.decryptStatus),
+    );
+  }
+
+  String? _nonEmptyOr(String? value, String? fallback) {
+    final trimmed = value?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return value;
+    return fallback;
+  }
+
+  void _updateMessageE2eeMetadata({
+    required String sessionKey,
+    required String messageId,
+    required Map<String, dynamic> envelope,
+    required String deviceId,
+  }) {
+    final normalizedKey = _normalizeIncomingSessionKey(sessionKey);
+    final currentMessages = state.messages[normalizedKey];
+    if (currentMessages == null) return;
+    final index = currentMessages
+        .indexWhere((m) => m.id == messageId || m.clientMessageId == messageId);
+    if (index == -1) return;
+    final updated = List<Message>.from(currentMessages);
+    final old = updated[index];
+    updated[index] = old.copyWith(
+      encrypted: true,
+      e2eeDeviceId: _nonEmptyOr(deviceId, old.e2eeDeviceId),
+      e2eeEnvelope: _tryE2eeEnvelope(envelope) ?? old.e2eeEnvelope,
+      decryptStatus: old.decryptStatus ?? 'skipped_own',
+    );
+    state = state.copyWith(
+      messages: {...state.messages, normalizedKey: updated},
+    );
+  }
+
+  E2eeEnvelope? _tryE2eeEnvelope(Map<String, dynamic> envelope) {
+    try {
+      return E2eeEnvelope.fromJson(envelope);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _updateMessageStatus(

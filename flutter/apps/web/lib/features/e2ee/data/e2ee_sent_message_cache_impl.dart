@@ -3,7 +3,8 @@ import 'e2ee_sent_message_cache.dart';
 
 /// IndexedDB implementation of [SentMessageCacheStorage].
 class IdbSentMessageCacheStorage implements SentMessageCacheStorage {
-  IdbSentMessageCacheStorage({required this.dbName, this.storeName = 'e2ee_sent_cache'});
+  IdbSentMessageCacheStorage(
+      {required this.dbName, this.storeName = 'e2ee_sent_cache'});
 
   final String dbName;
   final String storeName;

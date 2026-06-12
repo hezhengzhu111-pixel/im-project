@@ -242,7 +242,8 @@ void main() {
 
     group('edge cases', () {
       test('non-Exception objects are not retryable', () {
-        final decision = RetryableErrorClassifier.classifySendError('string error');
+        final decision =
+            RetryableErrorClassifier.classifySendError('string error');
         expect(decision.retryable, isFalse);
         expect(decision.reason, 'non_exception');
       });

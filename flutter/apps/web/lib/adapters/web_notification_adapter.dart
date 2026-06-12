@@ -7,12 +7,10 @@ class WebNotificationAdapter implements NotificationPort {
   @override
   Future<Result<bool>> requestPermission() async {
     try {
-      final permission =
-          await web.Notification.requestPermission().toDart;
+      final permission = await web.Notification.requestPermission().toDart;
       return Success(permission.toDart == 'granted');
     } catch (e) {
-      return const Failure(
-          UnknownError('notification_permission_failed'));
+      return const Failure(UnknownError('notification_permission_failed'));
     }
   }
 
@@ -35,8 +33,7 @@ class WebNotificationAdapter implements NotificationPort {
       }
       return const Success(null);
     } catch (e) {
-      return const Failure(
-          UnknownError('notification_show_failed'));
+      return const Failure(UnknownError('notification_show_failed'));
     }
   }
 }

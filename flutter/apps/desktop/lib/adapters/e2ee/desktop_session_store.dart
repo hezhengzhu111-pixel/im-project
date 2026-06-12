@@ -13,12 +13,10 @@ import 'package:im_shared_features/e2ee.dart';
 /// SharedPreferences, ensuring session states are never written
 /// to plaintext files.
 class DesktopSessionStore implements E2eeSessionStore {
-  final FlutterSecureStorage _storage =
-      const FlutterSecureStorage();
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   static const _sessionStateEnvelopeVersion = 3;
-  static const _sessionStateAlgorithm =
-      'rust-x25519-x3dh-dr-v1';
+  static const _sessionStateAlgorithm = 'rust-x25519-x3dh-dr-v1';
   static const _kPrefix = 'e2ee_session_';
 
   @override
@@ -55,10 +53,8 @@ class DesktopSessionStore implements E2eeSessionStore {
       throw Exception('E2EE session requires remoteUserId');
     }
 
-    final timestamp =
-        DateTime.now().millisecondsSinceEpoch;
-    final remoteUserIdHash =
-        _fingerprint(resolvedRemoteUserId);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final remoteUserIdHash = _fingerprint(resolvedRemoteUserId);
 
     final envelope = {
       'version': _sessionStateEnvelopeVersion,
@@ -91,17 +87,14 @@ class DesktopSessionStore implements E2eeSessionStore {
     required String remoteUserId,
     required String remoteDeviceId,
   }) async {
-    final raw =
-        await _storage.read(key: '$_kPrefix$sessionId');
+    final raw = await _storage.read(key: '$_kPrefix$sessionId');
     if (raw == null) return null;
 
     try {
-      final stored =
-          jsonDecode(raw) as Map<String, dynamic>;
+      final stored = jsonDecode(raw) as Map<String, dynamic>;
 
       // Validate v3 envelope
-      if (stored['version'] !=
-          _sessionStateEnvelopeVersion) {
+      if (stored['version'] != _sessionStateEnvelopeVersion) {
         return null;
       }
       if (stored['algorithm'] != _sessionStateAlgorithm) {
@@ -109,21 +102,15 @@ class DesktopSessionStore implements E2eeSessionStore {
       }
 
       // Validate context
-      final storedUserId =
-          stored['userId'] as String? ?? '';
-      final storedLocalDeviceId =
-          stored['localDeviceId'] as String? ?? '';
-      final storedSessionId =
-          stored['sessionId'] as String? ?? '';
-      final storedRemoteDeviceId =
-          stored['remoteDeviceId'] as String? ?? '';
+      final storedUserId = stored['userId'] as String? ?? '';
+      final storedLocalDeviceId = stored['localDeviceId'] as String? ?? '';
+      final storedSessionId = stored['sessionId'] as String? ?? '';
+      final storedRemoteDeviceId = stored['remoteDeviceId'] as String? ?? '';
       final storedRemoteUserIdHash =
           stored['remoteUserIdHash'] as String? ?? '';
 
       final resolvedRemoteUserId =
-          remoteUserId.isNotEmpty
-              ? remoteUserId
-              : remoteDeviceId;
+          remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
 
       if (storedUserId != localDeviceId) return null;
       if (storedLocalDeviceId != localDeviceId) {
@@ -134,8 +121,7 @@ class DesktopSessionStore implements E2eeSessionStore {
         return null;
       }
 
-      final expectedHash =
-          _fingerprint(resolvedRemoteUserId);
+      final expectedHash = _fingerprint(resolvedRemoteUserId);
       if (storedRemoteUserIdHash != expectedHash) {
         return null;
       }
@@ -155,24 +141,18 @@ class DesktopSessionStore implements E2eeSessionStore {
     required String sessionId,
     required String localDeviceId,
   }) async {
-    final raw =
-        await _storage.read(key: '$_kPrefix$sessionId');
+    final raw = await _storage.read(key: '$_kPrefix$sessionId');
     if (raw == null) return null;
 
     try {
-      final stored =
-          jsonDecode(raw) as Map<String, dynamic>;
-      if (stored['version'] !=
-          _sessionStateEnvelopeVersion) {
+      final stored = jsonDecode(raw) as Map<String, dynamic>;
+      if (stored['version'] != _sessionStateEnvelopeVersion) {
         return null;
       }
 
-      final storedUserId =
-          stored['userId'] as String? ?? '';
-      final storedLocalDeviceId =
-          stored['localDeviceId'] as String? ?? '';
-      final storedSessionId =
-          stored['sessionId'] as String? ?? '';
+      final storedUserId = stored['userId'] as String? ?? '';
+      final storedLocalDeviceId = stored['localDeviceId'] as String? ?? '';
+      final storedSessionId = stored['sessionId'] as String? ?? '';
 
       if (storedUserId != localDeviceId ||
           storedLocalDeviceId != localDeviceId ||
@@ -181,8 +161,7 @@ class DesktopSessionStore implements E2eeSessionStore {
       }
 
       final stateBase64 = stored['state'] as String?;
-      final remoteDeviceId =
-          stored['remoteDeviceId'] as String? ?? '';
+      final remoteDeviceId = stored['remoteDeviceId'] as String? ?? '';
 
       if (stateBase64 == null || stateBase64.isEmpty) {
         return null;
@@ -211,9 +190,8 @@ class DesktopSessionStore implements E2eeSessionStore {
     // Delete only our own keys to avoid wiping
     // unrelated secure storage entries.
     final allData = await _storage.readAll();
-    final keysToRemove = allData.keys
-        .where((key) => key.startsWith(_kPrefix))
-        .toList();
+    final keysToRemove =
+        allData.keys.where((key) => key.startsWith(_kPrefix)).toList();
     for (final key in keysToRemove) {
       await _storage.delete(key: key);
     }

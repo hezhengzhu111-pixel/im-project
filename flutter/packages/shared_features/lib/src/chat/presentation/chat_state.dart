@@ -21,8 +21,9 @@ class ChatState {
   final Map<String, bool> hasMoreHistoryBySession;
   final Map<String, String> oldestLoadedServerMessageIdBySession;
 
-  List<Message> get currentMessages =>
-      activeSessionId != null ? (messages[activeSessionId] ?? const []) : const [];
+  List<Message> get currentMessages => activeSessionId != null
+      ? (messages[activeSessionId] ?? const [])
+      : const [];
 
   ChatState copyWith({
     List<ChatSession>? sessions,
@@ -40,9 +41,13 @@ class ChatState {
       isLoading: isLoading ?? this.isLoading,
       activeSessionId: activeSessionId ?? this.activeSessionId,
       error: error,
-      loadingHistoryBySession: loadingHistoryBySession ?? this.loadingHistoryBySession,
-      hasMoreHistoryBySession: hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
-      oldestLoadedServerMessageIdBySession: oldestLoadedServerMessageIdBySession ?? this.oldestLoadedServerMessageIdBySession,
+      loadingHistoryBySession:
+          loadingHistoryBySession ?? this.loadingHistoryBySession,
+      hasMoreHistoryBySession:
+          hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
+      oldestLoadedServerMessageIdBySession:
+          oldestLoadedServerMessageIdBySession ??
+              this.oldestLoadedServerMessageIdBySession,
     );
   }
 }

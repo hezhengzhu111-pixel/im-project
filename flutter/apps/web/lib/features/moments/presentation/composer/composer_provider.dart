@@ -59,7 +59,8 @@ class ComposerNotifier extends StateNotifier<ComposerState> {
   final MomentsRepository _repository;
 
   void setContent(String value) => state = state.copyWith(content: value);
-  void setVisibility(MomentVisibility value) => state = state.copyWith(visibility: value);
+  void setVisibility(MomentVisibility value) =>
+      state = state.copyWith(visibility: value);
   void setLocation(String value) => state = state.copyWith(location: value);
 
   void addFile(ComposerFile file) {
