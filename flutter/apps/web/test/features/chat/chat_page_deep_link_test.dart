@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -153,8 +153,7 @@ class _TestableE2eeManager extends E2eeManager {
 
 /// Fake NetworkStatusNotifier.
 class _FakeNetworkStatusNotifier extends NetworkStatusNotifier {
-  _FakeNetworkStatusNotifier()
-      : super(dataSource: _FakeNetworkDataSource());
+  _FakeNetworkStatusNotifier() : super(dataSource: _FakeNetworkDataSource());
 }
 
 class _FakeNetworkDataSource implements NetworkStatusDataSource {

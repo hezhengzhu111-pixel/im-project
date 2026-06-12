@@ -42,11 +42,12 @@ cargo build -p im-flutter-bridge --release
 ### 生成 FRB 绑定
 
 ```bash
-cd flutter
+cd rust/crates/im-flutter-bridge
 flutter_rust_bridge_codegen generate
 ```
 
-生成配置位于 `flutter/flutter_rust_bridge.yaml`。native 运行时加载
+FRB 生成的 Dart 代码归属 `flutter/packages/rust_bridge`，应用只依赖
+`package:im_rust_bridge`，不要直接导入 generated 文件。native 运行时加载
 `rust/target/release/im_rust_bridge.dll`、`libim_rust_bridge.so` 或
 `libim_rust_bridge.dylib`，因此本地运行前需要先执行上面的 release build。
 也可以从 `flutter/` 执行：

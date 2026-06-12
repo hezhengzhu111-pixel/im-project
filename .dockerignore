@@ -1,0 +1,14 @@
+.git
+.github
+build
+**/build
+**/.dart_tool
+**/.packages
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/target
+**/node_modules
+**/.gradle
+**/.idea
+**/.vscode
+*.log

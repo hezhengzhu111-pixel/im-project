@@ -80,9 +80,18 @@ void main() {
 
     test('canonical does not contain localhost', () {
       for (final path in [
-        '/login', '/register', '/chat', '/contacts', '/contacts/add',
-        '/groups', '/groups/create', '/moments', '/moments/notifications',
-        '/settings', '/settings/profile', '/settings/ai',
+        '/login',
+        '/register',
+        '/chat',
+        '/contacts',
+        '/contacts/add',
+        '/groups',
+        '/groups/create',
+        '/moments',
+        '/moments/notifications',
+        '/settings',
+        '/settings/profile',
+        '/settings/ai',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.canonicalPath, isNot(contains('localhost')),
@@ -92,9 +101,18 @@ void main() {
 
     test('all routes have canonicalPath matching path', () {
       for (final path in [
-        '/login', '/register', '/chat', '/contacts', '/contacts/add',
-        '/groups', '/groups/create', '/moments', '/moments/notifications',
-        '/settings', '/settings/profile', '/settings/ai',
+        '/login',
+        '/register',
+        '/chat',
+        '/contacts',
+        '/contacts/add',
+        '/groups',
+        '/groups/create',
+        '/moments',
+        '/moments/notifications',
+        '/settings',
+        '/settings/profile',
+        '/settings/ai',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.canonicalPath, path);
@@ -103,9 +121,18 @@ void main() {
 
     test('all routes have og and twitter meta', () {
       for (final path in [
-        '/login', '/register', '/chat', '/contacts', '/contacts/add',
-        '/groups', '/groups/create', '/moments', '/moments/notifications',
-        '/settings', '/settings/profile', '/settings/ai',
+        '/login',
+        '/register',
+        '/chat',
+        '/contacts',
+        '/contacts/add',
+        '/groups',
+        '/groups/create',
+        '/moments',
+        '/moments/notifications',
+        '/settings',
+        '/settings/profile',
+        '/settings/ai',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.og, isNotNull, reason: 'Path $path missing og');
@@ -135,7 +162,9 @@ void main() {
   });
 
   group('fallbackMetaForLocale (legacy appFallbackMeta)', () {
-    test('returns English meta when l10n is null (replaces old appFallbackMeta)', () {
+    test(
+        'returns English meta when l10n is null (replaces old appFallbackMeta)',
+        () {
       final meta = fallbackMetaForLocale(null);
       expect(meta.title, 'IM - Secure Messaging');
       expect(meta.canonicalPath, '/');

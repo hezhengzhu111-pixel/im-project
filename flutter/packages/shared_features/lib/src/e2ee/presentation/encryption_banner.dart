@@ -33,10 +33,16 @@ class EncryptionBanner extends StatelessWidget {
 
     final (color, icon, message) = switch (status) {
       E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, encryptedLabel),
-      E2eeSessionStatus.negotiating =>
-        (Colors.amber, Icons.sync, negotiatingLabel),
-      E2eeSessionStatus.failed =>
-        (Colors.red, Icons.error_outline, failedLabel),
+      E2eeSessionStatus.negotiating => (
+          Colors.amber,
+          Icons.sync,
+          negotiatingLabel
+        ),
+      E2eeSessionStatus.failed => (
+          Colors.red,
+          Icons.error_outline,
+          failedLabel
+        ),
       _ => (Colors.grey, Icons.lock_open, ''),
     };
 

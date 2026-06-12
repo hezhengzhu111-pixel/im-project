@@ -38,9 +38,8 @@ class ImTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.brightness == Brightness.light
-        ? ImColors.light
-        : ImColors.dark;
+    final colors =
+        theme.brightness == Brightness.light ? ImColors.light : ImColors.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -27,8 +27,7 @@ class DesktopKeyStore implements E2eeKeyStore {
   }
 
   @override
-  Future<String?> getKeyMaterial() =>
-      _storage.read(key: _kKeyMaterial);
+  Future<String?> getKeyMaterial() => _storage.read(key: _kKeyMaterial);
 
   @override
   Future<void> markOneTimePreKeyConsumed(int oneTimePreKeyId) async {
@@ -38,28 +37,20 @@ class DesktopKeyStore implements E2eeKeyStore {
     final keyMaterial = jsonDecode(raw) as Map<String, dynamic>;
 
     // Remove from otk_pairs
-    final otkPairs =
-        keyMaterial['otk_pairs'] as List<dynamic>? ?? [];
+    final otkPairs = keyMaterial['otk_pairs'] as List<dynamic>? ?? [];
     keyMaterial['otk_pairs'] = otkPairs
         .where(
-          (otk) =>
-              (otk as Map<String, dynamic>)['id'] !=
-              oneTimePreKeyId,
+          (otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId,
         )
         .toList();
 
     // Remove from public_bundle.one_time_pre_keys
-    final publicBundle =
-        keyMaterial['public_bundle'] as Map<String, dynamic>?;
+    final publicBundle = keyMaterial['public_bundle'] as Map<String, dynamic>?;
     if (publicBundle != null) {
-      final otkList =
-          publicBundle['one_time_pre_keys'] as List<dynamic>? ??
-              [];
+      final otkList = publicBundle['one_time_pre_keys'] as List<dynamic>? ?? [];
       publicBundle['one_time_pre_keys'] = otkList
           .where(
-            (otk) =>
-                (otk as Map<String, dynamic>)['id'] !=
-                oneTimePreKeyId,
+            (otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId,
           )
           .toList();
     }
@@ -77,8 +68,7 @@ class DesktopKeyStore implements E2eeKeyStore {
   }
 
   @override
-  Future<String?> getDeviceId() =>
-      _storage.read(key: _kDeviceId);
+  Future<String?> getDeviceId() => _storage.read(key: _kDeviceId);
 
   // ---------------------------------------------------------------------------
   // Public Bundle
@@ -90,8 +80,7 @@ class DesktopKeyStore implements E2eeKeyStore {
   }
 
   @override
-  Future<String?> getPublicBundle() =>
-      _storage.read(key: _kPublicBundle);
+  Future<String?> getPublicBundle() => _storage.read(key: _kPublicBundle);
 
   // ---------------------------------------------------------------------------
   // Clear

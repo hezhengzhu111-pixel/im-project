@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/glass_app_components.dart';
+import '../theme/im_tokens.dart';
 import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
 
@@ -45,99 +45,165 @@ class ResponsiveScaffold extends StatelessWidget {
   }
 
   Widget _buildDesktop(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: AppGradientBackground(
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Row(
-            children: [
-              _buildNavRail(context),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  children: [
-                    if (header != null) header!,
-                    Expanded(
-                      child: child,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      body: Row(
+        children: [
+          _DesktopNavRail(
+            destinations: destinations,
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onDestinationSelected,
+            floatingActionButton: floatingActionButton,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavRail(BuildContext context) {
-    return SizedBox(
-      width: 86,
-      child: GlassPanel(
-        borderRadius: 24,
-        backgroundColor: Colors.white.withValues(alpha: 0.12),
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
-        child: Column(
-          children: [
-            if (floatingActionButton != null) ...[
-              floatingActionButton!,
-              const SizedBox(height: 12),
-            ],
-            for (var i = 0; i < destinations.length; i++) ...[
-              FlatLineIconButton(
-                icon: i == selectedIndex
-                    ? destinations[i].selectedIcon ?? destinations[i].icon
-                    : destinations[i].icon,
-                tooltip: destinations[i].label,
-                label: destinations[i].label,
-                selected: i == selectedIndex,
-                onPressed: () => onDestinationSelected(i),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const Spacer(),
-          ],
-        ),
+          Expanded(
+            child: Column(
+              children: [
+                if (header != null) header!,
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildMobile(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
       appBar: header != null
           ? PreferredSize(
               preferredSize: const Size.fromHeight(56),
               child: header!,
             )
           : null,
-      body: AppGradientBackground(
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-            child: GlassPanel(
-              borderRadius: 22,
-              child: child,
-            ),
-          ),
+      body: SafeArea(
+        bottom: false,
+        child: child,
+      ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(top: BorderSide(color: theme.dividerColor)),
+        ),
+        child: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: onDestinationSelected,
+          destinations: destinations
+              .map(
+                (d) => NavigationDestination(
+                  icon: Icon(d.icon),
+                  selectedIcon: Icon(d.selectedIcon ?? d.icon),
+                  label: d.label,
+                ),
+              )
+              .toList(),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        indicatorColor: imGlassBrand.withValues(alpha: 0.16),
-        destinations: destinations
-            .map(
-              (d) => NavigationDestination(
-                icon: Icon(d.icon),
-                selectedIcon: Icon(d.selectedIcon ?? d.icon),
-                label: d.label,
-              ),
-            )
-            .toList(),
-      ),
       floatingActionButton: floatingActionButton,
+    );
+  }
+}
+
+class _DesktopNavRail extends StatelessWidget {
+  const _DesktopNavRail({
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    this.floatingActionButton,
+  });
+
+  final List<ResponsiveNavDestination> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final Widget? floatingActionButton;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      color: ImTokens.wechatSidebar,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 18),
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: ImTokens.wechatGreen,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                'IM',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            for (var i = 0; i < destinations.length; i++)
+              _DesktopNavButton(
+                icon: i == selectedIndex
+                    ? destinations[i].selectedIcon ?? destinations[i].icon
+                    : destinations[i].icon,
+                label: destinations[i].label,
+                selected: i == selectedIndex,
+                onPressed: () => onDestinationSelected(i),
+              ),
+            const Spacer(),
+            if (floatingActionButton != null) ...[
+              floatingActionButton!,
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopNavButton extends StatelessWidget {
+  const _DesktopNavButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? ImTokens.wechatGreen : const Color(0xFF9A9A9A);
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: onPressed,
+        child: Container(
+          width: 64,
+          height: 58,
+          decoration: BoxDecoration(
+            border: selected
+                ? const Border(
+                    left: BorderSide(
+                      color: ImTokens.wechatGreen,
+                      width: 3,
+                    ),
+                  )
+                : null,
+          ),
+          child: Icon(icon, color: color, size: 25),
+        ),
+      ),
     );
   }
 }

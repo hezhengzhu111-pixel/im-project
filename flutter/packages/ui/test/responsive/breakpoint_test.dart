@@ -30,8 +30,8 @@ void main() {
   group('Breakpoint.value', () {
     test('returns compact value when breakpoint is compact', () {
       expect(
-        Breakpoint.compact.value(
-            compact: 'a', medium: 'b', expanded: 'c', large: 'd'),
+        Breakpoint.compact
+            .value(compact: 'a', medium: 'b', expanded: 'c', large: 'd'),
         'a',
       );
     });
@@ -52,14 +52,15 @@ void main() {
 
     test('returns correct value for each breakpoint', () {
       expect(
-          Breakpoint.compact.value(compact: 1, medium: 2, expanded: 3, large: 4),
+          Breakpoint.compact
+              .value(compact: 1, medium: 2, expanded: 3, large: 4),
           1);
       expect(
           Breakpoint.medium.value(compact: 1, medium: 2, expanded: 3, large: 4),
           2);
       expect(
-          Breakpoint.expanded.value(
-              compact: 1, medium: 2, expanded: 3, large: 4),
+          Breakpoint.expanded
+              .value(compact: 1, medium: 2, expanded: 3, large: 4),
           3);
       expect(
           Breakpoint.large.value(compact: 1, medium: 2, expanded: 3, large: 4),

@@ -35,7 +35,11 @@ class MediaGrid extends StatelessWidget {
 
   Widget _buildImageGrid(BuildContext context, List<MomentMedia> images) {
     final count = images.length.clamp(0, 9);
-    final columns = count <= 1 ? 1 : count <= 4 ? 2 : 3;
+    final columns = count <= 1
+        ? 1
+        : count <= 4
+            ? 2
+            : 3;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 720),

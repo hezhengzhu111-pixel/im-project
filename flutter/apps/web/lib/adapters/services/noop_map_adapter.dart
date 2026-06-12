@@ -13,5 +13,6 @@ class NoopMapAdapter implements MapPort {
   }
 
   @override
-  Future<List<GeoResult>> searchPlaces(String query, GeoBounds? bounds) async => [];
+  Future<List<GeoResult>> searchPlaces(String query, GeoBounds? bounds) async =>
+      [];
 }

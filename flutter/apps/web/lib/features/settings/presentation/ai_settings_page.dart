@@ -90,48 +90,39 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: FilledButton.tonalIcon(
-                            onPressed: () => setState(
-                                () => _showAddForm = !_showAddForm),
-                            icon: Icon(
-                                _showAddForm ? Icons.close : Icons.add),
-                            label: Text(_showAddForm
-                                ? loc.commonCancel
-                                : loc.aiAddKey),
+                            onPressed: () =>
+                                setState(() => _showAddForm = !_showAddForm),
+                            icon: Icon(_showAddForm ? Icons.close : Icons.add),
+                            label: Text(
+                                _showAddForm ? loc.commonCancel : loc.aiAddKey),
                           ),
                         ),
                       ),
                       if (_showAddForm) ...[
                         const SizedBox(height: 12),
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: AddApiKeyForm(
                             onSubmit: (provider, key, label) async {
                               try {
                                 await ref
-                                    .read(aiSettingsStateProvider
-                                        .notifier)
+                                    .read(aiSettingsStateProvider.notifier)
                                     .createKey(
-                                  AiApiKeyCreateRequest(
-                                    provider: provider,
-                                    key: key,
-                                    label:
-                                        label.isEmpty ? null : label,
-                                  ),
-                                );
-                                setState(
-                                    () => _showAddForm = false);
+                                      AiApiKeyCreateRequest(
+                                        provider: provider,
+                                        key: key,
+                                        label: label.isEmpty ? null : label,
+                                      ),
+                                    );
+                                setState(() => _showAddForm = false);
                               } catch (e) {
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context)
-                                      .showSnackBar(
-                                    SnackBar(
-                                        content: Text(e.toString())),
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())),
                                   );
                                 }
                               }
@@ -145,10 +136,8 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                           child: Center(
                             child: Text(
                               loc.aiNoKeys,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(
-                                color: theme
-                                    .colorScheme.onSurfaceVariant,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -158,53 +147,41 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                                 horizontal: 16, vertical: 4),
                             child: ApiKeyCard(
                               apiKey: key,
-                              isTesting:
-                                  aiState.testingKeyId == key.id,
+                              isTesting: aiState.testingKeyId == key.id,
                               onTest: () async {
                                 try {
                                   await ref
-                                      .read(aiSettingsStateProvider
-                                          .notifier)
+                                      .read(aiSettingsStateProvider.notifier)
                                       .testKey(key.id);
                                 } catch (e) {
                                   if (mounted) {
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
-                                      SnackBar(
-                                          content:
-                                              Text(e.toString())),
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.toString())),
                                     );
                                   }
                                 }
                               },
                               onDelete: () async {
-                                final confirm =
-                                    await showDialog<bool>(
+                                final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: Text(loc.aiDeleteKey),
-                                    content: Text(
-                                        loc.aiDeleteConfirm),
+                                    content: Text(loc.aiDeleteConfirm),
                                     actions: [
                                       TextButton(
                                           onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, false),
-                                          child: Text(
-                                              loc.commonCancel)),
+                                              Navigator.pop(ctx, false),
+                                          child: Text(loc.commonCancel)),
                                       FilledButton(
                                           onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, true),
-                                          child: Text(
-                                              loc.commonConfirm)),
+                                              Navigator.pop(ctx, true),
+                                          child: Text(loc.commonConfirm)),
                                     ],
                                   ),
                                 );
                                 if (confirm == true) {
                                   await ref
-                                      .read(aiSettingsStateProvider
-                                          .notifier)
+                                      .read(aiSettingsStateProvider.notifier)
                                       .deleteKey(key.id);
                                 }
                               },
@@ -227,43 +204,35 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                     title: Text(loc.aiAutoReplyEnabled),
                     subtitle: Text(loc.aiAutoReplyDesc,
                         style: const TextStyle(fontSize: 12)),
-                    value: aiState.aiSettings?.autoReplyEnabled ??
-                        false,
+                    value: aiState.aiSettings?.autoReplyEnabled ?? false,
                     onChanged: (v) {
                       final current = aiState.aiSettings;
                       ref
                           .read(aiSettingsStateProvider.notifier)
                           .updateAiSettings(
-                        AiSettings(
-                          autoReplyEnabled: v,
-                          autoReplyPersona:
-                              current?.autoReplyPersona ?? '',
-                        ),
-                      );
+                            AiSettings(
+                              autoReplyEnabled: v,
+                              autoReplyPersona: current?.autoReplyPersona ?? '',
+                            ),
+                          );
                     },
                   ),
-                  if (aiState.aiSettings?.autoReplyEnabled ==
-                      true) ...[
+                  if (aiState.aiSettings?.autoReplyEnabled == true) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          16, 0, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(loc.aiAutoReplyPersona,
                               style: theme.textTheme.titleSmall),
                           const SizedBox(height: 8),
                           TextField(
                             controller: _personaController
-                              ..text = aiState.aiSettings
-                                      ?.autoReplyPersona ??
-                                  '',
+                              ..text =
+                                  aiState.aiSettings?.autoReplyPersona ?? '',
                             decoration: InputDecoration(
-                              hintText:
-                                  loc.aiAutoReplyPersonaPlaceholder,
-                              border:
-                                  const OutlineInputBorder(),
+                              hintText: loc.aiAutoReplyPersonaPlaceholder,
+                              border: const OutlineInputBorder(),
                             ),
                             maxLines: 5,
                             onChanged: _onPersonaChanged,
@@ -284,17 +253,13 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   void _onPersonaChanged(String value) {
     Future.delayed(const Duration(milliseconds: 500), () {
       if (_personaController.text == value && mounted) {
-        final current =
-            ref.read(aiSettingsStateProvider).aiSettings;
-        ref
-            .read(aiSettingsStateProvider.notifier)
-            .updateAiSettings(
-          AiSettings(
-            autoReplyEnabled:
-                current?.autoReplyEnabled ?? false,
-            autoReplyPersona: value,
-          ),
-        );
+        final current = ref.read(aiSettingsStateProvider).aiSettings;
+        ref.read(aiSettingsStateProvider.notifier).updateAiSettings(
+              AiSettings(
+                autoReplyEnabled: current?.autoReplyEnabled ?? false,
+                autoReplyPersona: value,
+              ),
+            );
       }
     });
   }

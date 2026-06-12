@@ -20,9 +20,8 @@ class ImEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.brightness == Brightness.light
-        ? ImColors.light
-        : ImColors.dark;
+    final colors =
+        theme.brightness == Brightness.light ? ImColors.light : ImColors.dark;
 
     return Center(
       child: Padding(
@@ -30,8 +29,7 @@ class ImEmpty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null)
-              Icon(icon, size: 64, color: colors.textDisabled),
+            if (icon != null) Icon(icon, size: 64, color: colors.textDisabled),
             if (icon != null) SizedBox(height: ImTokens.space4),
             if (title != null)
               Text(

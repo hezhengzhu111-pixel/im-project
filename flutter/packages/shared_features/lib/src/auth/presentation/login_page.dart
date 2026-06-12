@@ -34,9 +34,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     try {
       await ref.read(authStateProvider.notifier).login(
-        _usernameController.text,
-        _passwordController.text,
-      );
+            _usernameController.text,
+            _passwordController.text,
+          );
 
       if (mounted) {
         final authState = ref.read(authStateProvider);

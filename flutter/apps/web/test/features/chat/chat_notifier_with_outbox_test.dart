@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -180,10 +180,13 @@ class TestableE2eeManager extends E2eeManager {
     lastEncryptSessionId = sessionId;
     // Return a fake envelope containing no trace of the plaintext.
     return {
+      'version': 2,
+      'algorithm': 'rust-x25519-x3dh-dr-v1',
       'ciphertext': 'fake_ciphertext',
       'sessionId': sessionId,
       'senderDeviceId': senderDeviceId,
       'recipientDeviceId': recipientDeviceId,
+      'wire': 'fake_ciphertext',
     };
   }
 
@@ -743,6 +746,43 @@ void main() {
         envelope.values.every((v) => v != 'Top secret'),
         isTrue,
       );
+    });
+
+    test('encrypted server ack preserves local E2EE marker fields', () async {
+      notifier = createNotifier();
+      testApi.sendPrivateEncryptedResponse = const Message(
+        id: 'server-e2ee-1',
+        senderId: 'user-1',
+        receiverId: 'user-2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: '',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'SENT',
+      );
+
+      await mockE2eeMetaStore.setSessionStatus(
+        'p_user-1_user-2',
+        'encrypted',
+      );
+      await mockE2eeMetaStore.setRemoteDeviceId(
+        'p_user-1_user-2',
+        'device-remote-1',
+      );
+
+      await notifier.sendMessage('user-2', 'Keep this visible');
+
+      final messages = notifier.state.messages['user-1_user-2'];
+      expect(messages, isNotNull);
+      expect(messages, hasLength(1));
+      final message = messages!.first;
+      expect(message.id, 'server-e2ee-1');
+      expect(message.content, 'Keep this visible');
+      expect(message.encrypted, isTrue);
+      expect(message.e2eeDeviceId, 'test-device-id');
+      expect(message.e2eeEnvelope, isNotNull);
+      expect(message.e2eeEnvelope!.sessionId, 'p_user-1_user-2');
+      expect(message.decryptStatus, 'skipped_own');
     });
 
     test('reverse participant uses the same canonical E2EE session id',
@@ -1545,7 +1585,8 @@ void main() {
       expect(messages[2].status, 'READ'); // msg-z
     });
 
-    test('readerId is other user: lastReadMessageId updates own messages up to target',
+    test(
+        'readerId is other user: lastReadMessageId updates own messages up to target',
         () async {
       notifier = createNotifier();
 

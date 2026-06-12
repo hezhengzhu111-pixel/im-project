@@ -54,7 +54,8 @@ class E2eeSentMessageCache {
       await _evictExpired();
       await _enforceCapacity();
     } catch (e, st) {
-      AppLogger.instance.error('Failed to cache sent E2EE message', e, st, 'e2ee');
+      AppLogger.instance
+          .error('Failed to cache sent E2EE message', e, st, 'e2ee');
     }
   }
 
@@ -79,7 +80,8 @@ class E2eeSentMessageCache {
       final serverKey = _keyForServerMessageId(serverMessageId);
       await storage.write(serverKey, updated.toJson());
     } catch (e, st) {
-      AppLogger.instance.error('Failed to update sent E2EE message server ID', e, st, 'e2ee');
+      AppLogger.instance
+          .error('Failed to update sent E2EE message server ID', e, st, 'e2ee');
     }
   }
 
@@ -104,7 +106,8 @@ class E2eeSentMessageCache {
 
       return entry.plaintext;
     } catch (e, st) {
-      AppLogger.instance.error('Failed to retrieve sent E2EE message', e, st, 'e2ee');
+      AppLogger.instance
+          .error('Failed to retrieve sent E2EE message', e, st, 'e2ee');
       return null;
     }
   }
@@ -126,7 +129,8 @@ class E2eeSentMessageCache {
 
       return entry.plaintext;
     } catch (e, st) {
-      AppLogger.instance.error('Failed to retrieve sent E2EE message by server ID', e, st, 'e2ee');
+      AppLogger.instance.error(
+          'Failed to retrieve sent E2EE message by server ID', e, st, 'e2ee');
       return null;
     }
   }
@@ -140,7 +144,8 @@ class E2eeSentMessageCache {
     try {
       await storage.clearAll();
     } catch (e, st) {
-      AppLogger.instance.error('Failed to clear sent E2EE message cache', e, st, 'e2ee');
+      AppLogger.instance
+          .error('Failed to clear sent E2EE message cache', e, st, 'e2ee');
     }
   }
 
@@ -149,7 +154,8 @@ class E2eeSentMessageCache {
     try {
       await storage.deleteBySession(e2eeSessionId);
     } catch (e, st) {
-      AppLogger.instance.error('Failed to clear sent E2EE message cache for session', e, st, 'e2ee');
+      AppLogger.instance.error(
+          'Failed to clear sent E2EE message cache for session', e, st, 'e2ee');
     }
   }
 
@@ -158,7 +164,8 @@ class E2eeSentMessageCache {
     try {
       await _evictExpired();
     } catch (e, st) {
-      AppLogger.instance.error('Failed to clear expired sent E2EE messages', e, st, 'e2ee');
+      AppLogger.instance
+          .error('Failed to clear expired sent E2EE messages', e, st, 'e2ee');
     }
   }
 
@@ -166,9 +173,11 @@ class E2eeSentMessageCache {
   // Internals
   // ---------------------------------------------------------------------------
 
-  String _keyForClientMessageId(String clientMessageId) => 'e2ee_sent_$clientMessageId';
+  String _keyForClientMessageId(String clientMessageId) =>
+      'e2ee_sent_$clientMessageId';
 
-  String _keyForServerMessageId(String serverMessageId) => 'e2ee_sent_srv_$serverMessageId';
+  String _keyForServerMessageId(String serverMessageId) =>
+      'e2ee_sent_srv_$serverMessageId';
 
   bool _isExpired(_CacheEntry entry) {
     final now = DateTime.now().millisecondsSinceEpoch;

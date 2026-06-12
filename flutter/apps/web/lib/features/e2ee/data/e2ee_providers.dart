@@ -1,51 +1,35 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_core_flutter/im_core_flutter.dart' show e2eeAdapterProvider;
-import '../../../core/network/network_providers.dart';
-import '../../auth/presentation/auth_providers.dart';
-import 'e2ee_api.dart';
-import 'e2ee_key_store.dart';
-import 'e2ee_manager.dart';
-import 'e2ee_meta_store.dart';
+import 'package:im_shared_features/e2ee.dart' as shared;
+import 'e2ee_key_store.dart' as web_key_store;
 import 'e2ee_sent_message_cache.dart';
 import 'e2ee_sent_message_cache_impl.dart';
-import 'e2ee_session_store.dart';
+import 'e2ee_session_store.dart' as web_session_store;
 
-export 'package:im_core_flutter/im_core_flutter.dart' show e2eeAdapterProvider;
+export 'package:im_shared_features/e2ee.dart'
+    show
+        E2eeApi,
+        E2eeKeyStore,
+        E2eeManager,
+        E2eeMetaStore,
+        E2eeSessionStore,
+        e2eeAdapterProvider,
+        e2eeApiProvider,
+        e2eeKeyStoreProvider,
+        e2eeManagerProvider,
+        e2eeMetaStoreProvider,
+        e2eeSessionStatusProvider,
+        e2eeSessionStoreProvider;
 
-final e2eeApiProvider = Provider<E2eeApi>((ref) {
-  return E2eeApi(ref.watch(httpClientProvider));
-});
-
-final e2eeKeyStoreProvider = Provider<E2eeKeyStore>((ref) {
-  final store = E2eeKeyStore();
+final webE2eeKeyStoreProvider = Provider<shared.E2eeKeyStore>((ref) {
+  final store = web_key_store.E2eeKeyStore();
   ref.onDispose(() => store.dispose());
   return store;
 });
 
-final e2eeSessionStoreProvider = Provider<E2eeSessionStore>((ref) {
-  final store = E2eeSessionStore();
+final webE2eeSessionStoreProvider = Provider<shared.E2eeSessionStore>((ref) {
+  final store = web_session_store.E2eeSessionStore();
   ref.onDispose(() => store.dispose());
   return store;
-});
-
-final e2eeMetaStoreProvider = Provider<E2eeMetaStore>((ref) {
-  return E2eeMetaStore(ref.watch(secureStorageProvider));
-});
-
-final e2eeManagerProvider = Provider<E2eeManager>((ref) {
-  return E2eeManager(
-    adapter: ref.watch(e2eeAdapterProvider),
-    api: ref.watch(e2eeApiProvider),
-    keyStore: ref.watch(e2eeKeyStoreProvider),
-    sessionStore: ref.watch(e2eeSessionStoreProvider),
-    metaStore: ref.watch(e2eeMetaStoreProvider),
-    currentUserId: ref.watch(currentUserIdProvider),
-  );
-});
-
-final e2eeSessionStatusProvider =
-    FutureProvider.family<String, String>((ref, sessionId) async {
-  return ref.watch(e2eeMetaStoreProvider).getSessionStatus(sessionId);
 });
 
 final e2eeSentMessageCacheProvider = Provider<E2eeSentMessageCache>((ref) {

@@ -22,11 +22,13 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) => const Scaffold(body: Center(child: Text('home'))),
+            builder: (_, __) =>
+                const Scaffold(body: Center(child: Text('home'))),
           ),
           GoRoute(
             path: '/chat',
-            builder: (_, __) => const Scaffold(body: Center(child: Text('chat'))),
+            builder: (_, __) =>
+                const Scaffold(body: Center(child: Text('chat'))),
           ),
           GoRoute(
             path: '/contacts',
@@ -63,8 +65,7 @@ void main() {
           errorReporterProvider.overrideWithValue(NoopErrorReporterPort()),
         ];
 
-    testWidgets(
-        'route change triggers WebMetaService.apply with correct meta',
+    testWidgets('route change triggers WebMetaService.apply with correct meta',
         (tester) async {
       // NOTE: createWebMetaService() returns NoOpWebMetaService in test mode
       // (non-web platform), so meta application cannot be directly verified
@@ -176,8 +177,7 @@ void main() {
         expect(
           navigator.observers.contains(routeObserver),
           isFalse,
-          reason:
-              'routeObserver should not be in Navigator.observers; '
+          reason: 'routeObserver should not be in Navigator.observers; '
               'it is registered via GoRouter.observers instead',
         );
       }

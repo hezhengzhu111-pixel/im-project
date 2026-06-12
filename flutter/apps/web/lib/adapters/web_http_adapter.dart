@@ -311,8 +311,8 @@ class _SensitiveLogInterceptor extends Interceptor {
     if (body is String) {
       // Attempt to parse as JSON for redaction
       try {
-        final decoded = Map<String, dynamic>.from(
-            const JsonDecoder().convert(body) as Map);
+        final decoded =
+            Map<String, dynamic>.from(const JsonDecoder().convert(body) as Map);
         return _redactSensitive(decoded);
       } catch (_) {
         return '[string body omitted]';

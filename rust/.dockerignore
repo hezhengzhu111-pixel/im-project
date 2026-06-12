@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+.vscode
+target
+**/target
+**/*.log
+**/*.tmp
+**/.DS_Store
+**/Thumbs.db
+.env
+.env.*

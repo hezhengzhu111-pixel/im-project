@@ -17,8 +17,7 @@ class WebClipboardAdapter implements ClipboardPort {
   @override
   Future<Result<String?>> paste() async {
     try {
-      final jsString =
-          await web.window.navigator.clipboard.readText().toDart;
+      final jsString = await web.window.navigator.clipboard.readText().toDart;
       final text = jsString.toDart;
       return Success(text.isNotEmpty ? text : null);
     } catch (e) {

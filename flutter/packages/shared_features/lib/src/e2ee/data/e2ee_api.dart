@@ -126,6 +126,14 @@ class E2eeApi {
     return response.data;
   }
 
+  Future<Map<String, dynamic>> getSessionStatus(String sessionId) async {
+    final response = await _httpClient.get<Map<String, dynamic>>(
+      E2eeEndpoints.status(sessionId),
+      fromJson: (json) => json,
+    );
+    return response.data;
+  }
+
   /// Send device heartbeat for key maintenance.
   Future<void> heartbeat() async {
     await _httpClient.post<void>(

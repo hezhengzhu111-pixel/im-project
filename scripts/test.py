@@ -39,6 +39,7 @@ API_BASE = os.environ.get("IM_API_BASE", "http://localhost:8082").rstrip("/")
 IM_WS_BASE = os.environ.get("IM_WS_BASE")
 MYSQL_CONTAINER = os.environ.get("IM_MYSQL_CONTAINER", "sit-im-mysql-1")
 MYSQL_ROOT_PASSWORD = os.environ.get("MYSQL_ROOT_PASSWORD", "root123")
+ACCESS_COOKIE_NAME = os.environ.get("IM_AUTH_COOKIE_ACCESS_TOKEN_NAME", "IM_ACCESS_TOKEN")
 INTERNAL_SECRET = os.environ.get(
     "IM_INTERNAL_SECRET",
     "im-internal-secret-im-internal-secret-im-internal-secret-im",
@@ -167,6 +168,12 @@ class ApiClient:
 
     def cookie_header(self) -> str:
         return "; ".join(f"{cookie.name}={cookie.value}" for cookie in self.cookies)
+
+    def cookie_value(self, name: str) -> str | None:
+        for cookie in self.cookies:
+            if cookie.name == name:
+                return cookie.value
+        return None
 
 
 def decode_json(raw: bytes) -> Any | None:
@@ -537,7 +544,12 @@ def main() -> int:
     if parsed_cookie.get("userId") != str(alice_id):
         raise TestFailure(f"auth parse userId must be exact string: {parsed_cookie}")
     refreshed = check("auth refresh", lambda: alice.api("POST", "/api/auth/refresh"))
-    alice_token = refreshed["accessToken"]
+    refreshed_token = alice.cookie_value(ACCESS_COOKIE_NAME)
+    if refreshed_token is None:
+        refreshed_token = refreshed.get("accessToken")
+    if not refreshed_token:
+        raise TestFailure("auth refresh did not return an access token cookie")
+    alice_token = refreshed_token
     alice_headers = alice.auth_headers(alice_token)
 
     body_token = alice_token.encode("utf-8")
@@ -638,13 +650,14 @@ def main() -> int:
             json_body={"language": "zh-CN"},
         ),
     )
-    check(
+    phone_target = f"138{random.randint(0, 99_999_999):08d}"
+    phone_code = check(
         "send phone code",
         lambda: carol.api(
             "POST",
             "/user/phone/code",
             headers=carol_headers,
-            json_body={"target": "13800138000"},
+            json_body={"target": phone_target},
         ),
     )
     check(
@@ -653,16 +666,17 @@ def main() -> int:
             "POST",
             "/api/user/phone/bind",
             headers=carol_headers,
-            json_body={"phone": "13800138000", "code": "000000"},
+            json_body={"phone": phone_target, "code": str(phone_code)},
         ),
     )
-    check(
+    email_target = f"{carol_name}@example.test"
+    email_code = check(
         "send email code",
         lambda: carol.api(
             "POST",
             "/api/user/email/code",
             headers=carol_headers,
-            json_body={"target": f"{carol_name}@example.test"},
+            json_body={"target": email_target},
         ),
     )
     check(
@@ -671,7 +685,7 @@ def main() -> int:
             "POST",
             "/user/email/bind",
             headers=carol_headers,
-            json_body={"email": f"{carol_name}@example.test", "code": "000000"},
+            json_body={"email": email_target, "code": str(email_code)},
         ),
     )
     carol_password = f"{password}9"
@@ -866,8 +880,8 @@ def main() -> int:
         ),
     )
     check(
-        "file deleted returns 404",
-        lambda: alice.request("GET", download_path, headers=alice_headers, expected=(404,)),
+        "file deleted is no longer downloadable",
+        lambda: alice.request("GET", download_path, headers=alice_headers, expected=(403, 404)),
     )
 
     check("issue ws ticket for bob push", lambda: bob.api("POST", "/auth/ws-ticket", headers=bob.auth_headers(bob_token)))

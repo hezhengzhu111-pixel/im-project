@@ -27,8 +27,7 @@ class MockSentMessageCacheStorage implements SentMessageCacheStorage {
 
   @override
   Future<void> deleteBySession(String e2eeSessionId) async {
-    _store.removeWhere((key, value) =>
-        value['e2eeSessionId'] == e2eeSessionId);
+    _store.removeWhere((key, value) => value['e2eeSessionId'] == e2eeSessionId);
   }
 
   @override
@@ -66,8 +65,10 @@ void main() {
       );
 
       // Assert - Should be able to retrieve by both IDs
-      final byClientId = await sentCache.getPlaintextByClientId(clientMessageId);
-      final byServerId = await sentCache.getPlaintextByServerId(serverMessageId);
+      final byClientId =
+          await sentCache.getPlaintextByClientId(clientMessageId);
+      final byServerId =
+          await sentCache.getPlaintextByServerId(serverMessageId);
 
       expect(byClientId, equals(plaintext));
       expect(byServerId, equals(plaintext));
@@ -92,7 +93,8 @@ void main() {
       String? recoveredPlaintext;
 
       // Try by clientMessageId first
-      recoveredPlaintext = await sentCache.getPlaintextByClientId(clientMessageId);
+      recoveredPlaintext =
+          await sentCache.getPlaintextByClientId(clientMessageId);
 
       // Assert
       expect(recoveredPlaintext, equals(plaintext));
@@ -104,8 +106,10 @@ void main() {
       const serverMessageId = '999';
 
       // Act
-      final byClientId = await sentCache.getPlaintextByClientId(clientMessageId);
-      final byServerId = await sentCache.getPlaintextByServerId(serverMessageId);
+      final byClientId =
+          await sentCache.getPlaintextByClientId(clientMessageId);
+      final byServerId =
+          await sentCache.getPlaintextByServerId(serverMessageId);
 
       // Assert
       expect(byClientId, isNull);
@@ -176,7 +180,8 @@ void main() {
       expect(result2, equals('Message 2'));
     });
 
-    test('message merge should not cause duplicates with client/server ID mapping',
+    test(
+        'message merge should not cause duplicates with client/server ID mapping',
         () async {
       // Arrange
       const clientMessageId = 'client_123';
@@ -197,8 +202,10 @@ void main() {
       );
 
       // Assert - Both lookups should return the same plaintext
-      final byClientId = await sentCache.getPlaintextByClientId(clientMessageId);
-      final byServerId = await sentCache.getPlaintextByServerId(serverMessageId);
+      final byClientId =
+          await sentCache.getPlaintextByClientId(clientMessageId);
+      final byServerId =
+          await sentCache.getPlaintextByServerId(serverMessageId);
 
       expect(byClientId, equals(plaintext));
       expect(byServerId, equals(plaintext));

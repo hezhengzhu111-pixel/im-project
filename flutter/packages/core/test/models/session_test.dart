@@ -165,7 +165,8 @@ void main() {
       expect(payload.requesterId, 'u1');
       expect(payload.requesterName, 'Alice');
       expect(payload.targetUserId, 'u2');
-      expect(payload.requestPayloadJson, '{"identityKey":"abc","signedPreKey":"def"}');
+      expect(payload.requestPayloadJson,
+          '{"identityKey":"abc","signedPreKey":"def"}');
     });
 
     test('fromJson handles minimal fields', () {

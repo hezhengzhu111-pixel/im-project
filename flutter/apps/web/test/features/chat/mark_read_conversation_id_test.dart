@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -412,8 +412,7 @@ void main() {
   // =========================================================================
 
   group('markRead: sorted private session key not sent to backend', () {
-    test(
-        'canonical key with reversed user order resolves to conversationId',
+    test('canonical key with reversed user order resolves to conversationId',
         () async {
       notifier = createNotifier();
 

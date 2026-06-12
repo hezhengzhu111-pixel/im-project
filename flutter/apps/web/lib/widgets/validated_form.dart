@@ -15,7 +15,9 @@ class ValidatedForm extends StatefulWidget {
   });
 
   static FormController of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<_ValidatedFormInherited>()!.controller;
+    return context
+        .dependOnInheritedWidgetOfExactType<_ValidatedFormInherited>()!
+        .controller;
   }
 
   @override

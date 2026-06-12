@@ -72,7 +72,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               padding: const EdgeInsets.all(24),
               child: PageView(
                 controller: _pageController,
-                onPageChanged: (index) => setState(() => _selectedIndex = index),
+                onPageChanged: (index) =>
+                    setState(() => _selectedIndex = index),
                 children: [
                   _buildAccountPage(loc, theme, authState),
                   _buildAppearancePage(loc, theme, settings),
@@ -118,14 +119,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }) {
     return GlassPanel(
       padding: const EdgeInsets.all(16),
-      borderRadius: 20,
-      backgroundColor: Colors.white.withValues(alpha: 0.54),
+      borderRadius: 4,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: imGlassBrand, size: 20),
+              Icon(icon,
+                  color: Theme.of(context).colorScheme.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 title,

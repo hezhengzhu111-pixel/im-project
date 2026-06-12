@@ -28,7 +28,7 @@ final composerProvider =
   return ComposerNotifier(ref.watch(momentsRepositoryProvider));
 });
 
-final notificationsProvider = StateNotifierProvider<MomentsNotificationsNotifier,
-    MomentsNotificationsState>((ref) {
+final notificationsProvider = StateNotifierProvider<
+    MomentsNotificationsNotifier, MomentsNotificationsState>((ref) {
   return MomentsNotificationsNotifier(ref.watch(momentsRepositoryProvider));
 });

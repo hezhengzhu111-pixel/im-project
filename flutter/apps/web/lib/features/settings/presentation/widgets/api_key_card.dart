@@ -89,8 +89,7 @@ class ApiKeyCard extends StatelessWidget {
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 color: _statusColor(apiKey.status).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -111,8 +110,7 @@ class ApiKeyCard extends StatelessWidget {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.wifi_find, size: 20),
               tooltip: loc.aiTestConnection,
             ),

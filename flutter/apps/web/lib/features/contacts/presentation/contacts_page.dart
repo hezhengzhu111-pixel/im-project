@@ -620,9 +620,9 @@ class _ContactDetailPanel extends StatelessWidget {
         Container(
           height: 118,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.54),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Theme.of(context).dividerColor),
           ),
           child: Center(
             child: Text(
@@ -847,8 +847,9 @@ class _OverviewStat extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.58),
-          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

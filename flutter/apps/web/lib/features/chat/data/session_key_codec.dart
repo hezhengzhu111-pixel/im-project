@@ -46,8 +46,7 @@ class SessionKeyCodec {
   ///
   /// Format: `p_<lowerId>_<higherId>`.
   /// Returns `targetId` when [currentUserId] is empty.
-  static String e2eeSessionIdForPrivate(
-      String currentUserId, String targetId) {
+  static String e2eeSessionIdForPrivate(String currentUserId, String targetId) {
     if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
     return _compareIds(currentUserId, targetId) <= 0
         ? 'p_${currentUserId}_$targetId'
@@ -131,8 +130,8 @@ class SessionKeyCodec {
     final keys = <String>{sessionId};
     if (sessionId.isEmpty) return keys;
 
-    final normalizedChatKey =
-        normalizeE2eeSessionKey(sessionId, sessions, currentUserId: currentUserId);
+    final normalizedChatKey = normalizeE2eeSessionKey(sessionId, sessions,
+        currentUserId: currentUserId);
     if (normalizedChatKey.isNotEmpty) keys.add(normalizedChatKey);
 
     final session = sessions
@@ -230,8 +229,7 @@ class SessionKeyCodec {
     List<ChatSession> sessions, {
     String? currentUserId,
   }) {
-    final session =
-        sessions.where((s) => s.id == sessionKey).firstOrNull;
+    final session = sessions.where((s) => s.id == sessionKey).firstOrNull;
     if (session != null) {
       final isGroup =
           session.type == 'group' || session.conversationType == 'group';

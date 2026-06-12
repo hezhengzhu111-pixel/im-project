@@ -13,8 +13,7 @@ class ErrorSanitizer {
   static final _tokenPattern = RegExp(r'token=[^\s&]+');
 
   /// Matches Bearer TOKEN patterns
-  static final _bearerPattern =
-      RegExp(r'Bearer\s+[A-Za-z0-9\-._~+/]+=*');
+  static final _bearerPattern = RegExp(r'Bearer\s+[A-Za-z0-9\-._~+/]+=*');
 
   /// Matches email addresses
   static final _emailPattern = RegExp(r'[^\s@]+@[^\s@]+\.[^\s@]+');
@@ -157,8 +156,7 @@ class ErrorSanitizer {
     final lines = stackTrace.toString().split('\n');
     final filtered = lines.where((line) {
       final lower = line.toLowerCase();
-      return !_sensitivePathKeywords
-          .any((kw) => lower.contains(kw));
+      return !_sensitivePathKeywords.any((kw) => lower.contains(kw));
     });
     return StackTrace.fromString(filtered.join('\n'));
   }

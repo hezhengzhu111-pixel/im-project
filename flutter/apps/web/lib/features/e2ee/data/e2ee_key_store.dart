@@ -1,12 +1,13 @@
 import 'dart:convert';
 
 import 'package:idb_shim/idb_browser.dart' as idb;
+import 'package:im_shared_features/e2ee.dart' as shared;
 import 'package:im_web/features/e2ee/data/e2ee_indexed_db.dart';
 
 /// Stores E2EE key material in IndexedDB.
 /// Database: "e2ee_keys", version 3
 /// Object stores: "identity", "meta"
-class E2eeKeyStore {
+class E2eeKeyStore implements shared.E2eeKeyStore {
   E2eeKeyStore();
 
   static const _identityStore = 'identity';

@@ -1,9 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
@@ -263,90 +260,93 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final glass = Theme.of(context).extension<GlassTheme>()!;
+    final theme = Theme.of(context);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_showMention) _buildMentionDropdown(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: glass.inputBackground,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: glass.dividerColor),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(top: BorderSide(color: theme.dividerColor)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: OutboxIndicator(),
                 ),
-                child: Row(
-                  children: [
-                    const OutboxIndicator(),
-                    Semantics(
-                      label: loc.a11yAddAttachment,
-                      button: true,
-                      child: IconButton(
-                        icon: const Icon(Icons.add_circle_outline),
-                        onPressed: _isUploading ? null : _showAttachmentMenu,
-                        tooltip: loc.a11yAddAttachment,
-                      ),
-                    ),
-                    Semantics(
-                      label: loc.a11yVoiceInput,
-                      button: true,
-                      child: IconButton(
-                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                        onPressed: _isUploading
-                            ? null
-                            : () {
-                                if (_isRecording) {
-                                  _stopRecordingAndSend();
-                                } else {
-                                  _recordAndSendVoice();
-                                }
-                              },
-                        tooltip: loc.a11yVoiceInput,
-                        color: _isRecording ? Colors.red : null,
-                      ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: widget.focusNode,
-                        decoration: InputDecoration(
-                          hintText: loc.chatInputHint,
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12),
+                Semantics(
+                  label: loc.a11yAddAttachment,
+                  button: true,
+                  child: IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: _isUploading ? null : _showAttachmentMenu,
+                    tooltip: loc.a11yAddAttachment,
+                  ),
+                ),
+                Semantics(
+                  label: loc.a11yVoiceInput,
+                  button: true,
+                  child: IconButton(
+                    icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                    onPressed: _isUploading
+                        ? null
+                        : () {
+                            if (_isRecording) {
+                              _stopRecordingAndSend();
+                            } else {
+                              _recordAndSendVoice();
+                            }
+                          },
+                    tooltip: loc.a11yVoiceInput,
+                    color: _isRecording ? Colors.red : null,
+                  ),
+                ),
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 42),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: widget.focusNode,
+                      decoration: InputDecoration(
+                        hintText: loc.chatInputHint,
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          borderSide: BorderSide.none,
                         ),
-                        minLines: 1,
-                        maxLines: 4,
-                        onSubmitted: (_) => _handleSend(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
+                      minLines: 1,
+                      maxLines: 4,
+                      onSubmitted: (_) => _handleSend(),
                     ),
-                    Semantics(
-                      label: loc.a11ySendMessage,
-                      button: true,
-                      child: IconButton(
-                        icon: const Icon(Icons.send),
-                        onPressed: _isUploading ? null : _handleSend,
-                        tooltip: loc.a11ySendMessage,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Semantics(
+                  label: loc.a11ySendMessage,
+                  button: true,
+                  child: FilledButton(
+                    onPressed: _isUploading ? null : _handleSend,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(46, 42),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: const Icon(Icons.send, size: 20),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

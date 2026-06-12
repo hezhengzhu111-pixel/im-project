@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class SettingsNavPanel extends ConsumerWidget {
@@ -17,7 +16,6 @@ class SettingsNavPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     final authState = ref.watch(authStateProvider);
     final user = authState.user;
     final loc = AppLocalizations.of(context);
@@ -26,10 +24,9 @@ class SettingsNavPanel extends ConsumerWidget {
       width: 216,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: glass.cardBackground,
-        borderRadius: BorderRadius.circular(glass.pageRadius),
-        border: Border.all(color: glass.cardBorder),
-        boxShadow: glass.softShadow,
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,9 +36,8 @@ class SettingsNavPanel extends ConsumerWidget {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundImage: user?.avatar != null
-                    ? NetworkImage(user!.avatar!)
-                    : null,
+                backgroundImage:
+                    user?.avatar != null ? NetworkImage(user!.avatar!) : null,
                 child: user?.avatar == null
                     ? Text(
                         (user?.nickname ?? user?.username ?? '?')
@@ -137,7 +133,6 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
@@ -146,18 +141,19 @@ class _NavItem extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
             color: isSelected
-                ? glass.navHoverBackground
+                ? theme.colorScheme.surfaceContainerHighest
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(glass.controlRadius),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(glass.controlRadius),
+            borderRadius: BorderRadius.circular(4),
             child: InkWell(
-              borderRadius: BorderRadius.circular(glass.controlRadius),
+              borderRadius: BorderRadius.circular(4),
               onTap: onTap,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
                     Icon(
@@ -171,10 +167,9 @@ class _NavItem extends StatelessWidget {
                     Text(
                       label,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : null,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected ? theme.colorScheme.primary : null,
                       ),
                     ),
                   ],

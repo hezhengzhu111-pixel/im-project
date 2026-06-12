@@ -391,13 +391,17 @@ fn routes_for_users(
         let raws: Vec<Option<Vec<u8>>> = pipe.query(redis)?;
         for ((user_id, user_key), raw) in misses.into_iter().zip(raws) {
             let routes = parse_user_routes(raw.as_deref(), config);
-            route_cache.insert(
-                user_key,
-                CachedRoutes {
-                    routes: routes.clone(),
-                    cached_at_ms: now,
-                },
-            );
+            if routes.is_empty() {
+                route_cache.remove(&user_key);
+            } else {
+                route_cache.insert(
+                    user_key,
+                    CachedRoutes {
+                        routes: routes.clone(),
+                        cached_at_ms: now,
+                    },
+                );
+            }
             result.insert(user_id, routes);
         }
     }

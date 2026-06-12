@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/e2ee_glass_widgets.dart';
@@ -152,7 +151,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       large: ImTokens.layoutChatSidebarWidth,
                     )
                     .toDouble(),
-                color: Colors.transparent, // 透出外层 #F7F8FA 背景
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    right: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                ),
                 child: _buildSessionList(sessions, activeId, loc),
               ),
               Expanded(
@@ -171,20 +175,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       List<dynamic> sessions, String? activeId, AppLocalizations loc) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(ImTokens.layoutSectionGap),
+        Container(
+          height: 62,
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).dividerColor),
+            ),
+          ),
           child: TextField(
             controller: _searchController,
+            style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: loc.chatSearchHint,
-              prefixIcon: const Icon(Icons.search, size: ImTokens.textXl),
+              prefixIcon: const Icon(Icons.search, size: 18),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(ImTokens.radiusFull),
+                borderRadius: BorderRadius.circular(4),
+                borderSide: BorderSide.none,
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: ImTokens.space4,
-                vertical: 10,
-              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
               isDense: true,
             ),
             onChanged: (v) => setState(() => _searchQuery = v),
@@ -276,7 +288,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildChatView(String sessionId, AppLocalizations loc) {
-    final glass = Theme.of(context).extension<GlassTheme>()!;
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
       if (next != null && (prev == null || next.length > prev.length)) {
@@ -346,187 +357,189 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             .read(chatStateProvider.notifier)
             .pendingNegotiationForSession(session.id);
 
-    return Column(
-      children: [
-        // Network status banner
-        const NetworkStatusBanner(),
-        // Header
-        _GlassChatHeader(
-          session: session,
-          isMobile: isMobile,
-          onBackPressed: () {
-            ref.read(chatStateProvider.notifier).setActiveSession(null);
-          },
-          e2eeStatus: e2eeStatusAsync?.whenOrNull(
-            data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
-          ),
-          onStartEncryption: e2eeSessionId == null
-              ? null
-              : () => _startEncryption(session, e2eeSessionId),
-          onShowGroupEncryptionUnavailable:
-              isGroup ? _showGroupE2eeUnavailable : null,
-        ),
-        // E2EE encryption banner (private chats only)
-        if (e2eeStatusAsync != null)
-          e2eeStatusAsync.when(
-            data: (statusStr) => E2eeNegotiationBanner(
-              status: E2eeSessionStatus.fromString(statusStr),
-              pending: pendingNegotiation,
-              onAccept: pendingNegotiation == null
-                  ? null
-                  : () async {
-                      final accepted = await ref
-                          .read(chatStateProvider.notifier)
-                          .acceptPendingNegotiation(session.id);
-                      ref.invalidate(
-                        e2eeSessionStatusProvider(privateE2eeSessionId),
-                      );
-                      if (!accepted && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('接受加密请求失败')),
-                        );
-                      }
-                    },
-              onReject: pendingNegotiation == null
-                  ? null
-                  : () async {
-                      await ref
-                          .read(chatStateProvider.notifier)
-                          .rejectPendingNegotiation(session.id);
-                      ref.invalidate(
-                        e2eeSessionStatusProvider(privateE2eeSessionId),
-                      );
-                    },
-              onStart: () => _startEncryption(session, privateE2eeSessionId),
-              onExit: () async {
-                await ref
-                    .read(chatStateProvider.notifier)
-                    .disableEncryptionForSession(privateE2eeSessionId);
-                ref.invalidate(
-                  e2eeSessionStatusProvider(privateE2eeSessionId),
-                );
-              },
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Column(
+        children: [
+          // Network status banner
+          const NetworkStatusBanner(),
+          // Header
+          _GlassChatHeader(
+            session: session,
+            isMobile: isMobile,
+            onBackPressed: () {
+              ref.read(chatStateProvider.notifier).setActiveSession(null);
+            },
+            e2eeStatus: e2eeStatusAsync?.whenOrNull(
+              data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
             ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            onStartEncryption: e2eeSessionId == null
+                ? null
+                : () => _startEncryption(session, e2eeSessionId),
+            onShowGroupEncryptionUnavailable:
+                isGroup ? _showGroupE2eeUnavailable : null,
           ),
-        // Messages
-        Expanded(
-          child: messages.isEmpty
-              ? Center(child: Text(loc.noData))
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: ImTokens.space2),
-                  itemCount: messages.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return LoadMoreHistoryButton(sessionId: sessionId);
-                    }
-                    final msg = messages[index - 1];
-                    final currentUserId =
-                        ref.watch(authStateProvider).user?.id ?? '';
-                    return AnimatedEntrance(
-                      duration: glass.animationDuration,
-                      offset: 8,
-                      child: MessageBubble(
-                        message: msg,
-                        isMe: msg.senderId == currentUserId,
-                      ),
+          // E2EE encryption banner (private chats only)
+          if (e2eeStatusAsync != null)
+            e2eeStatusAsync.when(
+              data: (statusStr) => E2eeNegotiationBanner(
+                status: E2eeSessionStatus.fromString(statusStr),
+                pending: pendingNegotiation,
+                onAccept: pendingNegotiation == null
+                    ? null
+                    : () async {
+                        final accepted = await ref
+                            .read(chatStateProvider.notifier)
+                            .acceptPendingNegotiation(session.id);
+                        ref.invalidate(
+                          e2eeSessionStatusProvider(privateE2eeSessionId),
+                        );
+                        if (!accepted && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('接受加密请求失败')),
+                          );
+                        }
+                      },
+                onReject: pendingNegotiation == null
+                    ? null
+                    : () async {
+                        await ref
+                            .read(chatStateProvider.notifier)
+                            .rejectPendingNegotiation(session.id);
+                        ref.invalidate(
+                          e2eeSessionStatusProvider(privateE2eeSessionId),
+                        );
+                      },
+                onStart: () => _startEncryption(session, privateE2eeSessionId),
+                onExit: () async {
+                  await ref
+                      .read(chatStateProvider.notifier)
+                      .disableEncryptionForSession(privateE2eeSessionId);
+                  ref.invalidate(
+                    e2eeSessionStatusProvider(privateE2eeSessionId),
+                  );
+                },
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+          // Messages
+          Expanded(
+            child: messages.isEmpty
+                ? Center(child: Text(loc.noData))
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    itemCount: messages.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return LoadMoreHistoryButton(sessionId: sessionId);
+                      }
+                      final msg = messages[index - 1];
+                      final currentUserId =
+                          ref.watch(authStateProvider).user?.id ?? '';
+                      return AnimatedEntrance(
+                        duration: ImTokens.animFast,
+                        offset: 4,
+                        child: MessageBubble(
+                          message: msg,
+                          isMe: msg.senderId == currentUserId,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          // Input
+          MessageInput(
+            focusNode: _messageInputFocusNode,
+            onFocusChanged: (focused) =>
+                setState(() => _messageInputFocused = focused),
+            members: isGroup ? _groupMembers : null,
+            onSend: (text, mentionedUserIds) {
+              if (isGroup) {
+                ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      text,
+                      mentionedUserIds:
+                          mentionedUserIds.isNotEmpty ? mentionedUserIds : null,
                     );
-                  },
-                ),
-        ),
-        // Input
-        MessageInput(
-          focusNode: _messageInputFocusNode,
-          onFocusChanged: (focused) =>
-              setState(() => _messageInputFocused = focused),
-          members: isGroup ? _groupMembers : null,
-          onSend: (text, mentionedUserIds) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    text,
-                    mentionedUserIds:
-                        mentionedUserIds.isNotEmpty ? mentionedUserIds : null,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    text,
-                  );
-            }
-          },
-          onSendImage: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'IMAGE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'IMAGE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            }
-          },
-          onSendFile: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'FILE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'FILE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                    thumbnailUrl: result.thumbnailUrl,
-                  );
-            }
-          },
-          onSendVoice: (result) {
-            if (isGroup) {
-              ref.read(chatStateProvider.notifier).sendGroupMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'VOICE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                  );
-            } else {
-              ref.read(chatStateProvider.notifier).sendMessage(
-                    session.targetId,
-                    '',
-                    messageType: 'VOICE',
-                    mediaUrl: result.url,
-                    mediaName: result.name,
-                    mediaSize: result.size,
-                  );
-            }
-          },
-        ),
-      ],
+              } else {
+                ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      text,
+                    );
+              }
+            },
+            onSendImage: (result) {
+              if (isGroup) {
+                ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'IMAGE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              } else {
+                ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'IMAGE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              }
+            },
+            onSendFile: (result) {
+              if (isGroup) {
+                ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'FILE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              } else {
+                ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'FILE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                      thumbnailUrl: result.thumbnailUrl,
+                    );
+              }
+            },
+            onSendVoice: (result) {
+              if (isGroup) {
+                ref.read(chatStateProvider.notifier).sendGroupMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'VOICE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                    );
+              } else {
+                ref.read(chatStateProvider.notifier).sendMessage(
+                      session.targetId,
+                      '',
+                      messageType: 'VOICE',
+                      mediaUrl: result.url,
+                      mediaName: result.name,
+                      mediaSize: result.size,
+                    );
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -574,21 +587,16 @@ class _GlassChatHeader extends StatelessWidget {
             E2eeSessionStatus.plaintext => '在线 / 明文聊天',
           };
 
+    final theme = Theme.of(context);
+
     return Container(
-      height: 76,
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: theme.dividerColor),
+        ),
       ),
       child: Row(
         children: [
@@ -598,15 +606,22 @@ class _GlassChatHeader extends StatelessWidget {
               onPressed: onBackPressed,
             ),
           CircleAvatar(
-            radius: 20,
+            radius: 18,
+            backgroundColor: const Color(0xFFD9D9D9),
             backgroundImage: session.targetAvatar != null
                 ? NetworkImage(session.targetAvatar!)
                 : null,
             child: session.targetAvatar == null
-                ? Text(sessionName.isNotEmpty ? sessionName[0] : '?')
+                ? Text(
+                    sessionName.isNotEmpty ? sessionName[0] : '?',
+                    style: const TextStyle(
+                      color: Color(0xFF4A4A4A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
                 : null,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -616,18 +631,18 @@ class _GlassChatHeader extends StatelessWidget {
                   sessionName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),

@@ -45,7 +45,8 @@ void main() {
       );
 
       expect(reporter.errors.length, 1);
-      expect(reporter.errors[0].safeMessage, isNot(contains('admin@example.com')));
+      expect(
+          reporter.errors[0].safeMessage, isNot(contains('admin@example.com')));
     });
 
     test('passes category hint through to sanitized error', () {

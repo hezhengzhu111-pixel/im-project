@@ -21,9 +21,7 @@ class WebShareAdapter implements SharePort {
         return const Failure(UnsupportedCapability('share'));
       }
 
-      await web.window.navigator
-          .share(web.ShareData(text: text))
-          .toDart;
+      await web.window.navigator.share(web.ShareData(text: text)).toDart;
       return const Success(null);
     } catch (e) {
       if (e is web.DOMException && e.name == 'AbortError') {

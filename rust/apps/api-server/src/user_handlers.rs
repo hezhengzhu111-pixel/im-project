@@ -485,7 +485,8 @@ pub(crate) async fn settings(
 
     // 查询 user_settings 表
     let json_str: Option<String> = sqlx::query_scalar(
-        "SELECT settings FROM service_user_service_db.user_settings WHERE user_id = ?",
+        "SELECT CAST(settings AS CHAR) AS settings \
+         FROM service_user_service_db.user_settings WHERE user_id = ?",
     )
     .bind(user_id)
     .fetch_optional(&state.db)
@@ -647,7 +648,8 @@ pub(crate) async fn update_settings(
 
     // 查询现有设置
     let existing = sqlx::query_scalar::<_, String>(
-        "SELECT settings FROM service_user_service_db.user_settings WHERE user_id = ?",
+        "SELECT CAST(settings AS CHAR) AS settings \
+         FROM service_user_service_db.user_settings WHERE user_id = ?",
     )
     .bind(user_id)
     .fetch_optional(&state.db)

@@ -10,8 +10,7 @@ import 'package:mockito/mockito.dart';
 /// Mock's noSuchMethod.
 class MockGoRouter extends Mock implements GoRouter {
   @override
-  GoRouteInformationProvider get routeInformationProvider =>
-      super.noSuchMethod(
+  GoRouteInformationProvider get routeInformationProvider => super.noSuchMethod(
         Invocation.getter(#routeInformationProvider),
         returnValue: MockGoRouteInformationProvider(),
       ) as GoRouteInformationProvider;

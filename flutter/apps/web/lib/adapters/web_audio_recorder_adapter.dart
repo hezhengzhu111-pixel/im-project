@@ -45,8 +45,7 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
       if (e is web.DOMException && e.name == 'NotAllowedError') {
         return const Failure(PermissionDenied('microphone'));
       }
-      return const Failure(
-          UnknownError('recording_start_failed'));
+      return const Failure(UnknownError('recording_start_failed'));
     }
   }
 
@@ -71,8 +70,7 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
       _recorder!.removeEventListener('stop', onStop.toJS);
 
       final mimeType = _recorder!.mimeType;
-      final effectiveType =
-          mimeType.isNotEmpty ? mimeType : 'audio/webm';
+      final effectiveType = mimeType.isNotEmpty ? mimeType : 'audio/webm';
 
       final blob = web.Blob(
         _chunks.toJS,
@@ -90,8 +88,7 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
       ));
     } catch (e) {
       _cleanup();
-      return const Failure(
-          UnknownError('recording_stop_failed'));
+      return const Failure(UnknownError('recording_stop_failed'));
     }
   }
 

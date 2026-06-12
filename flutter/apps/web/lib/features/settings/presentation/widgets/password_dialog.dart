@@ -99,7 +99,10 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
         FilledButton(
           onPressed: _loading ? null : _submit,
           child: _loading
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : Text(loc.commonConfirm),
         ),
       ],
@@ -112,15 +115,17 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
     try {
       final values = _formController.values;
       await ref.read(profileStateProvider.notifier).changePassword(
-        ChangePasswordRequest(
-          currentPassword: values['currentPassword']!,
-          newPassword: values['newPassword']!,
-        ),
-      );
+            ChangePasswordRequest(
+              currentPassword: values['currentPassword']!,
+              newPassword: values['newPassword']!,
+            ),
+          );
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.profilePasswordUpdated)),
+          SnackBar(
+              content:
+                  Text(AppLocalizations.of(context)!.profilePasswordUpdated)),
         );
       }
     } catch (e) {

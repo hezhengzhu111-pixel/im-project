@@ -196,7 +196,8 @@ void main() {
   // ===========================================================================
 
   group('message merge behavior', () {
-    test('local pending + server ack with same clientMessageId not duplicated', () {
+    test('local pending + server ack with same clientMessageId not duplicated',
+        () {
       final local = Message(
         id: 'local_123',
         senderId: 'user-1',
@@ -399,8 +400,7 @@ void main() {
         status: 'SENT',
       );
 
-      final result =
-          mergeMessagesChronologically([msg1], [msg2, msg3]);
+      final result = mergeMessagesChronologically([msg1], [msg2, msg3]);
 
       expect(result.length, 3);
       expect(result[0].content, 'First');
@@ -470,7 +470,8 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('readerId is other user: messageId updates only specified message', () {
+    test('readerId is other user: messageId updates only specified message',
+        () {
       final messages = [
         const Message(
           id: 'msg-a',
@@ -791,17 +792,13 @@ void main() {
   group('outbox behavior', () {
     test('network error string matches retryable pattern', () {
       expect(_isNetworkError(Exception('SocketException: ...')), isTrue);
-      expect(
-          _isNetworkError(Exception('Connection refused')), isTrue);
-      expect(
-          _isNetworkError(Exception('Connection timed out')), isTrue);
-      expect(
-          _isNetworkError(Exception('Network is unreachable')), isTrue);
+      expect(_isNetworkError(Exception('Connection refused')), isTrue);
+      expect(_isNetworkError(Exception('Connection timed out')), isTrue);
+      expect(_isNetworkError(Exception('Network is unreachable')), isTrue);
       expect(_isNetworkError(Exception('Network error')), isTrue);
       expect(_isNetworkError(Exception('networkerror')), isTrue);
       expect(_isNetworkError(Exception('Broken pipe')), isTrue);
-      expect(
-          _isNetworkError(Exception('Connection reset')), isTrue);
+      expect(_isNetworkError(Exception('Connection reset')), isTrue);
       expect(_isNetworkError(Exception('ConnectTimeout')), isTrue);
       expect(_isNetworkError(Exception('SendTimeout')), isTrue);
       expect(_isNetworkError(Exception('ReceiveTimeout')), isTrue);
@@ -815,7 +812,8 @@ void main() {
       expect(_isNetworkError(Exception('Server error')), isFalse);
     });
 
-    test('sendPrivateEncrypted request body does not contain plaintext content', () {
+    test('sendPrivateEncrypted request body does not contain plaintext content',
+        () {
       // Verify that when sending encrypted messages, the plaintext is not
       // included in the request body sent to the server.
       final request = {
@@ -900,8 +898,7 @@ String _normalizeIncomingSessionKey(
       currentUserId: currentUserId);
 }
 
-String _sessionKeyForGroupTarget(
-    String groupId, List<ChatSession> sessions) {
+String _sessionKeyForGroupTarget(String groupId, List<ChatSession> sessions) {
   final normalizedGroupId = _groupIdFromSessionKey(groupId);
   final existing = sessions.where((s) {
     final isGroup = s.type == 'group' || s.conversationType == 'group';
@@ -919,7 +916,8 @@ String _sessionKeyForPrivateTarget(
   String currentUserId = 'user-1',
 }) {
   // First, try to extract the actual target from the sessionKey
-  final normalizedTarget = _privateTargetFromSessionKey(targetId, currentUserId);
+  final normalizedTarget =
+      _privateTargetFromSessionKey(targetId, currentUserId);
   final existing = sessions.where((s) {
     final isPrivate = s.type == 'private' || s.conversationType == 'private';
     return isPrivate &&
@@ -934,8 +932,7 @@ String _privateTargetFromSessionKey(String sessionKey, String currentUserId) {
   if (!sessionKey.contains('_')) return sessionKey;
   return sessionKey
           .split('_')
-          .where((part) =>
-              part.isNotEmpty && part != currentUserId)
+          .where((part) => part.isNotEmpty && part != currentUserId)
           .firstOrNull ??
       sessionKey;
 }
@@ -1012,8 +1009,7 @@ String _privateTargetFromE2eeSessionId(String sessionId, String currentUserId) {
   final raw = sessionId.startsWith('p_') ? sessionId.substring(2) : sessionId;
   return raw
           .split('_')
-          .where((part) =>
-              part.isNotEmpty && part != currentUserId)
+          .where((part) => part.isNotEmpty && part != currentUserId)
           .firstOrNull ??
       sessionId;
 }
@@ -1064,8 +1060,7 @@ Set<String> _computeReadReceiptUpdates({
   if (lastReadMessageId != null) {
     final lastReadIndex = messages.indexWhere(
       (m) =>
-          m.id == lastReadMessageId ||
-          m.clientMessageId == lastReadMessageId,
+          m.id == lastReadMessageId || m.clientMessageId == lastReadMessageId,
     );
     if (lastReadIndex != -1) {
       for (var i = 0; i <= lastReadIndex; i++) {

@@ -1,12 +1,9 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../theme/im_tokens.dart';
-import 'gradient_background.dart';
 
-const Color imGlassBrand = Color(0xFF7B4FD1);
-const Color imGlassBrandHover = Color(0xFF6F43C4);
+const Color imGlassBrand = ImTokens.wechatGreen;
+const Color imGlassBrandHover = ImTokens.wechatGreenPressed;
 
 class AppGradientBackground extends StatelessWidget {
   const AppGradientBackground({
@@ -20,14 +17,8 @@ class AppGradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GradientBackground(
-      colors: const [
-        Color(0xFF6679E7),
-        Color(0xFF744FB5),
-        Color(0xFF23A8C8),
-        Color(0xFF10CF9A),
-      ],
-      animated: animated,
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: child,
     );
   }
@@ -38,7 +29,7 @@ class GlassPanel extends StatelessWidget {
     required this.child,
     this.padding,
     this.margin,
-    this.borderRadius = 26,
+    this.borderRadius = 4,
     this.backgroundColor,
     this.clipBehavior = Clip.antiAlias,
     super.key,
@@ -53,27 +44,18 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       margin: margin,
       clipBehavior: clipBehavior,
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.white.withValues(alpha: 0.48),
+        color: backgroundColor ?? theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.38)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF191C40).withValues(alpha: 0.08),
-            blurRadius: 36,
-            offset: const Offset(0, 14),
-          ),
-        ],
+        border: Border.all(color: theme.dividerColor),
       ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Padding(
-          padding: padding ?? EdgeInsets.zero,
-          child: child,
-        ),
+      child: Padding(
+        padding: padding ?? EdgeInsets.zero,
+        child: child,
       ),
     );
   }
@@ -84,7 +66,7 @@ class HoverLiftCard extends StatefulWidget {
     required this.child,
     this.onTap,
     this.padding = const EdgeInsets.all(ImTokens.space4),
-    this.borderRadius = 18,
+    this.borderRadius = 4,
     super.key,
   });
 
@@ -102,33 +84,30 @@ class _HoverLiftCardState extends State<HoverLiftCard> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final card = MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
-        duration: ImTokens.animNormal,
+        duration: ImTokens.animFast,
         curve: Curves.easeOut,
-        transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
         padding: widget.padding,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: _hovered ? 0.70 : 0.50),
+          color: _hovered
+              ? theme.colorScheme.surfaceContainerHighest
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(widget.borderRadius),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.36)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF191C40)
-                  .withValues(alpha: _hovered ? 0.18 : 0.08),
-              blurRadius: _hovered ? 34 : 20,
-              offset: Offset(0, _hovered ? 16 : 8),
-            ),
-          ],
+          border: Border.all(color: theme.dividerColor),
         ),
         child: widget.child,
       ),
     );
 
     if (widget.onTap == null) return card;
-    return GestureDetector(onTap: widget.onTap, child: card);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(onTap: widget.onTap, child: card),
+    );
   }
 }
 
@@ -163,28 +142,16 @@ class _PrimarySolidButtonState extends State<PrimarySolidButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
         duration: ImTokens.animFast,
-        transform:
-            Matrix4.translationValues(0, enabled && _hovered ? -2 : 0, 0),
         decoration: BoxDecoration(
           color: enabled
               ? (_hovered ? imGlassBrandHover : imGlassBrand)
               : imGlassBrand.withValues(alpha: 0.38),
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: enabled
-              ? [
-                  BoxShadow(
-                    color:
-                        imGlassBrand.withValues(alpha: _hovered ? 0.32 : 0.22),
-                    blurRadius: _hovered ? 30 : 22,
-                    offset: const Offset(0, 12),
-                  ),
-                ]
-              : null,
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(ImTokens.radiusSm),
             onTap: enabled ? widget.onPressed : null,
             child: SizedBox(
               height: widget.compact ? 34 : 42,
@@ -213,7 +180,7 @@ class _PrimarySolidButtonState extends State<PrimarySolidButton> {
                       widget.label,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -245,35 +212,27 @@ class FlatLineIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        selected ? imGlassBrand : Colors.white.withValues(alpha: 0.76);
+    final color = selected ? ImTokens.wechatGreen : const Color(0xFF9A9A9A);
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
           duration: ImTokens.animFast,
-          width: 58,
+          width: 64,
           constraints: const BoxConstraints(minHeight: 58),
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF3C2E78).withValues(alpha: 0.18),
-                      blurRadius: 28,
-                      offset: const Offset(0, 12),
-                    ),
-                  ]
+            border: selected
+                ? const Border(
+                    left: BorderSide(color: ImTokens.wechatGreen, width: 3),
+                  )
                 : null,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 22, color: color),
+              Icon(icon, size: 24, color: color),
               if (label != null) ...[
                 const SizedBox(height: 5),
                 Text(
@@ -282,8 +241,8 @@ class FlatLineIconButton extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: color,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
               ],

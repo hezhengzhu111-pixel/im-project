@@ -16,7 +16,8 @@ class ApiResponse<T> with _$ApiResponse<T> {
   factory ApiResponse.fromJson(
     Map<String, dynamic> json,
     T Function(Object?) fromJsonT,
-  ) => _$ApiResponseFromJson(json, fromJsonT);
+  ) =>
+      _$ApiResponseFromJson(json, fromJsonT);
 }
 
 @freezed
@@ -47,7 +48,8 @@ class PageResponse<T> with _$PageResponse<T> {
   factory PageResponse.fromJson(
     Map<String, dynamic> json,
     T Function(Object?) fromJsonT,
-  ) => _$PageResponseFromJson(json, fromJsonT);
+  ) =>
+      _$PageResponseFromJson(json, fromJsonT);
 }
 
 @freezed

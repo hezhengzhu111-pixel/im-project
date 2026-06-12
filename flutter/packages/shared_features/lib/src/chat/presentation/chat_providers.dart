@@ -6,8 +6,7 @@ import '../data/message_pipeline.dart';
 import 'chat_notifier.dart';
 import 'chat_state.dart';
 
-final chatStateProvider =
-    StateNotifierProvider<ChatNotifier, ChatState>((ref) {
+final chatStateProvider = StateNotifierProvider<ChatNotifier, ChatState>((ref) {
   return ChatNotifier(
     ref.watch(messageApiProvider),
     MessagePipeline(),

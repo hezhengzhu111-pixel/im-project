@@ -248,12 +248,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final isGroup =
           session.type == 'group' || session.conversationType == 'group';
       final newMessages = isGroup
-          ? await _messageApi.getGroupHistoryCursor(
-              session.targetId, limit: size, lastMessageId: oldestMessageId)
-          : await _messageApi.getPrivateHistoryCursor(
-              session.targetId, limit: size, lastMessageId: oldestMessageId);
+          ? await _messageApi.getGroupHistoryCursor(session.targetId,
+              limit: size, lastMessageId: oldestMessageId)
+          : await _messageApi.getPrivateHistoryCursor(session.targetId,
+              limit: size, lastMessageId: oldestMessageId);
 
-      final merged = _mergeMessagesChronologically(existingMessages, newMessages);
+      final merged =
+          _mergeMessagesChronologically(existingMessages, newMessages);
       final hasMore = newMessages.length >= size;
       final oldestId = _findOldestLoadedServerMessageId(merged);
 
@@ -321,14 +322,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
           thumbnailUrl: msg.thumbnailUrl ?? existingMsg.thumbnailUrl,
           duration: msg.duration ?? existingMsg.duration,
           extra: msg.extra ?? existingMsg.extra,
-          mentionedUserIds: msg.mentionedUserIds ?? existingMsg.mentionedUserIds,
+          mentionedUserIds:
+              msg.mentionedUserIds ?? existingMsg.mentionedUserIds,
           encrypted: msg.encrypted ?? existingMsg.encrypted,
           e2eeDeviceId: msg.e2eeDeviceId ?? existingMsg.e2eeDeviceId,
           e2eeEnvelope: msg.e2eeEnvelope ?? existingMsg.e2eeEnvelope,
           decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
         );
         merged[msg.id] = mergedMsg;
-        if (msg.clientMessageId != null) merged[msg.clientMessageId!] = mergedMsg;
+        if (msg.clientMessageId != null)
+          merged[msg.clientMessageId!] = mergedMsg;
       } else {
         merged[msg.id] = msg;
         if (msg.clientMessageId != null) merged[msg.clientMessageId!] = msg;
@@ -370,9 +373,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
           Message? lastResult;
           for (final part in parts) {
             lastResult = await _sendSinglePrivateMessage(
-              receiverId, part,
-              messageType: messageType, mediaUrl: mediaUrl, mediaName: mediaName,
-              mediaSize: mediaSize, thumbnailUrl: thumbnailUrl, duration: duration, extra: extra,
+              receiverId,
+              part,
+              messageType: messageType,
+              mediaUrl: mediaUrl,
+              mediaName: mediaName,
+              mediaSize: mediaSize,
+              thumbnailUrl: thumbnailUrl,
+              duration: duration,
+              extra: extra,
             );
             if (lastResult == null) return null;
           }
@@ -381,10 +390,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     }
     return _sendSinglePrivateMessage(
-      receiverId, content,
-      messageType: messageType, clientMessageId: clientMessageId,
-      mediaUrl: mediaUrl, mediaName: mediaName, mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl, duration: duration, extra: extra,
+      receiverId,
+      content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
+      extra: extra,
     );
   }
 
@@ -467,10 +482,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
           Message? lastResult;
           for (final part in parts) {
             lastResult = await _sendSingleGroupMessage(
-              groupId, part,
-              messageType: messageType, mediaUrl: mediaUrl, mediaName: mediaName,
-              mediaSize: mediaSize, thumbnailUrl: thumbnailUrl, duration: duration,
-              mentionedUserIds: mentionedUserIds, extra: extra,
+              groupId,
+              part,
+              messageType: messageType,
+              mediaUrl: mediaUrl,
+              mediaName: mediaName,
+              mediaSize: mediaSize,
+              thumbnailUrl: thumbnailUrl,
+              duration: duration,
+              mentionedUserIds: mentionedUserIds,
+              extra: extra,
             );
             if (lastResult == null) return null;
           }
@@ -479,11 +500,17 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     }
     return _sendSingleGroupMessage(
-      groupId, content,
-      messageType: messageType, clientMessageId: clientMessageId,
-      mediaUrl: mediaUrl, mediaName: mediaName, mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl, duration: duration,
-      mentionedUserIds: mentionedUserIds, extra: extra,
+      groupId,
+      content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
+      mentionedUserIds: mentionedUserIds,
+      extra: extra,
     );
   }
 
@@ -563,7 +590,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (index == -1) {
       updated.add(message);
     } else {
-      updated[index] = message;
+      updated[index] = _mergeMessageReplacement(updated[index], message);
     }
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
@@ -587,10 +614,29 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
     final updated = List<Message>.from(currentMessages);
-    updated[index] = newMessage;
+    updated[index] = _mergeMessageReplacement(updated[index], newMessage);
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
     );
+  }
+
+  Message _mergeMessageReplacement(Message existing, Message incoming) {
+    return incoming.copyWith(
+      content:
+          incoming.content.isNotEmpty ? incoming.content : existing.content,
+      clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
+      encrypted: incoming.encrypted ?? existing.encrypted,
+      e2eeDeviceId: _nonEmptyOr(incoming.e2eeDeviceId, existing.e2eeDeviceId),
+      e2eeEnvelope: incoming.e2eeEnvelope ?? existing.e2eeEnvelope,
+      decryptStatus:
+          _nonEmptyOr(incoming.decryptStatus, existing.decryptStatus),
+    );
+  }
+
+  String? _nonEmptyOr(String? value, String? fallback) {
+    final trimmed = value?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return value;
+    return fallback;
   }
 
   void _updateMessageStatus(
@@ -689,7 +735,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     return sessionKey
             .split('_')
             .where((part) =>
-                part.isNotEmpty && (currentUserId == null || part != currentUserId))
+                part.isNotEmpty &&
+                (currentUserId == null || part != currentUserId))
             .firstOrNull ??
         sessionKey;
   }

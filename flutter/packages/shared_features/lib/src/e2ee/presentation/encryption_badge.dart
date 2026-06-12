@@ -21,12 +21,17 @@ class EncryptionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (color, icon, label) = switch (status) {
       E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, encryptedLabel),
-      E2eeSessionStatus.negotiating =>
-        (Colors.amber, Icons.sync, negotiatingLabel),
-      E2eeSessionStatus.failed =>
-        (Colors.red, Icons.lock_outline, failedLabel),
-      E2eeSessionStatus.plaintext =>
-        (Colors.grey, Icons.lock_open, plaintextLabel),
+      E2eeSessionStatus.negotiating => (
+          Colors.amber,
+          Icons.sync,
+          negotiatingLabel
+        ),
+      E2eeSessionStatus.failed => (Colors.red, Icons.lock_outline, failedLabel),
+      E2eeSessionStatus.plaintext => (
+          Colors.grey,
+          Icons.lock_open,
+          plaintextLabel
+        ),
     };
 
     return Container(
