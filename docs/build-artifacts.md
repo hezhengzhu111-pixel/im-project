@@ -50,6 +50,7 @@ python scripts/build.py rust --profile debug
 
 - `scripts/build.py` collects local and CI build artifacts.
 - `scripts/deploy_services.py` deploys services through Docker Compose.
+- `docs/deployment.md` documents the full deployment workflow and the root compatibility entry points.
 - `rust/apps/*/Dockerfile` and `flutter/apps/web/Dockerfile` continue to build Docker images.
 - `scripts/build.py` does not replace `scripts/deploy_services.py`.
 - `scripts/deploy_services.py` does not collect `build/dist` artifacts.

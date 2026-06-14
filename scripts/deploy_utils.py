@@ -7,10 +7,16 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import NoReturn, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY")
+DEFAULT_APP_SERVICES = ("im-server", "im-api-server", "im-frontend")
+OPTIONAL_APP_SERVICES = ("im-spring-ai",)
+ONE_SHOT_SERVICES = frozenset({"im-files-init", "im-db-migrate"})
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,7 @@ class DeploymentConfig:
     sql_init_file: Path
     sql_migration_file: Path
     mysql_root_password: str
+    network_name: str
 
 
 @dataclass(frozen=True)
@@ -43,7 +50,32 @@ def fatal(message: str) -> NoReturn:
     sys.exit(1)
 
 
-def load_env_file(env_file: Path) -> None:
+def resolve_env_file(
+    project_dir: Path,
+    env_file: str | Path | None = None,
+    *,
+    require_env_file: bool = True,
+) -> Path:
+    if env_file is None:
+        candidate = project_dir / ".env"
+    else:
+        candidate = Path(env_file)
+        if not candidate.is_absolute():
+            candidate = project_dir / candidate
+    candidate = candidate.resolve()
+    if candidate.is_file():
+        return candidate
+    if require_env_file:
+        if env_file is None:
+            fatal("Missing .env. Copy .env.example to .env and configure passwords and ports first.")
+        fatal(f"Env file does not exist: {candidate}")
+    fallback = project_dir / ".env.example"
+    if fallback.is_file():
+        return fallback.resolve()
+    fatal(f"Env file does not exist: {candidate}")
+
+
+def load_env_file(env_file: Path, *, override: bool = False) -> None:
     if not env_file.is_file():
         return
     for raw_line in env_file.read_text(encoding="utf-8").splitlines():
@@ -52,7 +84,7 @@ def load_env_file(env_file: Path) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if not key:
+        if not key or (not override and key in os.environ):
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -60,16 +92,19 @@ def load_env_file(env_file: Path) -> None:
         os.environ[key] = value
 
 
-def load_config(project_dir: Path | None = None) -> DeploymentConfig:
+def load_config(
+    project_dir: Path | None = None,
+    *,
+    env_file: str | Path | None = None,
+    require_env_file: bool = True,
+) -> DeploymentConfig:
     root = (project_dir or PROJECT_ROOT).resolve()
-    env_file = root / ".env"
-    if not env_file.is_file():
-        env_file = root / ".env.example"
-    load_env_file(env_file)
+    resolved_env_file = resolve_env_file(root, env_file, require_env_file=require_env_file)
+    load_env_file(resolved_env_file, override=False)
 
     config = DeploymentConfig(
         project_dir=root,
-        env_file=env_file,
+        env_file=resolved_env_file,
         compose_file=root / "deploy" / "sit" / "docker-compose.yml",
         backend_root=root / "backend",
         rust_root=root / "rust",
@@ -77,6 +112,7 @@ def load_config(project_dir: Path | None = None) -> DeploymentConfig:
         sql_init_file=root / "sql" / "mysql8" / "init_all.sql",
         sql_migration_file=root / "sql" / "mysql8" / "e2ee_migration.sql",
         mysql_root_password=os.getenv("MYSQL_ROOT_PASSWORD", "root123"),
+        network_name=os.getenv("GLOBAL_DOCKER_NETWORK", "im-sit-network"),
     )
     ensure_project_layout(config)
     return config
@@ -95,9 +131,43 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.sql_migration_file,
         config.compose_file,
     ]
-    missing = [str(path) for path in required_files if not path.is_file()]
+    missing = [relative(path) for path in required_files if not path.is_file()]
     if missing:
         fatal("Project layout is incomplete. Missing files: " + ", ".join(missing))
+
+
+def read_int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    raw_value = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError:
+        fatal(f"Environment variable {name} must be an integer, got: {raw_value}")
+    if value < minimum:
+        fatal(f"Environment variable {name} must be >= {minimum}, got: {value}")
+    return value
+
+
+def hot_redis_services(prefix: str, env_key: str) -> list[str]:
+    count = read_int_env(env_key, 1)
+    services = [prefix]
+    for index in range(2, count + 1):
+        services.append(f"{prefix}-{index}")
+    return services
+
+
+def middleware_services() -> list[str]:
+    services = ["im-mysql", "im-redis"]
+    services.extend(hot_redis_services("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS"))
+    services.extend(hot_redis_services("im-redis-group-hot", "IM_GROUP_HOT_SHARDS"))
+    services.append("im-files-init")
+    return services
+
+
+def known_application_services(*, include_optional: bool = True) -> list[str]:
+    services = list(DEFAULT_APP_SERVICES)
+    if include_optional:
+        services.extend(OPTIONAL_APP_SERVICES)
+    return services
 
 
 def resolve_executable(name: str, candidates: Sequence[str]) -> str:
@@ -108,29 +178,30 @@ def resolve_executable(name: str, candidates: Sequence[str]) -> str:
     fatal(f"Executable not found: {name}")
 
 
-def resolve_docker_compose_command(docker_cmd: str) -> list[str]:
+@lru_cache(maxsize=4)
+def resolve_docker_compose_command(docker_cmd: str) -> tuple[str, ...]:
     result = run_command([docker_cmd, "compose", "version"], capture_output=True, check=False)
     if result.returncode == 0:
-        return [docker_cmd, "compose"]
+        return (docker_cmd, "compose")
     docker_compose = shutil.which("docker-compose")
     if docker_compose:
-        return [docker_compose]
+        return (docker_compose,)
     fatal("Docker Compose was not found. Install the Docker Compose plugin or docker-compose.")
 
 
 def ensure_docker_environment() -> None:
     docker_cmd = resolve_executable("Docker", ["docker"])
-    run_command([docker_cmd, "ps"], capture_output=True)
+    result = run_command([docker_cmd, "info"], capture_output=True, check=False)
+    if result.returncode != 0:
+        details = command_failure_details(result)
+        fatal("Docker is not reachable. Start Docker Desktop or the Docker daemon first." + details)
     resolve_docker_compose_command(docker_cmd)
 
 
 def compose_base_command(config: DeploymentConfig) -> list[str]:
     docker_cmd = resolve_executable("Docker", ["docker"])
-    compose_cmd = resolve_docker_compose_command(docker_cmd)
-    command = [*compose_cmd]
-    if config.env_file.is_file():
-        command.extend(["--env-file", str(config.env_file)])
-    command.extend(["-f", str(config.compose_file)])
+    compose_cmd = list(resolve_docker_compose_command(docker_cmd))
+    command = [*compose_cmd, "--env-file", str(config.env_file), "-f", str(config.compose_file)]
     return command
 
 
@@ -163,35 +234,117 @@ def run_command(
     stdin=None,
     capture_output: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    printable = " ".join(str(part) for part in command)
+) -> subprocess.CompletedProcess:
+    printable = format_command(command)
     print(f"$ {printable}")
-    completed = subprocess.run(
-        [str(part) for part in command],
-        cwd=str(cwd) if cwd else None,
-        stdin=stdin,
-        text=False if stdin is not None else True,
-        encoding=None if stdin is not None else "utf-8",
-        errors=None if stdin is not None else "replace",
-        capture_output=capture_output,
-    )
+    kwargs: dict[str, object] = {
+        "cwd": str(cwd) if cwd else None,
+        "stdin": stdin,
+        "capture_output": capture_output,
+    }
+    if stdin is None:
+        kwargs.update({"text": True, "encoding": "utf-8", "errors": "replace"})
+    else:
+        kwargs.update({"text": False})
+    completed = subprocess.run([str(part) for part in command], **kwargs)
     if check and completed.returncode != 0:
         details = command_failure_details(completed)
         fatal(f"Command failed with exit code {completed.returncode}: {printable}{details}")
     return completed
 
 
-def command_failure_details(completed: subprocess.CompletedProcess[str]) -> str:
+def command_failure_details(completed: subprocess.CompletedProcess) -> str:
     details: list[str] = []
     stdout = completed.stdout
     stderr = completed.stderr
+    if isinstance(stdout, bytes):
+        stdout = stdout.decode("utf-8", "replace")
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", "replace")
     if isinstance(stdout, str) and stdout.strip():
-        details.append("stdout:\n" + stdout.strip())
+        details.append("stdout:\n" + redact_text(stdout.strip()))
     if isinstance(stderr, str) and stderr.strip():
-        details.append("stderr:\n" + stderr.strip())
+        details.append("stderr:\n" + redact_text(stderr.strip()))
     if not details:
         return ""
     return "\n" + "\n".join(details)
+
+
+def format_command(command: Sequence[object]) -> str:
+    return " ".join(redact_command_part(str(part)) for part in command)
+
+
+def redact_command_part(value: str) -> str:
+    if value.startswith("-p") and len(value) > 2:
+        return "-p***"
+    if "=" in value:
+        key, _, raw_value = value.partition("=")
+        if is_sensitive_name(key) and raw_value:
+            return f"{key}=***"
+    return redact_text(value)
+
+
+def is_sensitive_name(name: str) -> bool:
+    upper_name = name.upper()
+    return any(marker in upper_name for marker in SENSITIVE_ENV_MARKERS)
+
+
+def sensitive_env_values() -> list[str]:
+    values: list[str] = []
+    for key, value in os.environ.items():
+        if is_sensitive_name(key) and len(value) >= 6:
+            values.append(value)
+    return sorted(set(values), key=len, reverse=True)
+
+
+def redact_text(text: str) -> str:
+    redacted = text
+    for value in sensitive_env_values():
+        redacted = redacted.replace(value, "***")
+    return redacted
+
+
+def compose_config_services(config: DeploymentConfig) -> list[str]:
+    result = run_command(
+        [*compose_base_command(config), "config", "--services"],
+        cwd=config.project_dir,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        fatal("Docker Compose configuration is invalid." + command_failure_details(result))
+    services = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not services:
+        fatal("Docker Compose configuration did not define any services.")
+    return services
+
+
+def validate_compose_services(config: DeploymentConfig, services: Sequence[str]) -> None:
+    available = set(compose_config_services(config))
+    missing = [service for service in services if service not in available]
+    if missing:
+        fatal(
+            "Services are not defined in docker-compose.yml: "
+            + ", ".join(missing)
+            + ". Available services: "
+            + ", ".join(sorted(available))
+        )
+
+
+def existing_compose_services(config: DeploymentConfig, services: Sequence[str]) -> list[str]:
+    available = set(compose_config_services(config))
+    return [service for service in services if service in available]
+
+
+def ensure_docker_network_exists(config: DeploymentConfig) -> None:
+    docker_cmd = resolve_executable("Docker", ["docker"])
+    result = run_command(
+        [docker_cmd, "network", "inspect", config.network_name],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        fatal(f"Docker network was not created: {config.network_name}")
 
 
 def compose_service_container(config: DeploymentConfig, service: str) -> str:
@@ -289,6 +442,28 @@ def print_service_statuses(statuses: Sequence[ServiceStatus]) -> None:
         print(f"  {status.service}: {marker} ({status.detail})")
 
 
+def service_recent_logs(config: DeploymentConfig, service: str, *, tail: int = 40) -> str:
+    result = run_command(
+        [*compose_base_command(config), "logs", "--tail", str(tail), service],
+        cwd=config.project_dir,
+        capture_output=True,
+        check=False,
+    )
+    parts: list[str] = []
+    if result.stdout:
+        parts.append(result.stdout.strip())
+    if result.stderr:
+        parts.append(result.stderr.strip())
+    return redact_text("\n".join(part for part in parts if part))
+
+
+def fail_service(config: DeploymentConfig, service: str, reason: str) -> NoReturn:
+    logs = service_recent_logs(config, service)
+    if logs:
+        fatal(f"{reason}\nRecent {service} logs:\n{logs}")
+    fatal(reason)
+
+
 def wait_for_service_ready(
     config: DeploymentConfig,
     service: str,
@@ -298,13 +473,7 @@ def wait_for_service_ready(
     prev_restart_count = -1
     consecutive_restarts = 0
     while time.time() < deadline:
-        result = run_command(
-            [*compose_base_command(config), "ps", "-q", service],
-            cwd=config.project_dir,
-            capture_output=True,
-            check=False,
-        )
-        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        container_id = compose_service_container_id(config, service)
         if not container_id:
             time.sleep(2)
             continue
@@ -313,7 +482,7 @@ def wait_for_service_ready(
         status = state.get("Status")
         health_status = (state.get("Health") or {}).get("Status")
         if status in {"exited", "dead"}:
-            fatal(f"Container failed to start: {service}")
+            fail_service(config, service, f"Container failed to start: {service}")
         if status == "restarting":
             restart_count = state.get("RestartCount", 0)
             if restart_count == prev_restart_count:
@@ -322,12 +491,10 @@ def wait_for_service_ready(
                 consecutive_restarts = 1
                 prev_restart_count = restart_count
             if consecutive_restarts >= 5:
-                logs_cmd = [*compose_base_command(config), "logs", "--tail", "10", service]
-                logs_result = run_command(logs_cmd, cwd=config.project_dir, capture_output=True, check=False)
-                log_tail = logs_result.stdout.strip() if logs_result.stdout else ""
-                fatal(
-                    f"Container {service} is stuck in a restart loop (restart count: {restart_count}).\n"
-                    f"Recent logs:\n{log_tail}"
+                fail_service(
+                    config,
+                    service,
+                    f"Container {service} is stuck in a restart loop (restart count: {restart_count}).",
                 )
             time.sleep(2)
             continue
@@ -337,7 +504,7 @@ def wait_for_service_ready(
             print(f"Service is ready: {service}")
             return
         time.sleep(2)
-    fatal(f"Timed out waiting for service: {service}")
+    fail_service(config, service, f"Timed out waiting for service: {service}")
 
 
 def wait_for_service_completed(
@@ -347,13 +514,7 @@ def wait_for_service_completed(
 ) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        result = run_command(
-            [*compose_base_command(config), "ps", "-a", "-q", service],
-            cwd=config.project_dir,
-            capture_output=True,
-            check=False,
-        )
-        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        container_id = compose_service_container_id(config, service)
         if not container_id:
             time.sleep(2)
             continue
@@ -364,6 +525,26 @@ def wait_for_service_completed(
             print(f"Service completed: {service}")
             return
         if status in {"exited", "dead"}:
-            fatal(f"Service failed: {service}")
+            fail_service(config, service, f"Service failed: {service}")
         time.sleep(2)
-    fatal(f"Timed out waiting for service completion: {service}")
+    fail_service(config, service, f"Timed out waiting for service completion: {service}")
+
+
+def print_compose_status(config: DeploymentConfig) -> None:
+    result = run_command(
+        [*compose_base_command(config), "ps"],
+        cwd=config.project_dir,
+        capture_output=True,
+        check=False,
+    )
+    if result.stdout.strip():
+        print(redact_text(result.stdout.strip()))
+    if result.stderr.strip():
+        print(redact_text(result.stderr.strip()), file=sys.stderr)
+
+
+def relative(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return str(path)

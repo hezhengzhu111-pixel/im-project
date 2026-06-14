@@ -6,15 +6,22 @@ import os
 from urllib.parse import quote_plus
 
 from deploy_utils import (
+    DEFAULT_APP_SERVICES,
+    ONE_SHOT_SERVICES,
+    OPTIONAL_APP_SERVICES,
+    DeploymentConfig,
     compose_service_container,
     compose_up_command,
     ensure_docker_environment,
     fatal,
     load_config,
+    middleware_services,
     print_service_statuses,
+    read_int_env,
     resolve_executable,
     run_command,
     service_status,
+    validate_compose_services,
     wait_for_service_completed,
     wait_for_service_ready,
 )
@@ -22,48 +29,52 @@ from deploy_utils import (
 SERVICE_ALIASES = {
     "api": "im-api-server",
     "api-server": "im-api-server",
+    "gateway": "im-api-server",
     "im": "im-server",
     "im-server": "im-server",
+    "chat": "im-server",
     "frontend": "im-frontend",
-    # "ai": "im-spring-ai",          # 暂时禁用
-    # "spring-ai": "im-spring-ai",   # 暂时禁用
+    "front": "im-frontend",
+    "web": "im-frontend",
+    "ai": "im-spring-ai",
+    "spring-ai": "im-spring-ai",
+    "im-spring-ai": "im-spring-ai",
 }
-
-APP_SERVICES = ["im-server", "im-api-server", "im-frontend"]  # im-spring-ai 暂时移除
+SERVICE_GROUPS = {
+    "all": list(DEFAULT_APP_SERVICES),
+    "backend": ["im-server", "im-api-server"],
+    "core": ["im-server", "im-api-server"],
+}
+APP_SERVICES = list(DEFAULT_APP_SERVICES)
 
 
 def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
-    count = int(os.getenv(env_key, "4"))
+    count = read_int_env(env_key, 1)
     encoded_pw = quote_plus(password)
     urls = []
-    for i in range(1, count + 1):
-        suffix = f"-{i}" if i > 1 else ""
+    for index in range(1, count + 1):
+        suffix = f"-{index}" if index > 1 else ""
         urls.append(f"redis://:{encoded_pw}@{host_prefix}{suffix}:6379/0")
     return ",".join(urls)
 
 
-def middleware_services() -> list[str]:
-    services = ["im-mysql", "im-redis"]
-    count = int(os.getenv("IM_PRIVATE_HOT_SHARDS", "4"))
-    services.append("im-redis-private-hot")
-    for i in range(2, count + 1):
-        services.append(f"im-redis-private-hot-{i}")
-    count = int(os.getenv("IM_GROUP_HOT_SHARDS", "4"))
-    services.append("im-redis-group-hot")
-    for i in range(2, count + 1):
-        services.append(f"im-redis-group-hot-{i}")
-    services.append("im-files-init")
-    return services
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Deploy Docker-built Rust backend services, Spring AI, and the Flutter frontend."
+        description="Deploy Docker-built Rust backend services, optional Spring AI, and the Flutter frontend."
     )
     parser.add_argument(
         "services",
         nargs="*",
-        help="Optional services: api im frontend ai. Empty means all application services.",
+        help=(
+            "Optional targets: all, backend, api, im, frontend, ai. "
+            "Empty means core app services without ai."
+        ),
+    )
+    parser.add_argument("--env-file", help="Path to the deployment env file. Defaults to .env.")
+    parser.add_argument(
+        "--include-ai",
+        action="store_true",
+        help="Include im-spring-ai when no explicit service target is provided.",
     )
     parser.add_argument(
         "--no-build",
@@ -74,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-deps",
         action="store_true",
-        help="Compatibility option. Service deployment already skips dependent middleware by default.",
+        help="Compatibility option. Service deployment skips dependent middleware by default.",
     )
     parser.add_argument(
         "--with-deps",
@@ -87,32 +98,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip MySQL and Redis readiness checks before service deployment.",
     )
     parser.add_argument(
+        "--skip-migrations",
+        action="store_true",
+        help="Skip sql/mysql8/e2ee_migration.sql before api-server deployment.",
+    )
+    parser.add_argument(
         "--no-wait",
         action="store_true",
         help="Do not wait for application services to become ready after startup.",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=240,
+        help="Seconds to wait for each application service.",
+    )
     return parser
 
 
-def normalize_services(raw_services: list[str]) -> list[str]:
+def normalize_services(raw_services: list[str], *, include_ai: bool = False) -> list[str]:
     if not raw_services:
-        return APP_SERVICES
+        services = list(DEFAULT_APP_SERVICES)
+        if include_ai:
+            services.extend(OPTIONAL_APP_SERVICES)
+        return services
+
     services: list[str] = []
     for raw in raw_services:
         key = raw.strip().lower()
-        service = SERVICE_ALIASES.get(key, raw)
-        if service not in APP_SERVICES:
-            raise SystemExit(f"Unknown service: {raw}")
-        if service not in services:
-            services.append(service)
+        if key in SERVICE_GROUPS:
+            targets = list(SERVICE_GROUPS[key])
+            if key == "all" and include_ai:
+                targets.extend(OPTIONAL_APP_SERVICES)
+        else:
+            targets = [SERVICE_ALIASES.get(key, raw)]
+        for service in targets:
+            if service not in (*DEFAULT_APP_SERVICES, *OPTIONAL_APP_SERVICES):
+                raise SystemExit(f"Unknown service: {raw}")
+            if service not in services:
+                services.append(service)
     return services
 
 
-def ensure_middleware_ready(config) -> None:
-    one_shot_services = {"im-files-init"}
+def ensure_middleware_ready(config: DeploymentConfig, *, timeout_seconds: int = 180) -> None:
+    services = middleware_services()
+    validate_compose_services(config, services)
     statuses = [
-        service_status(config, service, one_shot=service in one_shot_services)
-        for service in middleware_services()
+        service_status(config, service, one_shot=service in ONE_SHOT_SERVICES)
+        for service in services
     ]
     print_service_statuses(statuses)
     missing = [status.service for status in statuses if status.status == "missing"]
@@ -123,13 +156,13 @@ def ensure_middleware_ready(config) -> None:
             + ". Run scripts/deploy_middleware.py first."
         )
     for status in statuses:
-        if status.service in one_shot_services:
-            wait_for_service_completed(config, status.service)
+        if status.service in ONE_SHOT_SERVICES:
+            wait_for_service_completed(config, status.service, timeout_seconds=min(timeout_seconds, 120))
         else:
-            wait_for_service_ready(config, status.service)
+            wait_for_service_ready(config, status.service, timeout_seconds=timeout_seconds)
 
 
-def apply_database_migrations(config) -> None:
+def apply_database_migrations(config: DeploymentConfig) -> None:
     docker_cmd = resolve_executable("Docker", ["docker"])
     mysql_container = compose_service_container(config, "im-mysql")
     print(f"Applying database migrations: {config.sql_migration_file}")
@@ -149,38 +182,70 @@ def apply_database_migrations(config) -> None:
         )
 
 
-def main() -> None:
-    args = build_parser().parse_args()
-    ensure_docker_environment()
-    config = load_config()
-    services = normalize_services(args.services)
-
-    # Generate dynamic Redis URLs for api-server
+def configure_dynamic_redis_urls() -> None:
     password = os.getenv("REDIS_PASSWORD", "root123")
-    os.environ.setdefault("IM_PRIVATE_HOT_REDIS_URLS",
-                          _hot_urls("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS", password))
-    os.environ.setdefault("IM_GROUP_HOT_REDIS_URLS",
-                          _hot_urls("im-redis-group-hot", "IM_GROUP_HOT_SHARDS", password))
+    os.environ.setdefault(
+        "IM_PRIVATE_HOT_REDIS_URLS",
+        _hot_urls("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS", password),
+    )
+    os.environ.setdefault(
+        "IM_GROUP_HOT_REDIS_URLS",
+        _hot_urls("im-redis-group-hot", "IM_GROUP_HOT_SHARDS", password),
+    )
 
-    if not args.skip_middleware_check:
-        ensure_middleware_ready(config)
 
-    if "im-api-server" in services:
+def deploy_services(
+    config: DeploymentConfig,
+    services: list[str],
+    *,
+    no_build: bool = False,
+    pull: bool = False,
+    no_deps: bool = True,
+    skip_middleware_check: bool = False,
+    skip_migrations: bool = False,
+    no_wait: bool = False,
+    timeout_seconds: int = 240,
+) -> None:
+    validate_compose_services(config, services)
+    configure_dynamic_redis_urls()
+
+    if not skip_middleware_check:
+        ensure_middleware_ready(config, timeout_seconds=timeout_seconds)
+
+    if "im-api-server" in services and not skip_migrations:
         apply_database_migrations(config)
 
     command = compose_up_command(
         config,
         services,
-        build=not args.no_build,
+        build=not no_build,
+        pull=pull,
+        no_deps=no_deps,
+    )
+    run_command(command, cwd=config.project_dir)
+
+    if not no_wait:
+        for service in services:
+            wait_for_service_ready(config, service, timeout_seconds=timeout_seconds)
+    print("Deployment complete: " + ", ".join(services))
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    ensure_docker_environment()
+    config = load_config(env_file=args.env_file)
+    services = normalize_services(args.services, include_ai=args.include_ai)
+    deploy_services(
+        config,
+        services,
+        no_build=args.no_build,
         pull=args.pull,
         no_deps=not args.with_deps or args.no_deps,
+        skip_middleware_check=args.skip_middleware_check,
+        skip_migrations=args.skip_migrations,
+        no_wait=args.no_wait,
+        timeout_seconds=args.timeout,
     )
-
-    run_command(command, cwd=config.project_dir)
-    if not args.no_wait:
-        for service in services:
-            wait_for_service_ready(config, service)
-    print("Deployment complete: " + ", ".join(services))
 
 
 if __name__ == "__main__":
