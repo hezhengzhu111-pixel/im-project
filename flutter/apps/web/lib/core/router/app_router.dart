@@ -18,6 +18,7 @@ import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
 import 'package:im_web/features/settings/presentation/profile_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
 import 'package:im_web/features/debug/presentation/component_gallery_page.dart';
+import 'package:im_web/features/debug/presentation/wechat_chat_preview_page.dart';
 import 'package:im_web/features/auth/domain/auth_status.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
@@ -88,6 +89,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(
           path: '/debug/gallery',
           builder: (context, state) => const ComponentGalleryPage(),
+        ),
+      if (kDebugMode)
+        GoRoute(
+          path: '/debug/wechat-chat-preview',
+          builder: (context, state) => const WechatChatPreviewPage(),
         ),
       ShellRoute(
         builder: (context, state, child) {
