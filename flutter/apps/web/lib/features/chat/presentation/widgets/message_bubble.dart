@@ -22,15 +22,22 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxWidth =
-        (MediaQuery.of(context).size.width * 0.58).clamp(260, 560).toDouble();
+    final viewportWidth = MediaQuery.of(context).size.width;
+    final isCompact = viewportWidth < ImTokens.breakpointMobile;
+    final horizontalMargin = isCompact ? 10.0 : 16.0;
+    final maxWidth = isCompact
+        ? (viewportWidth - horizontalMargin * 2).clamp(180.0, 560.0)
+        : (viewportWidth * 0.58).clamp(260.0, 560.0);
     final senderLabel = _senderLabel;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 16),
+        margin: EdgeInsets.symmetric(
+          vertical: 5,
+          horizontal: horizontalMargin,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +264,7 @@ class _MediaProtectionLabel extends StatelessWidget {
             Text(
               'Media not E2EE',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: ImTokens.wechatTextSecondary,
                 fontWeight: FontWeight.w500,
                 fontSize: 11,
               ),
@@ -369,7 +376,7 @@ class _Arrow extends StatelessWidget {
       size: const Size(7, 10),
       painter: _ArrowPainter(
         color: color,
-        borderColor: isMe ? null : Theme.of(context).dividerColor,
+        borderColor: isMe ? null : ImTokens.wechatDivider,
         isMe: isMe,
       ),
     );

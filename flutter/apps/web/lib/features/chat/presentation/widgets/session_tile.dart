@@ -103,7 +103,7 @@ class _SessionTileState extends State<SessionTile> {
                               Icon(
                                 Icons.push_pin,
                                 size: 13,
-                                color: theme.colorScheme.onSurfaceVariant,
+                                color: ImTokens.wechatTextSecondary,
                               ),
                             ],
                             if (isMuted) ...[
@@ -111,10 +111,11 @@ class _SessionTileState extends State<SessionTile> {
                               Icon(
                                 Icons.volume_off,
                                 size: 14,
-                                color: theme.colorScheme.onSurfaceVariant,
+                                color: ImTokens.wechatTextSecondary,
                               ),
                             ],
-                            if (widget.session.lastMessageTime != null)
+                            if (widget.session.lastMessageTime != null) ...[
+                              const SizedBox(width: 8),
                               Text(
                                 _formatTime(widget.session.lastMessageTime!),
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -122,6 +123,7 @@ class _SessionTileState extends State<SessionTile> {
                                   fontSize: 12,
                                 ),
                               ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 6),

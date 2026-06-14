@@ -547,8 +547,8 @@ class _InputIconButton extends StatelessWidget {
       tooltip: tooltip,
       color: color ?? ImTokens.wechatIcon,
       style: ButtonStyle(
-        minimumSize: WidgetStateProperty.all(const Size(36, 36)),
-        fixedSize: WidgetStateProperty.all(const Size(36, 36)),
+        minimumSize: WidgetStateProperty.all(const Size(42, 42)),
+        fixedSize: WidgetStateProperty.all(const Size(42, 42)),
         padding: WidgetStateProperty.all(EdgeInsets.zero),
         foregroundColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.disabled)) {
