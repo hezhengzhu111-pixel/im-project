@@ -25,7 +25,7 @@ class SegmentedControl<T> extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: ImTokens.wechatSearchBg,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(

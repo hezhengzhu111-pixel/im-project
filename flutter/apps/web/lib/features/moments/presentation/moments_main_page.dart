@@ -74,55 +74,58 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
   Widget build(BuildContext context) {
     final showSidebar = context.isLarge;
 
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Expanded(
-            child: GlassPanel(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              child: Column(
-                children: [
-                  MomentsTopbar(
-                    scrollProgress: _scrollProgress,
-                    onComposeTap: _openComposer,
-                  ),
-                  Expanded(
-                    child: CustomScrollView(
-                      controller: _scrollController,
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Builder(
-                            builder: (context) {
-                              final user = ref.watch(authStateProvider).user;
-                              return MomentsCover(
-                                nickname: user?.nickname ??
-                                    user?.username ??
-                                    AppLocalizations.of(context)!
-                                        .momentsUserFallback,
-                                avatar: user?.avatar,
-                              );
-                            },
-                          ),
-                        ),
-                        SliverFillRemaining(
-                          child: MomentsFeedPage(postId: widget.postId),
-                        ),
-                      ],
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: GlassPanel(
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                child: Column(
+                  children: [
+                    MomentsTopbar(
+                      scrollProgress: _scrollProgress,
+                      onComposeTap: _openComposer,
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: CustomScrollView(
+                        controller: _scrollController,
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: Builder(
+                              builder: (context) {
+                                final user = ref.watch(authStateProvider).user;
+                                return MomentsCover(
+                                  nickname: user?.nickname ??
+                                      user?.username ??
+                                      AppLocalizations.of(context)!
+                                          .momentsUserFallback,
+                                  avatar: user?.avatar,
+                                );
+                              },
+                            ),
+                          ),
+                          SliverFillRemaining(
+                            child: MomentsFeedPage(postId: widget.postId),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (showSidebar) ...[
-            const SizedBox(width: 18),
-            SizedBox(
-              width: 304,
-              child: MomentsSidebar(onComposeTap: _openComposer),
-            ),
+            if (showSidebar) ...[
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 304,
+                child: MomentsSidebar(onComposeTap: _openComposer),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

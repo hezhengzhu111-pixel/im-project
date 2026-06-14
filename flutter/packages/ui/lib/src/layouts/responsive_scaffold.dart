@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/im_tokens.dart';
+import '../widgets/glass_app_components.dart';
 import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
 
@@ -45,9 +46,8 @@ class ResponsiveScaffold extends StatelessWidget {
   }
 
   Widget _buildDesktop(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      backgroundColor: ImTokens.wechatPageBg,
       body: Row(
         children: [
           _DesktopNavRail(
@@ -72,7 +72,9 @@ class ResponsiveScaffold extends StatelessWidget {
   Widget _buildMobile(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      backgroundColor: theme.brightness == Brightness.light
+          ? ImTokens.wechatPageBg
+          : theme.colorScheme.surfaceContainerHighest,
       appBar: header != null
           ? PreferredSize(
               preferredSize: const Size.fromHeight(56),
@@ -88,18 +90,21 @@ class ResponsiveScaffold extends StatelessWidget {
           color: theme.colorScheme.surface,
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
-        child: NavigationBar(
-          selectedIndex: selectedIndex,
-          onDestinationSelected: onDestinationSelected,
-          destinations: destinations
-              .map(
-                (d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon ?? d.icon),
-                  label: d.label,
-                ),
-              )
-              .toList(),
+        child: SafeArea(
+          top: false,
+          child: NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onDestinationSelected,
+            destinations: destinations
+                .map(
+                  (d) => NavigationDestination(
+                    icon: Icon(d.icon),
+                    selectedIcon: Icon(d.selectedIcon ?? d.icon),
+                    label: d.label,
+                  ),
+                )
+                .toList(),
+          ),
         ),
       ),
       floatingActionButton: floatingActionButton,
@@ -148,11 +153,11 @@ class _DesktopNavRail extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             for (var i = 0; i < destinations.length; i++)
-              _DesktopNavButton(
+              FlatLineIconButton(
                 icon: i == selectedIndex
                     ? destinations[i].selectedIcon ?? destinations[i].icon
                     : destinations[i].icon,
-                label: destinations[i].label,
+                tooltip: destinations[i].label,
                 selected: i == selectedIndex,
                 onPressed: () => onDestinationSelected(i),
               ),
@@ -162,46 +167,6 @@ class _DesktopNavRail extends StatelessWidget {
               const SizedBox(height: 12),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DesktopNavButton extends StatelessWidget {
-  const _DesktopNavButton({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? ImTokens.wechatGreen : const Color(0xFF9A9A9A);
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: onPressed,
-        child: Container(
-          width: 64,
-          height: 58,
-          decoration: BoxDecoration(
-            border: selected
-                ? const Border(
-                    left: BorderSide(
-                      color: ImTokens.wechatGreen,
-                      width: 3,
-                    ),
-                  )
-                : null,
-          ),
-          child: Icon(icon, color: color, size: 25),
         ),
       ),
     );

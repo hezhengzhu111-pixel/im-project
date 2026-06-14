@@ -114,7 +114,7 @@ class ImButton extends StatelessWidget {
       ),
       shape: WidgetStateProperty.all(
         RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
       ),
       backgroundColor: _backgroundColor(colors),

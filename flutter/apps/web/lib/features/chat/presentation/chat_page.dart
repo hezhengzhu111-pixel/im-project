@@ -185,38 +185,41 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       },
       child: Focus(
         autofocus: true,
-        child: AdaptivePane(
-          compact: activeId != null
-              ? _buildChatView(activeId, loc)
-              : _buildSessionList(sessions, activeId, loc),
-          medium: activeId != null
-              ? _buildChatView(activeId, loc)
-              : _buildSessionList(sessions, activeId, loc),
-          expanded: Row(
-            children: [
-              Container(
-                width: context.breakpoint
-                    .value(
-                      compact: 0,
-                      medium: 0,
-                      expanded: ImTokens.layoutChatSidebarWidth,
-                      large: ImTokens.layoutChatSidebarWidth,
-                    )
-                    .toDouble(),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    right: BorderSide(color: Theme.of(context).dividerColor),
+        child: ColoredBox(
+          color: ImTokens.wechatPageBg,
+          child: AdaptivePane(
+            compact: activeId != null
+                ? _buildChatView(activeId, loc)
+                : _buildSessionList(sessions, activeId, loc),
+            medium: activeId != null
+                ? _buildChatView(activeId, loc)
+                : _buildSessionList(sessions, activeId, loc),
+            expanded: Row(
+              children: [
+                Container(
+                  width: context.breakpoint
+                      .value(
+                        compact: 0,
+                        medium: 0,
+                        expanded: ImTokens.layoutChatSidebarWidth,
+                        large: ImTokens.layoutChatSidebarWidth,
+                      )
+                      .toDouble(),
+                  decoration: BoxDecoration(
+                    color: ImTokens.wechatPanelBg,
+                    border: Border(
+                      right: BorderSide(color: Theme.of(context).dividerColor),
+                    ),
                   ),
+                  child: _buildSessionList(sessions, activeId, loc),
                 ),
-                child: _buildSessionList(sessions, activeId, loc),
-              ),
-              Expanded(
-                child: activeId == null
-                    ? Center(child: Text(loc.chatSelectSession))
-                    : _buildChatView(activeId, loc),
-              ),
-            ],
+                Expanded(
+                  child: activeId == null
+                      ? _ChatEmptyState(message: loc.chatSelectSession)
+                      : _buildChatView(activeId, loc),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -227,84 +230,96 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       List<ChatSession> sessions, String? activeId, AppLocalizations loc) {
     final chatState = ref.watch(chatStateProvider);
 
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            border: Border(
-              bottom: BorderSide(color: Theme.of(context).dividerColor),
+    return ColoredBox(
+      color: ImTokens.wechatPanelBg,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            decoration: BoxDecoration(
+              color: ImTokens.wechatPanelBg,
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        loc.navChat,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.person_add_alt_1, size: 20),
+                      tooltip: loc.contactsAddFriend,
+                      onPressed: () => context.go('/contacts/add'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _searchController,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: ImTokens.wechatTextPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: loc.chatSearchHint,
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 18,
+                      color: ImTokens.wechatTextSecondary,
+                    ),
+                    filled: true,
+                    fillColor: ImTokens.wechatSearchBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    isDense: true,
+                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              ],
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      loc.navChat,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+          Expanded(
+            child: chatState.isLoading && sessions.isEmpty
+                ? const _SessionListSkeleton()
+                : sessions.isEmpty && chatState.error != null
+                    ? _SessionListError(
+                        message: loc.loadingFailed(chatState.error!),
+                        onRetry: () =>
+                            ref.read(chatStateProvider.notifier).loadSessions(),
+                      )
+                    : sessions.isEmpty
+                        ? _SessionEmptyState(message: loc.chatNoSessions)
+                        : ListView.builder(
+                            padding: EdgeInsets.zero,
+                            itemCount: sessions.length,
+                            itemBuilder: (context, index) {
+                              final session = sessions[index];
+                              return SessionTile(
+                                session: session,
+                                isSelected: session.id == activeId,
+                                onTap: () => _selectSession(session),
+                              );
+                            },
                           ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.person_add_alt_1, size: 20),
-                    tooltip: loc.contactsAddFriend,
-                    onPressed: () => context.go('/contacts/add'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _searchController,
-                style: const TextStyle(fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: loc.chatSearchHint,
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  filled: true,
-                  fillColor:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  isDense: true,
-                ),
-                onChanged: (v) => setState(() => _searchQuery = v),
-              ),
-            ],
           ),
-        ),
-        Expanded(
-          child: chatState.isLoading && sessions.isEmpty
-              ? const _SessionListSkeleton()
-              : sessions.isEmpty && chatState.error != null
-                  ? _SessionListError(
-                      message: loc.loadingFailed(chatState.error!),
-                      onRetry: () =>
-                          ref.read(chatStateProvider.notifier).loadSessions(),
-                    )
-                  : sessions.isEmpty
-                      ? Center(child: Text(loc.chatNoSessions))
-                      : ListView.builder(
-                          itemCount: sessions.length,
-                          itemBuilder: (context, index) {
-                            final session = sessions[index];
-                            return SessionTile(
-                              session: session,
-                              isSelected: session.id == activeId,
-                              onTap: () => _selectSession(session),
-                            );
-                          },
-                        ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -453,7 +468,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             .pendingNegotiationForSession(session.id);
 
     return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: ImTokens.wechatPageBg,
       child: Column(
         children: [
           // Network status banner
@@ -525,10 +540,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           // Messages
           Expanded(
             child: messages.isEmpty
-                ? Center(child: Text(loc.noData))
+                ? _ChatEmptyState(message: loc.noData)
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                      vertical: 12,
+                    ),
                     itemCount: messages.length + 1,
                     itemBuilder: (context, index) {
                       if (index == 0) {
@@ -663,8 +681,7 @@ class _SessionListSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.10);
+    final color = ImTokens.wechatTextSecondary.withValues(alpha: 0.12);
     return ListView.builder(
       itemCount: 7,
       itemBuilder: (context, index) {
@@ -672,7 +689,9 @@ class _SessionListSkeleton extends StatelessWidget {
           height: 72,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: theme.dividerColor)),
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).dividerColor),
+            ),
           ),
           child: Row(
             children: [
@@ -721,6 +740,46 @@ class _SessionListSkeleton extends StatelessWidget {
   }
 }
 
+class _SessionEmptyState extends StatelessWidget {
+  const _SessionEmptyState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: ImTokens.wechatTextSecondary,
+            ),
+      ),
+    );
+  }
+}
+
+class _ChatEmptyState extends StatelessWidget {
+  const _ChatEmptyState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Center(
+        child: Text(
+          message,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ImTokens.wechatTextSecondary,
+                fontSize: 14,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SessionListError extends StatelessWidget {
   const _SessionListError({
     required this.message,
@@ -740,20 +799,15 @@ class _SessionListError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.wifi_off,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 10),
             Text(
               message,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: ImTokens.wechatTextSecondary,
               ),
             ),
             const SizedBox(height: 14),
-            FilledButton.tonalIcon(
+            TextButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: Text(loc.retry),
@@ -800,15 +854,13 @@ class _GlassChatHeader extends StatelessWidget {
             E2eeSessionStatus.plaintext => loc.e2eePlaintext,
           };
 
-    final theme = Theme.of(context);
-
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: ImTokens.wechatPanelBg,
         border: Border(
-          bottom: BorderSide(color: theme.dividerColor),
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
         ),
       ),
       child: Row(
@@ -820,7 +872,7 @@ class _GlassChatHeader extends StatelessWidget {
             ),
           CircleAvatar(
             radius: 18,
-            backgroundColor: const Color(0xFFD9D9D9),
+            backgroundColor: ImTokens.wechatAvatarBg,
             backgroundImage: session.targetAvatar != null
                 ? NetworkImage(session.targetAvatar!)
                 : null,
@@ -844,18 +896,21 @@ class _GlassChatHeader extends StatelessWidget {
                   sessionName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: ImTokens.wechatTextPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: ImTokens.wechatTextSecondary,
+                        fontSize: 12,
+                      ),
                 ),
               ],
             ),

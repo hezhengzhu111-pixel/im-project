@@ -54,37 +54,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final loc = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     if (context.isMobile) {
-      return _buildMobileLayout(loc, theme, settings, authState);
+      return ColoredBox(
+        color: ImTokens.wechatPageBg,
+        child: _buildMobileLayout(loc, theme, settings, authState),
+      );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SettingsNavPanel(
-            selectedIndex: _selectedIndex,
-            onItemSelected: _onNavItemSelected,
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: GlassPanel(
-              padding: const EdgeInsets.all(24),
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) =>
-                    setState(() => _selectedIndex = index),
-                children: [
-                  _buildAccountPage(loc, theme, authState),
-                  _buildAppearancePage(loc, theme, settings),
-                  _buildNotificationPage(loc, theme, settings),
-                  _buildSecurityPage(loc, theme, settings),
-                  _buildAISettingsPage(loc, theme),
-                ],
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SettingsNavPanel(
+              selectedIndex: _selectedIndex,
+              onItemSelected: _onNavItemSelected,
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: GlassPanel(
+                padding: const EdgeInsets.all(24),
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (index) =>
+                      setState(() => _selectedIndex = index),
+                  children: [
+                    _buildAccountPage(loc, theme, authState),
+                    _buildAppearancePage(loc, theme, settings),
+                    _buildNotificationPage(loc, theme, settings),
+                    _buildSecurityPage(loc, theme, settings),
+                    _buildAISettingsPage(loc, theme),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -641,15 +647,7 @@ class _SolidActionChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isDestructive ? const Color(0xFFF44336) : imGlassBrand,
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
-          boxShadow: [
-            BoxShadow(
-              color: (isDestructive ? const Color(0xFFF44336) : imGlassBrand)
-                  .withValues(alpha: 0.22),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
         child: Text(
           label,

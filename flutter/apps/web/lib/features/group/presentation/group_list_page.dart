@@ -31,137 +31,145 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
     final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          SizedBox(
-            width: context.isCompact ? 0 : 304,
-            child: context.isCompact
-                ? const SizedBox.shrink()
-                : GlassPanel(
-                    child: _GroupListPanel(
-                      groups: groupState.groups,
-                      isLoading: groupState.isLoading,
-                      onGroupTap: _openGroupChat,
-                    ),
-                  ),
-          ),
-          if (!context.isCompact) const SizedBox(width: 18),
-          Expanded(
-            child: GlassPanel(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        loc.navGroups,
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.search_outlined),
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (_) => const JoinGroupDialog(),
-                        ),
-                        tooltip: loc.joinGroupTooltip,
-                      ),
-                      PrimarySolidButton(
-                        label: loc.groupCreateTooltip,
-                        icon: Icons.add,
-                        compact: true,
-                        onPressed: () => context.push('/groups/create'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Expanded(
-                    child: groupState.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : groupState.groups.isEmpty
-                            ? _GroupEmptyState(message: loc.groupNoGroups)
-                            : context.isCompact
-                                ? _GroupListPanel(
-                                    groups: groupState.groups,
-                                    isLoading: false,
-                                    onGroupTap: _openGroupChat,
-                                  )
-                                : _GroupDetailPlaceholder(
-                                    count: groupState.groups.length,
-                                  ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (context.isLarge) ...[
-            const SizedBox(width: 18),
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
             SizedBox(
-              width: 304,
+              width: context.isCompact ? 0 : 304,
+              child: context.isCompact
+                  ? const SizedBox.shrink()
+                  : GlassPanel(
+                      child: _GroupListPanel(
+                        groups: groupState.groups,
+                        isLoading: groupState.isLoading,
+                        onGroupTap: _openGroupChat,
+                      ),
+                    ),
+            ),
+            if (!context.isCompact) const SizedBox(width: 18),
+            Expanded(
               child: GlassPanel(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '今日概览',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
+                    Row(
+                      children: [
+                        Text(
+                          loc.navGroups,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.search_outlined),
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => const JoinGroupDialog(),
                           ),
-                    ),
-                    const SizedBox(height: 16),
-                    _GroupStatCard(
-                      label: loc.navGroups,
-                      value: '${groupState.groups.length}',
+                          tooltip: loc.joinGroupTooltip,
+                        ),
+                        PrimarySolidButton(
+                          label: loc.groupCreateTooltip,
+                          icon: Icons.add,
+                          compact: true,
+                          onPressed: () => context.push('/groups/create'),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 18),
-                    Text(
-                      '最近互动',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
                     Expanded(
-                      child: groupState.groups.isEmpty
-                          ? Center(child: Text(loc.groupNoGroups))
-                          : ListView(
-                              children: groupState.groups.take(6).map((group) {
-                                return ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: CircleAvatar(
-                                    backgroundImage: group.avatar != null
-                                        ? NetworkImage(group.avatar!)
-                                        : null,
-                                    child: group.avatar == null
-                                        ? Text(group.name.isNotEmpty
-                                            ? group.name[0]
-                                            : '?')
-                                        : null,
-                                  ),
-                                  title: Text(
-                                    group.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle:
-                                      Text('${group.memberCount ?? 0} members'),
-                                );
-                              }).toList(),
-                            ),
+                      child: groupState.isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : groupState.groups.isEmpty
+                              ? _GroupEmptyState(message: loc.groupNoGroups)
+                              : context.isCompact
+                                  ? _GroupListPanel(
+                                      groups: groupState.groups,
+                                      isLoading: false,
+                                      onGroupTap: _openGroupChat,
+                                    )
+                                  : _GroupDetailPlaceholder(
+                                      count: groupState.groups.length,
+                                    ),
                     ),
                   ],
                 ),
               ),
             ),
+            if (context.isLarge) ...[
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 304,
+                child: GlassPanel(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '今日概览',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                      ),
+                      const SizedBox(height: 16),
+                      _GroupStatCard(
+                        label: loc.navGroups,
+                        value: '${groupState.groups.length}',
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        '最近互动',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: groupState.groups.isEmpty
+                            ? Center(child: Text(loc.groupNoGroups))
+                            : ListView(
+                                children:
+                                    groupState.groups.take(6).map((group) {
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: CircleAvatar(
+                                      backgroundImage: group.avatar != null
+                                          ? NetworkImage(group.avatar!)
+                                          : null,
+                                      child: group.avatar == null
+                                          ? Text(group.name.isNotEmpty
+                                              ? group.name[0]
+                                              : '?')
+                                          : null,
+                                    ),
+                                    title: Text(
+                                      group.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                        '${group.memberCount ?? 0} members'),
+                                  );
+                                }).toList(),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

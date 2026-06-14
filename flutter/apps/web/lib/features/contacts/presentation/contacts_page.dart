@@ -61,37 +61,40 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 304,
-            child: GlassPanel(child: _buildListPanel(contactsState, loc)),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: GlassPanel(
-              padding: const EdgeInsets.all(24),
-              child: _ContactDetailPanel(
-                friend: selectedFriend,
-                onEditRemark: selectedFriend == null
-                    ? null
-                    : () => _showRemarkDialog(selectedFriend),
-                onMessage: selectedFriend == null
-                    ? null
-                    : () => _openChatWithFriend(selectedFriend),
-              ),
-            ),
-          ),
-          if (context.isLarge) ...[
-            const SizedBox(width: 18),
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
             SizedBox(
               width: 304,
-              child: _ContactsRightPanel(state: contactsState),
+              child: GlassPanel(child: _buildListPanel(contactsState, loc)),
             ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: GlassPanel(
+                padding: const EdgeInsets.all(24),
+                child: _ContactDetailPanel(
+                  friend: selectedFriend,
+                  onEditRemark: selectedFriend == null
+                      ? null
+                      : () => _showRemarkDialog(selectedFriend),
+                  onMessage: selectedFriend == null
+                      ? null
+                      : () => _openChatWithFriend(selectedFriend),
+                ),
+              ),
+            ),
+            if (context.isLarge) ...[
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 304,
+                child: _ContactsRightPanel(state: contactsState),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -747,7 +750,9 @@ class _DisabledAction extends StatelessWidget {
       icon: Icon(icon, size: 18),
       label: Text(label),
       style: OutlinedButton.styleFrom(
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       ),
     );

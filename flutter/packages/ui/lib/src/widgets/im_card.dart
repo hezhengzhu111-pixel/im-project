@@ -29,17 +29,9 @@ class ImCard extends StatelessWidget {
       margin: margin,
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+        borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         border: Border.all(color: colors.border),
-        boxShadow: elevated
-            ? [
-                BoxShadow(
-                  color: Colors.black.withAlpha(13),
-                  blurRadius: ImTokens.elevationLg,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
+        boxShadow: null,
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(

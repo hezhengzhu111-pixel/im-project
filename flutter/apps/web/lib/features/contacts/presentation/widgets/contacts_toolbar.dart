@@ -45,12 +45,11 @@ class ContactsToolbar extends StatelessWidget {
                   vertical: 10,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+                  borderRadius: BorderRadius.circular(ImTokens.radiusSm),
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
-                fillColor:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                fillColor: ImTokens.wechatSearchBg,
               ),
             ),
           ),

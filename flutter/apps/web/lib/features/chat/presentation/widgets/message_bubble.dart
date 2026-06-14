@@ -30,7 +30,7 @@ class MessageBubble extends StatelessWidget {
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 18),
+        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 16),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,10 +55,8 @@ class MessageBubble extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
+                              color: ImTokens.wechatTextSecondary,
+                              fontWeight: FontWeight.w400,
                             ),
                       ),
                     ),
@@ -86,7 +84,6 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildMessageContent(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final theme = Theme.of(context);
     final decryptFailed =
         (message.decryptStatus ?? '').toLowerCase() == 'failed';
     final hasE2eeMetadata = message.encrypted == true ||
@@ -98,7 +95,7 @@ class MessageBubble extends StatelessWidget {
     return Container(
       padding: isMedia
           ? const EdgeInsets.all(4)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -116,7 +113,9 @@ class MessageBubble extends StatelessWidget {
                 Text(
                   loc.e2eeFailedBadge,
                   style: TextStyle(
-                    color: isMe ? Colors.black : const Color(0xFFBA3247),
+                    color: isMe
+                        ? ImTokens.wechatTextPrimary
+                        : const Color(0xFFBA3247),
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -132,7 +131,7 @@ class MessageBubble extends StatelessWidget {
               _ => Text(
                   message.content,
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface,
+                    color: ImTokens.wechatTextPrimary,
                     fontSize: 15,
                     height: 1.38,
                   ),
@@ -149,7 +148,7 @@ class MessageBubble extends StatelessWidget {
               Text(
                 _formatTime(message.sendTime),
                 style: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: ImTokens.wechatTextSecondary,
                   fontSize: 11,
                 ),
               ),
@@ -219,7 +218,7 @@ class MessageBubble extends StatelessWidget {
       case 'FAILED':
         return theme.colorScheme.error;
       default:
-        return theme.colorScheme.onSurfaceVariant;
+        return ImTokens.wechatTextSecondary;
     }
   }
 
@@ -241,7 +240,7 @@ class _MediaProtectionLabel extends StatelessWidget {
     final theme = Theme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.08),
+        color: ImTokens.wechatTextSecondary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Padding(
@@ -252,14 +251,15 @@ class _MediaProtectionLabel extends StatelessWidget {
             Icon(
               Icons.lock_open,
               size: 12,
-              color: theme.colorScheme.onSurfaceVariant,
+              color: ImTokens.wechatTextSecondary,
             ),
             const SizedBox(width: 4),
             Text(
               'Media not E2EE',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
+                fontSize: 11,
               ),
             ),
           ],
@@ -310,7 +310,7 @@ class _Avatar extends StatelessWidget {
     final safeFallback = fallback.isEmpty ? '?' : fallback;
     return CircleAvatar(
       radius: 18,
-      backgroundColor: const Color(0xFFD9D9D9),
+      backgroundColor: ImTokens.wechatAvatarBg,
       backgroundImage: avatar != null ? NetworkImage(avatar!) : null,
       child: avatar == null
           ? Text(
@@ -335,7 +335,7 @@ class _BubbleWithArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = Border.all(color: Theme.of(context).dividerColor);
+    final border = Border.all(color: ImTokens.wechatDivider);
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

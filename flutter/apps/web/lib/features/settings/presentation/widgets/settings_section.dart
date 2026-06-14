@@ -21,7 +21,7 @@ class SettingsSection extends StatelessWidget {
       width: double.infinity,
       padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: ImTokens.wechatPanelBg,
         borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         border: Border.all(color: theme.dividerColor),
       ),
@@ -33,7 +33,7 @@ class SettingsSection extends StatelessWidget {
               title!,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurface,
+                color: ImTokens.wechatTextPrimary,
               ),
             ),
             const SizedBox(height: ImTokens.layoutSectionGap),
@@ -91,6 +91,7 @@ class SettingsRow extends StatelessWidget {
                   title,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
+                    color: ImTokens.wechatTextPrimary,
                   ),
                 ),
                 if (description != null) ...[
@@ -99,6 +100,7 @@ class SettingsRow extends StatelessWidget {
                     description!,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 13,
                     ),
                   ),
                 ],

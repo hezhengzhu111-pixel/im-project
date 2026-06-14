@@ -124,6 +124,19 @@ class ImTokens {
   static const Color wechatUnread = Color(0xFFFA5151);
   static const Color wechatSidebar = Color(0xFF2E2E2E);
   static const Color wechatSidebarSelected = Color(0xFF07C160);
+  static const Color wechatSidebarHover = Color(0xFF3A3A3A);
+  static const Color wechatPageBg = Color(0xFFEDEDED);
+  static const Color wechatAppBg = Color(0xFFF5F5F5);
+  static const Color wechatPanelBg = Color(0xFFFFFFFF);
+  static const Color wechatSearchBg = Color(0xFFEDEDED);
+  static const Color wechatInputBg = Color(0xFFF5F5F5);
+  static const Color wechatTextPrimary = Color(0xFF111111);
+  static const Color wechatTextSecondary = Color(0xFF999999);
+  static const Color wechatTextTertiary = Color(0xFFB2B2B2);
+  static const Color wechatHoverBg = Color(0xFFE9E9E9);
+  static const Color wechatSelectedBg = Color(0xFFD8D8D8);
+  static const Color wechatIcon = Color(0xFF666666);
+  static const Color wechatAvatarBg = Color(0xFFD9D9D9);
 
   // ── Brand Gradients ──
 
@@ -237,13 +250,13 @@ class ImColors {
     warning: Color(0xFFFF9800),
     success: Color(0xFF4CAF50),
     info: ImTokens.wechatGreen,
-    background: ImTokens.pageBackground,
-    surface: Color(0xFFFFFFFF),
-    surfaceVariant: Color(0xFFF5F5F5),
-    textPrimary: Color(0xFF212121),
-    textSecondary: Color(0xFF757575),
-    textDisabled: Color(0xFFBDBDBD),
-    border: Color(0xFFE0E0E0),
+    background: ImTokens.wechatPageBg,
+    surface: ImTokens.wechatPanelBg,
+    surfaceVariant: ImTokens.wechatAppBg,
+    textPrimary: ImTokens.wechatTextPrimary,
+    textSecondary: ImTokens.wechatTextSecondary,
+    textDisabled: ImTokens.wechatTextTertiary,
+    border: ImTokens.wechatDivider,
     borderFocus: ImTokens.wechatGreen,
     borderError: Color(0xFFF44336),
     overlay: Color(0x54000000),
@@ -303,7 +316,7 @@ class ImComponentTokens {
   static final Color buttonDangerText = const Color(0xFFFFFFFF);
 
   // ── Input ──
-  static final Color inputBg = const Color(0xFFF5F5F5);
+  static final Color inputBg = ImTokens.wechatInputBg;
   static final Color inputBorder = Colors.transparent;
   static final Color inputBorderFocus = ImColors.light.primary;
   static final Color inputBorderError = ImColors.light.borderError;
@@ -312,7 +325,7 @@ class ImComponentTokens {
 
   // ── Card ──
   static final Color cardBg = Colors.white;
-  static final Color cardBorder = Colors.transparent;
+  static final Color cardBorder = ImTokens.wechatDivider;
 
   // ── Badge ──
   static final Color badgeBg = ImColors.light.error;

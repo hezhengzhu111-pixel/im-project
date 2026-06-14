@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
@@ -281,10 +282,10 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         if (_showEmojiPanel) _buildEmojiPanel(),
         Container(
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
+            color: ImTokens.wechatPanelBg,
             border: Border(top: BorderSide(color: theme.dividerColor)),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
           child: SafeArea(
             top: false,
             child: Row(
@@ -297,8 +298,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                 Semantics(
                   label: loc.a11yAddAttachment,
                   button: true,
-                  child: IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
+                  child: _InputIconButton(
+                    icon: Icons.add_circle_outline,
                     onPressed: _isUploading ? null : _showAttachmentMenu,
                     tooltip: loc.a11yAddAttachment,
                   ),
@@ -306,8 +307,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                 Semantics(
                   label: 'Emoji',
                   button: true,
-                  child: IconButton(
-                    icon: const Icon(Icons.emoji_emotions_outlined),
+                  child: _InputIconButton(
+                    icon: Icons.emoji_emotions_outlined,
                     onPressed: _isUploading || _isSending
                         ? null
                         : () => setState(
@@ -319,8 +320,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                 Semantics(
                   label: loc.a11yVoiceInput,
                   button: true,
-                  child: IconButton(
-                    icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                  child: _InputIconButton(
+                    icon: _isRecording ? Icons.stop : Icons.mic,
                     onPressed: _isUploading
                         ? null
                         : () {
@@ -345,7 +346,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                       decoration: InputDecoration(
                         hintText: loc.chatInputHint,
                         filled: true,
-                        fillColor: theme.colorScheme.surfaceContainerHighest,
+                        fillColor: ImTokens.wechatInputBg,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(4),
                           borderSide: BorderSide.none,
@@ -368,14 +369,24 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                   child: FilledButton(
                     onPressed: _isUploading || _isSending ? null : _handleSend,
                     style: FilledButton.styleFrom(
-                      minimumSize: const Size(46, 42),
-                      padding: EdgeInsets.zero,
+                      backgroundColor: ImTokens.wechatGreen,
+                      disabledBackgroundColor:
+                          ImTokens.wechatGreen.withValues(alpha: 0.38),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(48, 42),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                     child: _isSending
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.send, size: 20),
                   ),
@@ -394,7 +405,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: ImTokens.wechatPanelBg,
         border: Border(
           top: BorderSide(color: Theme.of(context).dividerColor),
         ),
@@ -455,9 +466,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           final isSelected = index == _mentionIndex;
           final name = member.nickname ?? member.userId;
           return Material(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primaryContainer
-                : Colors.transparent,
+            color: isSelected ? ImTokens.wechatSelectedBg : Colors.transparent,
             child: ListTile(
               dense: true,
               leading: CircleAvatar(
@@ -514,5 +523,54 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           _ => loc.commonFailed,
         },
     };
+  }
+}
+
+class _InputIconButton extends StatelessWidget {
+  const _InputIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon),
+      onPressed: onPressed,
+      tooltip: tooltip,
+      color: color ?? ImTokens.wechatIcon,
+      style: ButtonStyle(
+        minimumSize: WidgetStateProperty.all(const Size(36, 36)),
+        fixedSize: WidgetStateProperty.all(const Size(36, 36)),
+        padding: WidgetStateProperty.all(EdgeInsets.zero),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return ImTokens.wechatTextTertiary;
+          }
+          if (color != null) return color;
+          if (states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.pressed)) {
+            return ImTokens.wechatGreen;
+          }
+          return ImTokens.wechatIcon;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return ImTokens.wechatHoverBg;
+          }
+          return Colors.transparent;
+        }),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        ),
+      ),
+    );
   }
 }

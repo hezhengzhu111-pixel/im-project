@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
@@ -24,7 +25,7 @@ class SettingsNavPanel extends ConsumerWidget {
       width: 216,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: ImTokens.wechatPanelBg,
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: theme.dividerColor),
       ),
@@ -140,9 +141,7 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.surfaceContainerHighest
-                : Colors.transparent,
+            color: isSelected ? ImTokens.wechatSelectedBg : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Material(
@@ -150,6 +149,7 @@ class _NavItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: InkWell(
               borderRadius: BorderRadius.circular(4),
+              hoverColor: ImTokens.wechatHoverBg,
               onTap: onTap,
               child: Padding(
                 padding:
@@ -161,7 +161,7 @@ class _NavItem extends StatelessWidget {
                       size: 20,
                       color: isSelected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
+                          : ImTokens.wechatIcon,
                     ),
                     const SizedBox(width: 10),
                     Text(
@@ -169,7 +169,9 @@ class _NavItem extends StatelessWidget {
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected ? theme.colorScheme.primary : null,
+                        color: isSelected
+                            ? ImTokens.wechatTextPrimary
+                            : ImTokens.wechatTextPrimary,
                       ),
                     ),
                   ],

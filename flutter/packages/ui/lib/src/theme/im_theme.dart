@@ -19,14 +19,22 @@ class ImTheme {
       primary: colors.primary,
       secondary: colors.secondary,
       error: colors.error,
+      onPrimary: Colors.white,
+      onSecondary: Colors.white,
+      onSurface: colors.textPrimary,
+      onSurfaceVariant: colors.textSecondary,
       surface: colors.surface,
       surfaceContainerHighest: colors.surfaceVariant,
       outline: colors.border,
       outlineVariant: colors.border,
     );
 
-    final textTheme =
+    final baseTextTheme =
         isLight ? ThemeData.light().textTheme : ThemeData.dark().textTheme;
+    final textTheme = baseTextTheme.apply(
+      bodyColor: colors.textPrimary,
+      displayColor: colors.textPrimary,
+    );
 
     return ThemeData(
       useMaterial3: true,
@@ -34,26 +42,34 @@ class ImTheme {
       colorScheme: colorScheme,
       textTheme: textTheme,
       scaffoldBackgroundColor: colors.background,
+      splashColor: colors.primary.withValues(alpha: 0.08),
+      highlightColor: colors.primary.withValues(alpha: 0.04),
+      hoverColor: isLight ? ImTokens.wechatHoverBg : colors.surfaceVariant,
       appBarTheme: AppBarTheme(
         elevation: ImTokens.elevationNone,
         centerTitle: false,
         backgroundColor: colors.surface,
         foregroundColor: colors.textPrimary,
         surfaceTintColor: Colors.transparent,
+        titleTextStyle: textTheme.titleMedium?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
         color: colors.surface,
         margin: EdgeInsets.zero,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colors.surfaceVariant,
         contentPadding: const EdgeInsets.symmetric(
-            horizontal: ImTokens.space4, vertical: ImTokens.space3),
+            horizontal: ImTokens.space3, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
           borderRadius: BorderRadius.circular(ImTokens.radiusSm),
@@ -90,6 +106,10 @@ class ImTheme {
             borderRadius: BorderRadius.circular(ImTokens.radiusSm),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        ).copyWith(
+          overlayColor: WidgetStateProperty.all(
+            ImTokens.wechatGreenPressed.withValues(alpha: 0.14),
+          ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -102,6 +122,10 @@ class ImTheme {
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(ImTokens.radiusSm),
+          ),
+        ).copyWith(
+          overlayColor: WidgetStateProperty.all(
+            ImTokens.wechatGreenPressed.withValues(alpha: 0.16),
           ),
         ),
       ),
@@ -118,10 +142,51 @@ class ImTheme {
           ),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: colors.primary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(ImTokens.radiusSm),
+          ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return colors.textDisabled;
+            }
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.pressed) ||
+                states.contains(WidgetState.selected)) {
+              return colors.primary;
+            }
+            return isLight ? ImTokens.wechatIcon : colors.textSecondary;
+          }),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.hovered)) {
+              return isLight ? ImTokens.wechatHoverBg : colors.surfaceVariant;
+            }
+            return Colors.transparent;
+          }),
+          overlayColor: WidgetStateProperty.all(
+            colors.primary.withValues(alpha: 0.08),
+          ),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(ImTokens.radiusSm),
+            ),
+          ),
+          minimumSize: WidgetStateProperty.all(const Size(36, 36)),
+          iconSize: WidgetStateProperty.all(22),
+        ),
+      ),
       dialogTheme: DialogThemeData(
-        elevation: ImTokens.elevationLg,
+        elevation: ImTokens.elevationMd,
+        backgroundColor: colors.surface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -138,19 +203,22 @@ class ImTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
         indicatorColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: 56,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
             color: selected ? colors.primary : colors.textSecondary,
             fontSize: ImTokens.textXs,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            fontWeight: FontWeight.w400,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             color: selected ? colors.primary : colors.textSecondary,
-            size: 24,
+            size: 23,
           );
         }),
       ),
@@ -161,12 +229,20 @@ class ImTheme {
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(color: colors.primary, width: 2),
         ),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+        labelStyle: const TextStyle(
+          fontSize: ImTokens.textSm,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(fontSize: ImTokens.textSm),
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(
             horizontal: ImTokens.space4, vertical: ImTokens.space1),
         shape: const RoundedRectangleBorder(),
+        tileColor: colors.surface,
+        selectedTileColor: isLight ? ImTokens.wechatSelectedBg : null,
+        iconColor: isLight ? ImTokens.wechatIcon : colors.textSecondary,
+        textColor: colors.textPrimary,
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: colors.surface,

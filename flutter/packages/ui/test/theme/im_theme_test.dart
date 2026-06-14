@@ -30,7 +30,7 @@ void main() {
 
     test('light theme has correct scaffold background', () {
       final theme = ImTheme.light();
-      expect(theme.scaffoldBackgroundColor, const Color(0xFFF7F8FA));
+      expect(theme.scaffoldBackgroundColor, ImTokens.wechatPageBg);
     });
 
     test('dark theme has scaffoldBackgroundColor', () {

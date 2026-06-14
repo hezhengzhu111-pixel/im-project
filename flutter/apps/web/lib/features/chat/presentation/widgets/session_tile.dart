@@ -31,9 +31,9 @@ class _SessionTileState extends State<SessionTile> {
     final isMuted =
         widget.session.isMuted == true || widget.session.muted == true;
     final background = widget.isSelected
-        ? const Color(0xFFD8D8D8)
+        ? ImTokens.wechatSelectedBg
         : _isHovered
-            ? const Color(0xFFE9E9E9)
+            ? ImTokens.wechatHoverBg
             : Colors.transparent;
 
     return MouseRegion(
@@ -61,7 +61,7 @@ class _SessionTileState extends State<SessionTile> {
                 children: [
                   CircleAvatar(
                     radius: 23,
-                    backgroundColor: const Color(0xFFD9D9D9),
+                    backgroundColor: ImTokens.wechatAvatarBg,
                     backgroundImage: widget.session.targetAvatar != null
                         ? NetworkImage(widget.session.targetAvatar!)
                         : null,
@@ -92,8 +92,9 @@ class _SessionTileState extends State<SessionTile> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: theme.colorScheme.onSurface,
+                                  fontWeight: FontWeight.w500,
+                                  color: ImTokens.wechatTextPrimary,
+                                  fontSize: 15,
                                 ),
                               ),
                             ),
@@ -117,7 +118,7 @@ class _SessionTileState extends State<SessionTile> {
                               Text(
                                 _formatTime(widget.session.lastMessageTime!),
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                                  color: ImTokens.wechatTextSecondary,
                                   fontSize: 12,
                                 ),
                               ),
@@ -132,7 +133,7 @@ class _SessionTileState extends State<SessionTile> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                                  color: ImTokens.wechatTextSecondary,
                                   fontSize: 13,
                                 ),
                               ),

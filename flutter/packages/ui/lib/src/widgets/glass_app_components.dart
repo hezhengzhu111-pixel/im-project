@@ -17,8 +17,11 @@ class AppGradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: theme.brightness == Brightness.light
+          ? ImTokens.wechatPageBg
+          : theme.colorScheme.surfaceContainerHighest,
       child: child,
     );
   }
@@ -45,13 +48,14 @@ class GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isLight = theme.brightness == Brightness.light;
     return Container(
       margin: margin,
       clipBehavior: clipBehavior,
       decoration: BoxDecoration(
         color: backgroundColor ?? theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: theme.dividerColor),
+        border: isLight ? Border.all(color: theme.dividerColor) : null,
       ),
       child: Padding(
         padding: padding ?? EdgeInsets.zero,
@@ -85,6 +89,7 @@ class _HoverLiftCardState extends State<HoverLiftCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isLight = theme.brightness == Brightness.light;
     final card = MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -93,11 +98,15 @@ class _HoverLiftCardState extends State<HoverLiftCard> {
         curve: Curves.easeOut,
         padding: widget.padding,
         decoration: BoxDecoration(
-          color: _hovered
-              ? theme.colorScheme.surfaceContainerHighest
+          color: _hovered && isLight
+              ? ImTokens.wechatHoverBg
               : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(widget.borderRadius),
-          border: Border.all(color: theme.dividerColor),
+          border: Border.all(
+            color: _hovered && isLight
+                ? ImTokens.wechatHoverBg
+                : theme.dividerColor,
+          ),
         ),
         child: widget.child,
       ),
@@ -215,38 +224,43 @@ class FlatLineIconButton extends StatelessWidget {
     final color = selected ? ImTokens.wechatGreen : const Color(0xFF9A9A9A);
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: ImTokens.animFast,
-          width: 64,
-          constraints: const BoxConstraints(minHeight: 58),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            border: selected
-                ? const Border(
-                    left: BorderSide(color: ImTokens.wechatGreen, width: 3),
-                  )
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 24, color: color),
-              if (label != null) ...[
-                const SizedBox(height: 5),
-                Text(
-                  label!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          hoverColor: ImTokens.wechatSidebarHover,
+          child: AnimatedContainer(
+            duration: ImTokens.animFast,
+            width: 64,
+            constraints: const BoxConstraints(minHeight: 58),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF383838) : Colors.transparent,
+              border: selected
+                  ? const Border(
+                      left: BorderSide(color: ImTokens.wechatGreen, width: 3),
+                    )
+                  : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 24, color: color),
+                if (label != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    label!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
