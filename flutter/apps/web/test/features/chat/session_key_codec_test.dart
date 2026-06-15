@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/features/chat/data/session_key_codec.dart';
+import 'package:im_shared_features/chat.dart';
 
 void main() {
   // ===========================================================================
