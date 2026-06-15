@@ -77,26 +77,33 @@ class IMClient:
 
     def register(self, username: str, password: str) -> bool:
         try:
-            resp = self._post("/auth/register", {
+            resp = self._post("/user/register", {
                 "username": username,
                 "password": password,
             })
-            self.user_id = str(resp.get("userId", ""))
-            self.token = resp.get("token", "")
-            return bool(self.user_id and self.token)
-        except Exception:
+            # Response: { code: 0, data: { id, username, ... }, msg: "ok" }
+            data = resp.get("data", resp)
+            self.user_id = str(data.get("id", ""))
+            return bool(self.user_id)
+        except Exception as e:
+            print(f"  [DEBUG] Register failed: {e}")
             return False
 
     def login(self, username: str, password: str) -> bool:
         try:
-            resp = self._post("/auth/login", {
+            resp = self._post("/user/login", {
                 "username": username,
                 "password": password,
             })
-            self.user_id = str(resp.get("userId", ""))
+            # Response: { code:200, data: { user:{id,...}, token: "jwt..." } }
+            # _handle_response already unwrapped the outer { code, data } envelope
+            # So resp = { success, message, user:{id,...}, token: "...", ... }
+            user = resp.get("user", {})
+            self.user_id = str(user.get("id", ""))
             self.token = resp.get("token", "")
             return bool(self.user_id and self.token)
-        except Exception:
+        except Exception as e:
+            print(f"  [DEBUG] Login failed: {e}")
             return False
 
     # ---- E2EE Device Registration ----
@@ -105,7 +112,7 @@ class IMClient:
         """Register an E2EE device and upload a key bundle."""
         try:
             self.device_id = f"test-device-{self.name}-{uuid.uuid4().hex[:8]}"
-            # Generate a minimal key bundle (test-only, not real crypto).
+            # UploadBundleRequest uses camelCase JSON keys (serde rename_all).
             bundle = {
                 "deviceId": self.device_id,
                 "identityKey": _fake_base64_key(),
@@ -235,15 +242,15 @@ class TestRunner:
         try:
             fn()
             self.passed += 1
-            print(f"  ✓ {name}")
+            print(f"  [PASS] {name}")
         except AssertionError as e:
             self.failed += 1
             self.errors.append((name, str(e)))
-            print(f"  ✗ {name}: {e}")
+            print(f"  [FAIL] {name}: {e}")
         except Exception as e:
             self.failed += 1
             self.errors.append((name, f"UNEXPECTED: {e}"))
-            print(f"  ✗ {name}: UNEXPECTED ERROR: {e}")
+            print(f"  [FAIL] {name}: UNEXPECTED ERROR: {e}")
 
     def summary(self):
         total = self.passed + self.failed
@@ -273,15 +280,15 @@ def run_tests(config: Config):
     alice = IMClient("alice", config)
     bob = IMClient("bob", config)
 
-    alice_username = f"e2e-alice-{uuid.uuid4().hex[:6]}"
-    bob_username = f"e2e-bob-{uuid.uuid4().hex[:6]}"
-    password = "test-password-123"
+    alice_username = f"e2e_alice_{uuid.uuid4().hex[:6]}"
+    bob_username = f"e2e_bob_{uuid.uuid4().hex[:6]}"
+    password = "Test123456!"
 
-    # Register or login.
-    if not alice.register(alice_username, password):
-        alice.login(alice_username, password)
-    if not bob.register(bob_username, password):
-        bob.login(bob_username, password)
+    # Register then login (register doesn't return token, login does).
+    alice.register(alice_username, password)
+    alice.login(alice_username, password)
+    bob.register(bob_username, password)
+    bob.login(bob_username, password)
 
     assert alice.user_id, "Alice login failed"
     assert bob.user_id, "Bob login failed"
@@ -293,6 +300,11 @@ def run_tests(config: Config):
     # Register devices.
     alice.register_device()
     bob.register_device()
+
+    # Note: Friendship + full E2EE negotiation requires additional API calls
+    # (friend request, accept, device registration, E2EE handshake).
+    # These are tested by the existing integration test suite.
+    # This script validates: API reachability, auth flow, plaintext scans.
 
     # ---- Scenario 1: Web → Mobile encrypted private text ----
     print("\nScenario 1: Web(Alice) → Mobile(Bob) encrypted private text")
@@ -553,7 +565,7 @@ def _scan_db_for_plaintext(config: Config, secrets: list[str]):
 
         cursor.close()
         conn.close()
-        print("  ✓ Database scan: no plaintext secrets found")
+        print("  [PASS] Database scan: no plaintext secrets found")
     except AssertionError:
         raise
     except Exception as e:
