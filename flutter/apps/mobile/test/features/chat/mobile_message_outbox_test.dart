@@ -254,7 +254,7 @@ void main() {
       final msg = _makeEncryptedWithEnvelope();
       await outbox.enqueue(msg);
 
-      final result = await _retryWithSender(
+      await _retryWithSender(
         outbox,
         (_) async => _makeFakeServerMessage('server-1'),
       );
@@ -268,7 +268,7 @@ void main() {
       final msg = _makeEncryptedMessage(envelope: null); // explicit null
       await outbox.enqueue(msg);
 
-      bool plaintextCalled = false;
+      var plaintextCalled = false;
       await outbox.retryAllFailed((m) async {
         if (!m.isEncrypted) plaintextCalled = true;
         return _makeFakeServerMessage('s1');
@@ -308,7 +308,7 @@ void main() {
       await outbox.enqueue(msg2); // Should be dedup'd.
 
       // Only 1 message in outbox.
-      int count = 0;
+      var count = 0;
       await outbox.retryAllFailed((_) async {
         count++;
         return _makeFakeServerMessage('s-$count');
