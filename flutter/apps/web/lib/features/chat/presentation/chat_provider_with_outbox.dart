@@ -3,21 +3,20 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_shared_features/e2ee.dart' show E2eeManager, E2eeMetaStore;
+import 'package:im_shared_features/chat.dart' show SessionKeyCodec, E2eeHistoryRecovery, ReadReceiptHandler, RetryableErrorClassifier, mergeMessagesChronologically;
 import '../../../core/network/network_status_provider.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
-import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
-import '../data/read_receipt_handler.dart';
-import '../data/session_key_codec.dart';
-import '../data/e2ee_history_recovery.dart';
-import '../data/retryable_error_classifier.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
 import 'chat_state.dart';
 import '../../../core/logging/app_logger.dart';
 
-/// Extended chat state with outbox information
+/// Extended chat state with outbox information.
+///
+/// [ChatState] now provides pendingCount, failedCount, isRetrying, isOffline,
+/// and pendingNegotiations. This subclass adds forward-compatible copyWith.
 class ChatStateWithOutbox extends ChatState {
   const ChatStateWithOutbox({
     super.sessions,
@@ -28,27 +27,15 @@ class ChatStateWithOutbox extends ChatState {
     super.loadingHistoryBySession,
     super.hasMoreHistoryBySession,
     super.oldestLoadedServerMessageIdBySession,
-    this.pendingCount = 0,
-    this.failedCount = 0,
-    this.isRetrying = false,
-    this.isOffline = false,
-    this.pendingNegotiations = const {},
+    super.pendingCount,
+    super.failedCount,
+    super.isRetrying,
+    super.isOffline,
+    super.pendingNegotiations,
   });
-
-  final int pendingCount;
-  final int failedCount;
-  final bool isRetrying;
-  final bool isOffline;
-  final Map<String, E2eeNegotiationEvent> pendingNegotiations;
 
   E2eeNegotiationEvent? pendingNegotiationForSession(String sessionId) {
     return pendingNegotiations[sessionId];
-  }
-
-  E2eeNegotiationEvent? get activePendingNegotiation {
-    final activeId = activeSessionId;
-    if (activeId == null) return null;
-    return pendingNegotiationForSession(activeId);
   }
 
   @override

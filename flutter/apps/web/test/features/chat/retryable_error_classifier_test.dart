@@ -4,7 +4,7 @@
 /// These tests lock down which errors are retryable (enqueue to outbox)
 /// and which are not (immediate failure).
 import 'package:flutter_test/flutter_test.dart';
-import 'package:im_web/features/chat/data/retryable_error_classifier.dart';
+import 'package:im_shared_features/chat.dart';
 
 void main() {
   group('RetryableErrorClassifier', () {

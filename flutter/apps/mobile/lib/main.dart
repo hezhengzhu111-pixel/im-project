@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:im_core/core.dart';
 import 'package:im_rust_bridge/im_rust_bridge.dart';
+import 'package:im_shared_features/chat.dart';
+import 'package:im_shared_features/e2ee.dart';
+import 'package:im_shared_features/auth.dart' show currentUserIdProvider;
+import 'package:im_core_flutter/im_core_flutter.dart';
 
 import 'adapters/mobile_audio_recorder_adapter.dart';
 import 'adapters/mobile_clipboard_adapter.dart';
@@ -15,11 +20,9 @@ import 'adapters/services/noop_analytics_adapter.dart';
 import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'app.dart';
-import 'core/di/platform_providers.dart';
-import 'core/logging/app_logger.dart';
 import 'adapters/e2ee/mobile_key_store.dart';
 import 'adapters/e2ee/mobile_session_store.dart';
-import 'package:im_shared_features/e2ee.dart';
+import 'features/chat/chat.dart';
 
 /// Entry point for the IM Mobile application.
 ///
@@ -49,6 +52,9 @@ Future<void> main() async {
   // Create platform adapters before ProviderScope.
   final secureStorage = MobileSecureStorageAdapter();
   final httpClient = MobileNetworkService(baseUrl: apiBase);
+
+  // Initialize SharedPreferences for E2EE chat (outbox + sent message cache).
+  final sharedPrefs = await SharedPreferences.getInstance();
 
   runApp(ProviderScope(
     overrides: [
@@ -81,6 +87,24 @@ Future<void> main() async {
       e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWithValue(MobileKeyStore()),
       e2eeSessionStoreProvider.overrideWithValue(MobileSessionStore()),
+      // Mobile E2EE chat providers (outbox + sent message cache)
+      mobileSentMessageCacheProvider
+          .overrideWithValue(MobileSentMessageCache(sharedPrefs)),
+      mobileMessageOutboxProvider
+          .overrideWithValue(MobileMessageOutbox(sharedPrefs)),
+      // Override shared chatStateProvider with E2EE-capable ChatNotifier
+      chatStateProvider.overrideWith((ref) {
+        return ChatNotifier(
+          ref.watch(messageApiProvider),
+          MessagePipeline(),
+          ref.watch(wsClientProvider),
+          () => ref.read(currentUserIdProvider),
+          e2eeManager: ref.watch(e2eeManagerProvider),
+          e2eeMetaStore: ref.watch(e2eeMetaStoreProvider),
+          sentMessageCache: ref.watch(mobileSentMessageCacheProvider),
+          outbox: ref.watch(mobileMessageOutboxProvider),
+        );
+      }),
       // Third-party service adapters
       analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
       errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
