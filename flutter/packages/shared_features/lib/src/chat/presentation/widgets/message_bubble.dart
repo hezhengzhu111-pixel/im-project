@@ -150,13 +150,10 @@ class MessageBubble extends ConsumerWidget {
       return const Text('[图片]');
     }
 
-    return GestureDetector(
-      onTap: () {
-        // TODO: 打开图片查看器
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
+    // P0 止血：图片查看器尚未实现，暂以静态展示。
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
           url,
           width: 200,
           height: 150,
@@ -170,7 +167,6 @@ class MessageBubble extends ConsumerWidget {
             );
           },
         ),
-      ),
     );
   }
 
@@ -245,11 +241,8 @@ class MessageBubble extends ConsumerWidget {
       return const Text('[视频]');
     }
 
-    return GestureDetector(
-      onTap: () {
-        // TODO: 打开视频播放器
-      },
-      child: Container(
+    // P0 止血：视频播放器尚未实现，暂以静态展示。
+    return Container(
         width: 200,
         height: 150,
         decoration: BoxDecoration(
@@ -263,7 +256,6 @@ class MessageBubble extends ConsumerWidget {
             size: 48,
           ),
         ),
-      ),
     );
   }
 

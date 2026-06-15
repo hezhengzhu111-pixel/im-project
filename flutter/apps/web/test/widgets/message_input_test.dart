@@ -153,6 +153,41 @@ FakeHttpClientPort _buildFakeHttpClient() {
   return fakeHttpClient;
 }
 
+Widget _buildSubject({
+  MockFilePickerAdapter? mockFilePicker,
+  MockAudioRecorderAdapter? mockAudioRecorder,
+}) {
+  return ProviderScope(
+    overrides: [
+      filePickerPortProvider.overrideWithValue(
+        mockFilePicker ?? MockFilePickerAdapter(),
+      ),
+      audioRecorderPortProvider.overrideWithValue(
+        mockAudioRecorder ?? MockAudioRecorderAdapter(),
+      ),
+      networkStatusProvider
+          .overrideWith((ref) => _FakeNetworkStatusNotifier()),
+      chatStateProvider.overrideWith((ref) => _FakeChatNotifier()),
+      httpClientProvider.overrideWithValue(_buildFakeHttpClient()),
+      analyticsProvider.overrideWithValue(NoopAnalyticsPort()),
+    ],
+    child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: ThemeData(extensions: [GlassTheme.light]),
+      home: Scaffold(
+        body: MessageInput(
+          onSend: (_, __) {},
+          onSendImage: (_) {},
+          onSendFile: (_) {},
+          onSendVoice: (_) {},
+        ),
+      ),
+    ),
+  );
+}
+
 void main() {
   group('MessageInput', () {
     late MockFilePickerAdapter mockFilePicker;
@@ -163,7 +198,11 @@ void main() {
       mockAudioRecorder = MockAudioRecorderAdapter();
     });
 
-    testWidgets('点击图片按钮触发文件选择', (tester) async {
+    // -----------------------------------------------------------------------
+    // P0 止血：图片发送入口保留（已有完整上传链路）
+    // -----------------------------------------------------------------------
+
+    testWidgets('点击附件按钮展示菜单（仅图片选项）', (tester) async {
       final mockFile = PickedFile(
         name: 'test.jpg',
         mimeType: 'image/jpeg',
@@ -172,33 +211,39 @@ void main() {
       );
       mockFilePicker.setMockFile(mockFile);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            filePickerPortProvider.overrideWithValue(mockFilePicker),
-            audioRecorderPortProvider.overrideWithValue(mockAudioRecorder),
-            networkStatusProvider
-                .overrideWith((ref) => _FakeNetworkStatusNotifier()),
-            chatStateProvider.overrideWith((ref) => _FakeChatNotifier()),
-            httpClientProvider.overrideWithValue(_buildFakeHttpClient()),
-            analyticsProvider.overrideWithValue(NoopAnalyticsPort()),
-          ],
-          child: MaterialApp(
-            locale: const Locale('en'),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: ThemeData(extensions: [GlassTheme.light]),
-            home: Scaffold(
-              body: MessageInput(
-                onSend: (_, __) {},
-                onSendImage: (_) {},
-                onSendFile: (_) {},
-                onSendVoice: (_) {},
-              ),
-            ),
-          ),
-        ),
+      await tester.pumpWidget(_buildSubject(
+        mockFilePicker: mockFilePicker,
+        mockAudioRecorder: mockAudioRecorder,
+      ));
+
+      // Open attachment menu
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+
+      // Only image option should be present
+      expect(find.byIcon(Icons.image), findsOneWidget);
+      // File option should NOT be present (P0 止血)
+      expect(find.byIcon(Icons.attach_file), findsNothing);
+      expect(find.text('File'), findsNothing);
+
+      // Tap the image option
+      await tester.tap(find.byIcon(Icons.image));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('图片按钮触发文件选择', (tester) async {
+      final mockFile = PickedFile(
+        name: 'test.jpg',
+        mimeType: 'image/jpeg',
+        bytes: Uint8List(100),
+        size: 100,
       );
+      mockFilePicker.setMockFile(mockFile);
+
+      await tester.pumpWidget(_buildSubject(
+        mockFilePicker: mockFilePicker,
+        mockAudioRecorder: mockAudioRecorder,
+      ));
 
       // Open attachment menu
       await tester.tap(find.byIcon(Icons.add_circle_outline));
@@ -209,14 +254,62 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('点击附件按钮触发文件选择', (tester) async {
-      final mockFile = PickedFile(
-        name: 'document.pdf',
-        mimeType: 'application/pdf',
-        bytes: Uint8List(200),
-        size: 200,
-      );
-      mockFilePicker.setMockFile(mockFile);
+    // -----------------------------------------------------------------------
+    // P0 止血：语音发送入口已移除
+    // -----------------------------------------------------------------------
+
+    testWidgets('mic 按钮已移除（P0 止血）', (tester) async {
+      await tester.pumpWidget(_buildSubject(
+        mockFilePicker: mockFilePicker,
+        mockAudioRecorder: mockAudioRecorder,
+      ));
+
+      // Mic button should NOT exist
+      expect(find.byIcon(Icons.mic), findsNothing);
+      // Stop icon should NOT exist
+      expect(find.byIcon(Icons.stop), findsNothing);
+    });
+
+    // -----------------------------------------------------------------------
+    // P0 止血：文件发送入口已移除
+    // -----------------------------------------------------------------------
+
+    testWidgets('附件菜单不含文件选项（P0 止血）', (tester) async {
+      await tester.pumpWidget(_buildSubject(
+        mockFilePicker: mockFilePicker,
+        mockAudioRecorder: mockAudioRecorder,
+      ));
+
+      // Open attachment menu
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+
+      // File option should NOT be present
+      expect(find.byIcon(Icons.attach_file), findsNothing);
+      expect(find.text('File'), findsNothing);
+    });
+
+    // -----------------------------------------------------------------------
+    // 文本发送不受影响
+    // -----------------------------------------------------------------------
+
+    testWidgets('文本发送按钮存在且可用', (tester) async {
+      await tester.pumpWidget(_buildSubject(
+        mockFilePicker: mockFilePicker,
+        mockAudioRecorder: mockAudioRecorder,
+      ));
+
+      // Send button should exist
+      expect(find.byIcon(Icons.send), findsOneWidget);
+      expect(find.byType(FilledButton), findsOneWidget);
+
+      // Text field should exist
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('文本输入和发送可用', (tester) async {
+      var sentText = '';
+      var sentMentions = <String>[];
 
       await tester.pumpWidget(
         ProviderScope(
@@ -236,7 +329,10 @@ void main() {
             theme: ThemeData(extensions: [GlassTheme.light]),
             home: Scaffold(
               body: MessageInput(
-                onSend: (_, __) {},
+                onSend: (text, mentions) {
+                  sentText = text;
+                  sentMentions = mentions;
+                },
                 onSendImage: (_) {},
                 onSendFile: (_) {},
                 onSendVoice: (_) {},
@@ -246,13 +342,12 @@ void main() {
         ),
       );
 
-      // Open attachment menu
-      await tester.tap(find.byIcon(Icons.add_circle_outline));
-      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Hello');
+      await tester.tap(find.byType(FilledButton));
+      await tester.pump();
 
-      // Tap the file option
-      await tester.tap(find.byIcon(Icons.attach_file));
-      await tester.pumpAndSettle();
+      expect(sentText, 'Hello');
+      expect(sentMentions, isEmpty);
     });
   });
 }

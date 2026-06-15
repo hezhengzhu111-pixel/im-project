@@ -10,6 +10,12 @@ import '../../data/file_providers.dart';
 import '../../../../core/di/platform_providers.dart';
 import 'network_status_banner.dart';
 
+/// P0 止血：语音/文件发送入口已禁用。
+/// - 语音按钮（mic）已移除，录音功能未实现。
+/// - 文件发送选项已从附件菜单移除，下载链路未完成。
+/// - 图片发送保留（已有完整上传链路）。
+/// - 文本发送、emoji、@mention、outbox 不受影响。
+/// 后续 P1/P2 实现完整媒体能力后恢复入口。
 class MessageInput extends ConsumerStatefulWidget {
   const MessageInput({
     super.key,
@@ -39,7 +45,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   final _controller = TextEditingController();
   bool _isUploading = false;
   bool _isSending = false;
-  bool _isRecording = false;
   bool _showEmojiPanel = false;
 
   // @ mention state
@@ -161,53 +166,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
-  Future<void> _pickAndSendFile() async {
-    final filePicker = ref.read(filePickerPortProvider);
-    final result = await filePicker.pickFile();
-
-    if (result case Success(:final data)) {
-      await _uploadAndSend(data, widget.onSendFile);
-    }
-  }
-
-  Future<void> _recordAndSendVoice() async {
-    final audioRecorder = ref.read(audioRecorderPortProvider);
-    final result = await audioRecorder.startRecording();
-
-    if (result case Failure(:final error)) {
-      if (mounted) {
-        final loc = AppLocalizations.of(context)!;
-        final msg = _mapError(error, loc);
-        if (msg.isNotEmpty) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(msg)));
-        }
-      }
-      return;
-    }
-    setState(() => _isRecording = true);
-  }
-
-  Future<void> _stopRecordingAndSend() async {
-    final audioRecorder = ref.read(audioRecorderPortProvider);
-    final result = await audioRecorder.stopRecording();
-
-    setState(() => _isRecording = false);
-
-    if (result case Success(:final data)) {
-      await _uploadAndSend(data, widget.onSendVoice);
-    } else if (result case Failure(:final error)) {
-      if (mounted) {
-        final loc = AppLocalizations.of(context)!;
-        final msg = _mapError(error, loc);
-        if (msg.isNotEmpty) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(msg)));
-        }
-      }
-    }
-  }
-
   Future<void> _uploadAndSend(
     PickedFile file,
     FutureOr<void> Function(UploadResult) callback,
@@ -240,6 +198,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
+  // P0 止血：附件菜单仅保留图片选项，文件发送已禁用。
   void _showAttachmentMenu() {
     final loc = AppLocalizations.of(context)!;
 
@@ -254,14 +213,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
               onTap: () {
                 Navigator.pop(context);
                 _pickAndSendImage();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: Text(loc.chatFile),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAndSendFile();
               },
             ),
           ],
@@ -315,24 +266,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                               () => _showEmojiPanel = !_showEmojiPanel,
                             ),
                     tooltip: 'Emoji',
-                  ),
-                ),
-                Semantics(
-                  label: loc.a11yVoiceInput,
-                  button: true,
-                  child: _InputIconButton(
-                    icon: _isRecording ? Icons.stop : Icons.mic,
-                    onPressed: _isUploading
-                        ? null
-                        : () {
-                            if (_isRecording) {
-                              _stopRecordingAndSend();
-                            } else {
-                              _recordAndSendVoice();
-                            }
-                          },
-                    tooltip: loc.a11yVoiceInput,
-                    color: _isRecording ? Colors.red : null,
                   ),
                 ),
                 Expanded(
@@ -501,29 +434,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       if (mounted) setState(() => _isSending = false);
     }
   }
-
-  String _mapError(FailureError error, AppLocalizations loc) {
-    return switch (error) {
-      UnsupportedCapability(:final capability) => switch (capability) {
-          'audio_recording' => loc.errorRecordingNotImplemented,
-          'share' => loc.errorShareNotAvailable,
-          'clipboard' => loc.errorClipboardNotAvailable,
-          _ => loc.commonFailed,
-        },
-      PermissionDenied(:final capability) => switch (capability) {
-          'notification' => loc.errorNotificationPermissionDenied,
-          'microphone' => loc.errorMicrophonePermissionDenied,
-          _ => loc.commonFailed,
-        },
-      OperationCancelled() => '',
-      UnknownError(:final message) => switch (message) {
-          'file_read_failed' => loc.errorFileReadFailed,
-          'already_recording' => loc.errorAlreadyRecording,
-          'not_recording' => loc.errorNotRecording,
-          _ => loc.commonFailed,
-        },
-    };
-  }
 }
 
 class _InputIconButton extends StatelessWidget {
@@ -531,13 +441,11 @@ class _InputIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.color,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -545,7 +453,7 @@ class _InputIconButton extends StatelessWidget {
       icon: Icon(icon),
       onPressed: onPressed,
       tooltip: tooltip,
-      color: color ?? ImTokens.wechatIcon,
+      color: ImTokens.wechatIcon,
       style: ButtonStyle(
         minimumSize: WidgetStateProperty.all(const Size(42, 42)),
         fixedSize: WidgetStateProperty.all(const Size(42, 42)),
@@ -554,7 +462,6 @@ class _InputIconButton extends StatelessWidget {
           if (states.contains(WidgetState.disabled)) {
             return ImTokens.wechatTextTertiary;
           }
-          if (color != null) return color;
           if (states.contains(WidgetState.hovered) ||
               states.contains(WidgetState.pressed)) {
             return ImTokens.wechatGreen;

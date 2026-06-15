@@ -47,14 +47,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
-  Future<void> _pickAndSendFile() async {
-    final filePicker = ref.read(filePickerPortProvider);
-    final result = await filePicker.pickFile();
-    if (result case Success(:final data)) {
-      await _uploadAndSend(data, widget.onSendFile);
-    }
-  }
-
   Future<void> _uploadAndSend(
     PickedFile file,
     void Function(UploadResult)? callback,
@@ -86,20 +78,14 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
+            // P0 止血：文件发送入口已禁用，下载链路未完成。
+            // 仅保留图片发送入口。
             ListTile(
               leading: const Icon(Icons.image),
               title: const Text('图片'),
               onTap: () {
                 Navigator.pop(context);
                 _pickAndSendImage();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: const Text('文件'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAndSendFile();
               },
             ),
           ],

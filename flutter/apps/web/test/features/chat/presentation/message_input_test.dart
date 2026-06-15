@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,9 +9,9 @@ import 'package:im_web/core/di/third_party_providers.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/core/network/network_status_provider.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
-import 'package:im_web/features/chat/data/file_api.dart';
 import 'package:im_web/features/chat/presentation/chat_providers.dart';
 import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
+import 'package:im_web/features/chat/data/file_api.dart';
 import 'package:im_web/features/chat/presentation/widgets/message_input.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
@@ -177,11 +176,9 @@ void main() {
       overrides: [
         audioRecorderPortProvider.overrideWithValue(mockRecorder),
         filePickerPortProvider.overrideWithValue(mockFilePicker),
-        // Override providers required by OutboxIndicator (child of MessageInput)
         networkStatusProvider
             .overrideWith((ref) => _FakeNetworkStatusNotifier()),
         chatStateProvider.overrideWith((ref) => _FakeChatNotifier()),
-        // Override providers required by fileApiProvider (upload flow)
         httpClientProvider.overrideWithValue(fakeHttpClient),
         analyticsProvider.overrideWithValue(NoopAnalyticsPort()),
       ],
@@ -202,72 +199,48 @@ void main() {
     );
   }
 
-  group('MessageInput recording', () {
-    testWidgets('点击 mic 调用 startRecording', (tester) async {
+  group('MessageInput P0 止血', () {
+    // -----------------------------------------------------------------------
+    // P0 止血：mic 按钮已移除
+    // -----------------------------------------------------------------------
+
+    testWidgets('mic 按钮不存在', (tester) async {
       await tester.pumpWidget(buildSubject());
 
-      await tester.tap(find.byIcon(Icons.mic));
-      await tester.pump();
-
-      final result = await mockRecorder.isRecording();
-      expect((result as Success).data, true);
+      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(find.byIcon(Icons.stop), findsNothing);
     });
 
-    testWidgets('录音中点击 stop 调用 stopRecording', (tester) async {
-      final mockFile = PickedFile.fromBytes(
-        name: 'voice.webm',
-        mimeType: 'audio/webm',
-        bytes: Uint8List(100),
-      );
-      mockRecorder.setMockFile(mockFile);
+    // -----------------------------------------------------------------------
+    // P0 止血：附件菜单不含文件选项
+    // -----------------------------------------------------------------------
 
-      await tester.pumpWidget(buildSubject(
-        onSendVoice: (_) {},
-      ));
-
-      // Start recording
-      await tester.tap(find.byIcon(Icons.mic));
-      await tester.pump();
-
-      // Stop recording
-      await tester.tap(find.byIcon(Icons.stop));
-      await tester.pump();
-
-      final result = await mockRecorder.isRecording();
-      expect((result as Success).data, false);
-    });
-
-    testWidgets('startRecording 失败展示 SnackBar', (tester) async {
-      mockRecorder.setMockError(const UnknownError('already_recording'));
-
+    testWidgets('附件菜单不含文件选项', (tester) async {
       await tester.pumpWidget(buildSubject());
 
-      await tester.tap(find.byIcon(Icons.mic));
-      await tester.pump(); // startRecording
-      await tester.pump(); // SnackBar animation
-
-      expect(find.byType(SnackBar), findsOneWidget);
-    });
-
-    testWidgets('file picker cancel 不触发上传', (tester) async {
-      var uploadCalled = false;
-
-      await tester.pumpWidget(buildSubject(
-        onSendFile: (_) => uploadCalled = true,
-      ));
-
-      // Open attachment menu
       await tester.tap(find.byIcon(Icons.add_circle_outline));
       await tester.pumpAndSettle();
 
-      // Tap the file option
-      await tester.tap(find.text('File'));
+      expect(find.byIcon(Icons.attach_file), findsNothing);
+      expect(find.text('File'), findsNothing);
+    });
+
+    // -----------------------------------------------------------------------
+    // 图片入口保留
+    // -----------------------------------------------------------------------
+
+    testWidgets('附件菜单保留图片选项', (tester) async {
+      await tester.pumpWidget(buildSubject());
+
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
       await tester.pumpAndSettle();
 
-      // MockFilePickerAdapter returns OperationCancelled by default,
-      // so onSendFile should NOT have been called
-      expect(uploadCalled, false);
+      expect(find.byIcon(Icons.image), findsOneWidget);
     });
+
+    // -----------------------------------------------------------------------
+    // 文本发送不受影响
+    // -----------------------------------------------------------------------
 
     testWidgets('slow send disables duplicate sends', (tester) async {
       final completer = Completer<void>();
