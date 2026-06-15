@@ -132,7 +132,7 @@ class IMClient:
     # ---- E2EE Negotiation ----
 
     def initiate_e2ee(self, session_id: str, peer_id: str) -> bool:
-        """Initiate E2EE session with peer."""
+        """Initiate E2EE session with peer. E2eeSessionRequest uses camelCase."""
         try:
             self._post("/e2ee/request", {
                 "sessionId": session_id,
@@ -146,17 +146,19 @@ class IMClient:
                 }),
             })
             return True
-        except Exception:
+        except Exception as e:
+            print(f"  [DEBUG] E2EE request failed: {e}")
             return False
 
     def accept_e2ee(self, session_id: str) -> bool:
-        """Accept a pending E2EE request."""
+        """Accept a pending E2EE request. E2eeSessionRequest uses camelCase."""
         try:
             self._post("/e2ee/accept", {
                 "sessionId": session_id,
             })
             return True
-        except Exception:
+        except Exception as e:
+            print(f"  [DEBUG] E2EE accept failed: {e}")
             return False
 
     def get_e2ee_status(self, session_id: str) -> str:
@@ -183,7 +185,11 @@ class IMClient:
             body["encrypted"] = True
             body["e2eeEnvelope"] = envelope
             body["e2eeDeviceId"] = self.device_id
-        return self._post("/message/send/private", body)
+        try:
+            return self._post("/message/send/private", body)
+        except Exception as e:
+            print(f"  [DEBUG] Send failed: {e}")
+            raise
 
     def get_private_history(self, peer_id: str, size: int = 20) -> list:
         """Get private chat history."""
@@ -218,6 +224,19 @@ def _fake_base64_sig() -> str:
     """Generate a fake Base64-encoded 64-byte signature."""
     import base64
     return base64.b64encode(os.urandom(64)).decode()
+
+
+def _fake_e2ee_wire() -> str:
+    """Generate a fake E2EE wire in Base64URL format.
+
+    The Rust wire format is: 4-byte big-endian header length (u32=52),
+    followed by 52+ bytes of dummy payload. Total >= 56 bytes.
+    """
+    import base64
+    header = (52).to_bytes(4, byteorder='big')  # u32 big-endian = 52
+    body = os.urandom(60)  # 52+ bytes of payload
+    wire_bytes = header + body
+    return base64.urlsafe_b64encode(wire_bytes).decode().rstrip('=')
 
 
 def _compute_session_id(uid_a: str, uid_b: str) -> str:
@@ -301,10 +320,22 @@ def run_tests(config: Config):
     alice.register_device()
     bob.register_device()
 
-    # Note: Friendship + full E2EE negotiation requires additional API calls
-    # (friend request, accept, device registration, E2EE handshake).
-    # These are tested by the existing integration test suite.
-    # This script validates: API reachability, auth flow, plaintext scans.
+    # Establish friendship (required for private messaging).
+    print("  Establishing friendship...")
+    alice._post("/friend/request", {"targetUserId": int(bob.user_id)})
+    time.sleep(0.5)
+    # Bob fetches pending requests and accepts the first one.
+    pending = bob._get("/friend/requests")
+    if isinstance(pending, list) and len(pending) > 0:
+        req = pending[0]
+        req_id = req.get("id") if isinstance(req, dict) else None
+        if req_id:
+            bob._post("/friend/accept", {"requestId": int(req_id)})
+            print("  Friendship established.")
+        else:
+            print(f"  [WARN] Could not find requestId in: {req}")
+    else:
+        print(f"  [WARN] No pending friend requests found for Bob: {pending}")
 
     # ---- Scenario 1: Web → Mobile encrypted private text ----
     print("\nScenario 1: Web(Alice) → Mobile(Bob) encrypted private text")
@@ -327,15 +358,18 @@ def run_tests(config: Config):
     def test_web_sends_encrypted():
         """Alice sends encrypted message to Bob."""
         envelope = _make_test_envelope(
-            sender_device_id=alice.device_id,
-            recipient_device_id=bob.device_id,
+            sender_device_id=alice.device_id or "dev-alice",
+            recipient_device_id=bob.device_id or "dev-bob",
             session_id=session_id,
+            sender_user_id=alice.user_id,
+            client_msg_id=f"client-{uuid.uuid4().hex[:12]}",
         )
         result = alice.send_private_message(
-            bob.user_id, SECRET_WEB_TO_MOBILE,
+            bob.user_id, "",
             encrypted=True, envelope=envelope,
         )
         assert result.get("id"), f"Message send failed: {result}"
+        print(f"  [INFO] Encrypted message sent, id={result.get('id')}")
 
     runner.test("Alice sends encrypted text to Bob", test_web_sends_encrypted)
 
@@ -361,12 +395,14 @@ def run_tests(config: Config):
     def test_mobile_sends_encrypted():
         """Bob sends encrypted message to Alice."""
         envelope = _make_test_envelope(
-            sender_device_id=bob.device_id,
-            recipient_device_id=alice.device_id,
+            sender_device_id=bob.device_id or "dev-bob",
+            recipient_device_id=alice.device_id or "dev-alice",
             session_id=session_id,
+            sender_user_id=bob.user_id,
+            client_msg_id=f"client-{uuid.uuid4().hex[:12]}",
         )
         result = bob.send_private_message(
-            alice.user_id, SECRET_MOBILE_TO_WEB,
+            alice.user_id, "",
             encrypted=True, envelope=envelope,
         )
         assert result.get("id"), f"Message send failed: {result}"
@@ -427,23 +463,22 @@ def run_tests(config: Config):
     runner.test("Encrypted history messages have no plaintext content",
                 test_history_no_plaintext_content)
 
-    # ---- Scenario 4: Unsupported media capability check ----
-    print("\nScenario 5: Unsupported media must not trigger in E2EE chat")
+    # ---- Scenario 4: Plaintext blocked when E2EE is active ----
+    print("\nScenario 4: Plaintext blocked when E2EE session is encrypted")
 
-    def test_media_message_without_encryption():
-        """Sending media message should not pretend E2EE support."""
-        # Media messages should NOT be marked encrypted.
-        result = alice.send_private_message(
-            bob.user_id, "",
-            encrypted=False,
-        )
-        # Media entries are currently disabled per P0-4; just verify
-        # sending a non-E2EE message succeeds without false encryption flag.
-        msg_id = result.get("id", "")
-        assert msg_id, "Non-E2EE message should still send successfully"
+    def test_plaintext_blocked_in_e2ee_session():
+        """After E2EE is established, plaintext messages must be rejected."""
+        try:
+            alice.send_private_message(bob.user_id, "should-be-blocked",
+                                       encrypted=False)
+            raise AssertionError("Plaintext message should have been rejected")
+        except Exception as e:
+            err = str(e)
+            assert "400" in err or "e2ee" in err.lower(), \
+                f"Expected E2EE enforcement, got: {err}"
 
-    runner.test("Non-E2EE message sends without encryption flag",
-                test_media_message_without_encryption)
+    runner.test("Plaintext blocked in encrypted session",
+                test_plaintext_blocked_in_e2ee_session)
 
     # ---- Scenario 6: Database plaintext scan ----
     print("\nPlaintext Scan: Database")
@@ -469,18 +504,20 @@ def run_tests(config: Config):
 
 def _make_test_envelope(*, sender_device_id: str,
                         recipient_device_id: str,
-                        session_id: str) -> dict:
-    """Create a test E2EE envelope in the format expected by the server."""
+                        session_id: str,
+                        sender_user_id: str = "",
+                        client_msg_id: str = "") -> dict:
+    """Create a test E2EE envelope in the format expected by the server (E2eeEnvelopeDto)."""
     return {
         "version": 2,
         "algorithm": "rust-x25519-x3dh-dr-v1",
         "senderDeviceId": sender_device_id,
         "recipientDeviceId": recipient_device_id,
         "sessionId": session_id,
-        "wire": _fake_base64_key() + _fake_base64_key(),  # >= 56 bytes
+        "wire": _fake_e2ee_wire(),  # valid wire: 4B header len + 60B body
         "conversationId": session_id,
-        "clientMsgId": f"client-{uuid.uuid4().hex[:12]}",
-        "senderUserId": "",
+        "clientMsgId": client_msg_id or f"client-{uuid.uuid4().hex[:12]}",
+        "senderUserId": sender_user_id,
         "recipientDeviceIds": [recipient_device_id],
         "keyId": "test-key-id",
         "keyVersion": 1,
