@@ -35,6 +35,15 @@ class MobileMessageOutbox implements OutboxPort {
 
   @override
   Future<void> enqueue(OutboxMessage message) async {
+    // Dedup: skip if already sent, keep existing if pending/failed/retrying.
+    final existing = _messages.where(
+      (m) => m.clientMessageId == message.clientMessageId,
+    ).firstOrNull;
+    if (existing != null) {
+      if (existing.isSent) return; // Already delivered.
+      // Already queued; don't duplicate.
+      return;
+    }
     _messages.add(message);
     _eventController.add(const OutboxEvent(type: OutboxEventType.messageAdded));
     await _saveToStorage();
@@ -54,15 +63,38 @@ class MobileMessageOutbox implements OutboxPort {
         .toList();
 
     for (final msg in toRetry) {
+      // Pre-flight: encrypted outbox requires envelope and deviceId.
+      if (msg.isEncrypted) {
+        if (msg.e2eeEnvelope == null) {
+          _updateMessage(msg.copyWith(
+            status: OutboxMessageStatus.failed,
+            lastError: 'encrypted_outbox_missing_envelope',
+          ));
+          _eventController.add(const OutboxEvent(
+            type: OutboxEventType.messageFailed,
+          ));
+          continue;
+        }
+        if (msg.e2eeDeviceId == null || msg.e2eeDeviceId!.isEmpty) {
+          _updateMessage(msg.copyWith(
+            status: OutboxMessageStatus.failed,
+            lastError: 'encrypted_outbox_missing_device_id',
+          ));
+          _eventController.add(const OutboxEvent(
+            type: OutboxEventType.messageFailed,
+          ));
+          continue;
+        }
+      }
+
       if (msg.retryCount >= msg.maxRetries) {
         final updated = msg.copyWith(
           status: OutboxMessageStatus.failed,
           lastError: 'max_retries_exceeded',
         );
         _updateMessage(updated);
-        _eventController.add(OutboxEvent(
+        _eventController.add(const OutboxEvent(
           type: OutboxEventType.messageFailed,
-          message: null,
         ));
         continue;
       }
@@ -84,6 +116,17 @@ class MobileMessageOutbox implements OutboxPort {
           ));
           // Remove sent message from storage.
           _messages.removeWhere((m) => m.id == msg.id);
+        } else {
+          // sender returned null — treat as failure.
+          _updateMessage(msg.copyWith(
+            status: OutboxMessageStatus.failed,
+            retryCount: msg.retryCount + 1,
+            lastError: 'send_returned_null',
+            lastRetryAt: DateTime.now().toIso8601String(),
+          ));
+          _eventController.add(const OutboxEvent(
+            type: OutboxEventType.messageFailed,
+          ));
         }
       } catch (e) {
         _updateMessage(msg.copyWith(
@@ -92,9 +135,8 @@ class MobileMessageOutbox implements OutboxPort {
           lastError: e.toString(),
           lastRetryAt: DateTime.now().toIso8601String(),
         ));
-        _eventController.add(OutboxEvent(
+        _eventController.add(const OutboxEvent(
           type: OutboxEventType.messageFailed,
-          message: null,
         ));
       }
     }

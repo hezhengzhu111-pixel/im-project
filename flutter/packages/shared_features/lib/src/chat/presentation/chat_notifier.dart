@@ -159,8 +159,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<Message?> _sendOutboxMessage(OutboxMessage outboxMsg) async {
     if (outboxMsg.isEncrypted) {
       final envelope = _tryGetEnvelopeForOutbox(outboxMsg);
-      if (envelope == null || outboxMsg.e2eeDeviceId == null) {
-        return null;
+      if (envelope == null) {
+        throw Exception('encrypted_outbox_missing_envelope');
+      }
+      if (outboxMsg.e2eeDeviceId == null || outboxMsg.e2eeDeviceId!.isEmpty) {
+        throw Exception('encrypted_outbox_missing_device_id');
       }
       return _messageApi.sendPrivateEncrypted(
         receiverId: outboxMsg.receiverId,
@@ -195,6 +198,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       await loadSessions();
       await _syncKnownE2eeStatuses();
+      // Auto-retry pending outbox messages on network recovery.
+      if (_outbox != null) {
+        final pendingCount = await _outbox!.getPendingCount();
+        if (pendingCount > 0) {
+          await _outbox!.retryAllFailed(_sendOutboxMessage);
+        }
+      }
       final activeId = state.activeSessionId;
       if (activeId != null) {
         final session =
