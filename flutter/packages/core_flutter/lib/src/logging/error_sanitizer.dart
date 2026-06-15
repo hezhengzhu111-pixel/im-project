@@ -89,16 +89,7 @@ class ErrorSanitizer {
     if (error is DioException) {
       return _sanitizeDio(error);
     }
-    final raw = error.toString();
-    var sanitized = _stripGenericPatterns(raw);
-
-    if (category == 'e2ee') {
-      sanitized = _stripE2eePatterns(sanitized);
-    } else if (category == 'ws') {
-      sanitized = _stripWsPatterns(sanitized);
-    }
-
-    return sanitized;
+    return _stripGenericPatterns(error.toString());
   }
 
   String _sanitizeDio(DioException error) {
@@ -132,23 +123,15 @@ class ErrorSanitizer {
     var result = input;
     result = result.replaceAll(_tokenPattern, 'token=***');
     result = result.replaceAll(_bearerPattern, 'Bearer ***');
-    result = result.replaceAll(_emailPattern, '***@***');
-    result = result.replaceAll(_phonePattern, '***');
-    result = result.replaceAll(_queryPattern, '?***');
-    return result;
-  }
-
-  String _stripE2eePatterns(String input) {
-    var result = input;
+    result = result.replaceAll(_ticketPattern, 'ticket=***');
     result = result.replaceAll(_envelopePattern, 'envelope=***');
     result = result.replaceAll(_sessionPattern, 'session=***');
     result = result.replaceAll(_deviceIdCamelPattern, 'deviceId=***');
     result = result.replaceAll(_deviceIdSnakePattern, 'device_id=***');
+    result = result.replaceAll(_emailPattern, '***@***');
+    result = result.replaceAll(_phonePattern, '***');
+    result = result.replaceAll(_queryPattern, '?***');
     return result;
-  }
-
-  String _stripWsPatterns(String input) {
-    return input.replaceAll(_ticketPattern, 'ticket=***');
   }
 
   StackTrace? _filterStackTrace(StackTrace? stackTrace) {

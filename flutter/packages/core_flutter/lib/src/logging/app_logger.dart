@@ -43,8 +43,21 @@ class AppLogger {
 
   void warn(String message, [Object? error, StackTrace? stackTrace]) {
     debugPrint('[$_tag:warn] $message');
-    if (error != null) debugPrint('[$_tag:warn] detail: $error');
-    if (stackTrace != null) debugPrint('[$_tag:warn] stack: $stackTrace');
+    if (error != null) {
+      final sanitized = _sanitizer.sanitize(error, stackTrace);
+      debugPrint(
+        '[$_tag:warn] detail (type: ${sanitized.errorType})'
+        ': ${sanitized.safeMessage}',
+      );
+      if (sanitized.stackTrace != null) {
+        debugPrint('[$_tag:warn] stack: ${sanitized.stackTrace}');
+      }
+    } else if (stackTrace != null) {
+      final sanitized = _sanitizer.sanitize(Exception(''), stackTrace);
+      if (sanitized.stackTrace != null) {
+        debugPrint('[$_tag:warn] stack: ${sanitized.stackTrace}');
+      }
+    }
   }
 
   void error(
@@ -59,10 +72,12 @@ class AppLogger {
       category: category,
     );
     debugPrint(
-      '[$_tag:error] $message (type: ${sanitized.errorType}): $error',
+      '[$_tag:error] $message'
+      ' (type: ${sanitized.errorType}, category: ${sanitized.category})'
+      ': ${sanitized.safeMessage}',
     );
-    if (stackTrace != null) {
-      debugPrint('[$_tag:error] stack: $stackTrace');
+    if (sanitized.stackTrace != null) {
+      debugPrint('[$_tag:error] stack: ${sanitized.stackTrace}');
     }
     _errorReporter?.reportError(sanitized);
   }
