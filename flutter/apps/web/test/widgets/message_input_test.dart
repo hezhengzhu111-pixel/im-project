@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/chat.dart' as shared;
 import 'package:im_web/core/di/platform_providers.dart';
 import 'package:im_web/core/di/third_party_providers.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/core/network/network_status_provider.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/chat/presentation/chat_providers.dart';
-import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
 import 'package:im_web/features/chat/presentation/widgets/message_input.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../helpers/fakes.dart';
@@ -34,9 +34,14 @@ class _FakeNetworkStatusNotifier extends StateNotifier<NetworkState>
   Stream<NetworkState> get stateChanges => const Stream.empty();
 }
 
-class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
-    implements ChatNotifierWithOutbox {
-  _FakeChatNotifier() : super(const ChatStateWithOutbox());
+class _FakeChatNotifier extends shared.ChatNotifier {
+  _FakeChatNotifier()
+      : super(
+          shared.MessageApi(FakeHttpClientPort()),
+          shared.MessagePipeline(),
+          FakeWsClientPort(),
+          () => 'test-user',
+        );
 
   @override
   Future<void> loadSessions() async {}
@@ -165,8 +170,7 @@ Widget _buildSubject({
       audioRecorderPortProvider.overrideWithValue(
         mockAudioRecorder ?? MockAudioRecorderAdapter(),
       ),
-      networkStatusProvider
-          .overrideWith((ref) => _FakeNetworkStatusNotifier()),
+      networkStatusProvider.overrideWith((ref) => _FakeNetworkStatusNotifier()),
       chatStateProvider.overrideWith((ref) => _FakeChatNotifier()),
       httpClientProvider.overrideWithValue(_buildFakeHttpClient()),
       analyticsProvider.overrideWithValue(NoopAnalyticsPort()),

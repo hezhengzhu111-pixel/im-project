@@ -1,7 +1,6 @@
 // ignore_for_file: unnecessary_non_null_assertion
 
 import 'dart:async';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/message_api.dart';
@@ -56,6 +55,43 @@ class ChatNotifier extends StateNotifier<ChatState> {
   StreamSubscription? _outboxSubscription;
 
   bool get _e2eeAvailable => _e2eeManager != null && _e2eeMetaStore != null;
+
+  Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
+      Map.unmodifiable(state.pendingNegotiations);
+
+  E2eeNegotiationEvent? get pendingNegotiation =>
+      activePendingNegotiation ??
+      (state.pendingNegotiations.isEmpty
+          ? null
+          : state.pendingNegotiations.values.first);
+
+  E2eeNegotiationEvent? get activePendingNegotiation {
+    final activeId = state.activeSessionId;
+    if (activeId == null) return null;
+    return pendingNegotiationForSession(activeId);
+  }
+
+  E2eeNegotiationEvent? pendingNegotiationForSession(String sessionId) {
+    for (final key in _negotiationLookupKeys(sessionId)) {
+      final event = state.pendingNegotiations[key];
+      if (event != null) return event;
+    }
+    return null;
+  }
+
+  void clearPendingNegotiation([String? sessionId]) {
+    if (state.pendingNegotiations.isEmpty) return;
+    if (sessionId == null) {
+      final activeId = state.activeSessionId;
+      if (activeId != null && pendingNegotiationForSession(activeId) != null) {
+        _removePendingNegotiation(activeId);
+        return;
+      }
+      _removePendingNegotiation(state.pendingNegotiations.keys.first);
+      return;
+    }
+    _removePendingNegotiation(sessionId);
+  }
 
   void _subscribeToWs() {
     _wsSubscription = _wsClient.events.listen((event) {
@@ -184,7 +220,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
   /// Retry pending outbox messages if any exist.
   ///
   /// Exposed for testing the network recovery → outbox retry glue.
-  @visibleForTesting
   Future<void> retryPendingOutboxIfNeeded() async {
     if (_outbox == null) return;
     final pendingCount = await _outbox!.getPendingCount();
@@ -1048,6 +1083,97 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  void setOfflineStatus(bool isOffline) {
+    state = state.copyWith(isOffline: isOffline);
+  }
+
+  Future<void> retryMessage(String sessionKey, String messageId) async {
+    final normalizedKey = _normalizeIncomingSessionKey(sessionKey);
+    final messages = state.messages[normalizedKey];
+    if (messages == null) return;
+    final index = messages
+        .indexWhere((m) => m.id == messageId || m.clientMessageId == messageId);
+    if (index == -1) return;
+    final msg = messages[index];
+
+    if (msg.encrypted == true) {
+      _updateMessageStatus(normalizedKey, msg.id, 'FAILED');
+      state = state.copyWith(error: 'e2ee_not_ready');
+      return;
+    }
+
+    _updateMessageStatus(normalizedKey, msg.id, 'SENDING');
+    try {
+      final Message serverMessage;
+      if (msg.isGroupChat) {
+        serverMessage = await _messageApi.sendGroupMessage(
+          SendGroupMessageRequest(
+            groupId: msg.groupId ?? _groupIdFromSessionKey(normalizedKey),
+            content: msg.content,
+            messageType: msg.messageType,
+            clientMessageId: msg.clientMessageId,
+            mediaUrl: msg.mediaUrl,
+            mediaName: msg.mediaName,
+            mediaSize: msg.mediaSize,
+            thumbnailUrl: msg.thumbnailUrl,
+            duration: msg.duration,
+          ),
+        );
+      } else {
+        serverMessage = await _messageApi.sendPrivateMessage(
+          SendPrivateMessageRequest(
+            receiverId:
+                msg.receiverId ?? _privateTargetFromSessionKey(normalizedKey),
+            content: msg.content,
+            messageType: msg.messageType,
+            clientMessageId: msg.clientMessageId,
+            mediaUrl: msg.mediaUrl,
+            mediaName: msg.mediaName,
+            mediaSize: msg.mediaSize,
+            thumbnailUrl: msg.thumbnailUrl,
+            duration: msg.duration,
+          ),
+        );
+      }
+      _replaceMessage(normalizedKey, msg.id, serverMessage);
+    } catch (_) {
+      _updateMessageStatus(normalizedKey, msg.id, 'FAILED');
+    }
+  }
+
+  Future<ChatSession?> getOrCreateSession(
+    String targetId, {
+    String? targetName,
+    String? targetAvatar,
+  }) async {
+    final existing =
+        state.sessions.where((s) => s.targetId == targetId).firstOrNull;
+    if (existing != null) return existing;
+    await loadSessions();
+    final loaded =
+        state.sessions.where((s) => s.targetId == targetId).firstOrNull;
+    if (loaded != null) return loaded;
+    final created = ChatSession(
+      id: _privateSessionKey(targetId),
+      type: 'private',
+      targetId: targetId,
+      targetName: targetName ?? targetId,
+      targetAvatar: targetAvatar,
+      unreadCount: 0,
+      conversationType: 'private',
+    );
+    state = state.copyWith(sessions: [...state.sessions, created]);
+    return created;
+  }
+
+  String getGroupSessionKey(String groupId) {
+    return _sessionKeyForGroupTarget(groupId);
+  }
+
+  Future<void> logout() async {
+    await _sentMessageCache?.clearAll();
+  }
+
   String _sessionKeyForMessage(Message message) {
     if (message.isGroupChat) {
       return _sessionKeyForGroupTarget(message.groupId ?? '');
@@ -1134,6 +1260,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return sessionKey.substring('g_'.length);
     }
     return sessionKey;
+  }
+
+  Set<String> _negotiationLookupKeys(String sessionId) {
+    return SessionKeyCodec.negotiationLookupKeys(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   int _compareIds(String left, String right) {

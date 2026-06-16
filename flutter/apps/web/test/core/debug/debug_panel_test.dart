@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/chat.dart' as shared;
 import 'package:im_web/core/debug/debug_panel_entry.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/chat/presentation/chat_providers.dart';
-import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
 
+import '../../helpers/fakes.dart';
 import '../../helpers/test_providers.dart';
 
 void main() {
@@ -20,12 +21,12 @@ void main() {
   });
 
   group('DebugPanelEntry', () {
-    // Helper to create a fake ChatStateWithOutbox
-    ChatStateWithOutbox makeChatState({
+    // Helper to create a fake ChatState.
+    shared.ChatState makeChatState({
       String? activeSessionId,
       List<ChatSession> sessions = const [],
     }) {
-      return ChatStateWithOutbox(
+      return shared.ChatState(
         activeSessionId: activeSessionId,
         sessions: sessions,
       );
@@ -34,7 +35,7 @@ void main() {
     Widget buildEntry({
       AuthState? authState,
       AsyncValue<WsConnectionState>? wsState,
-      ChatStateWithOutbox? chatState,
+      shared.ChatState? chatState,
     }) {
       final container = createTestContainer(overrides: [
         // Override authStateProvider with a fake StateNotifier
@@ -174,9 +175,16 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
   }
 }
 
-class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
-    implements ChatNotifierWithOutbox {
-  _FakeChatNotifier(ChatStateWithOutbox state) : super(state);
+class _FakeChatNotifier extends shared.ChatNotifier {
+  _FakeChatNotifier(shared.ChatState initialState)
+      : super(
+          shared.MessageApi(FakeHttpClientPort()),
+          shared.MessagePipeline(),
+          FakeWsClientPort(),
+          () => 'test-user',
+        ) {
+    state = initialState;
+  }
 
   @override
   Future<void> loadSessions() async {}

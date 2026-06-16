@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_shared_features/chat.dart' show ChatState;
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
-import '../chat_provider_with_outbox.dart';
 
 /// Banner that shows network status and outbox information
 class NetworkStatusBanner extends ConsumerWidget {
@@ -27,7 +27,7 @@ class NetworkStatusBanner extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     NetworkState networkState,
-    ChatStateWithOutbox chatState,
+    ChatState chatState,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final loc = AppLocalizations.of(context)!;

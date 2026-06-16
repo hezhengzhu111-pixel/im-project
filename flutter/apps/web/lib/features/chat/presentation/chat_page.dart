@@ -5,12 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/chat.dart' show ChatState;
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/e2ee_glass_widgets.dart';
-import 'chat_provider_with_outbox.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -104,7 +104,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   ChatSession? _resolveDeepLinkedSession(
     String rawSessionId,
-    ChatStateWithOutbox chatState,
+    ChatState chatState,
   ) {
     if (rawSessionId.isEmpty) return null;
 
