@@ -171,7 +171,7 @@ def scan_database(
         for col in columns:
             # Verify column exists
             try:
-                cursor.execute(f"SELECT 1 FROM {schema}.{table} WHERE 1=0")
+                cursor.execute(f"SELECT * FROM {schema}.{table} WHERE 1=0")
                 table_cols = [d[0] for d in cursor.description]
             except pymysql.err.ProgrammingError as e:
                 warnings.append(f"Cannot describe {schema}.{table}: {e}")
@@ -193,16 +193,15 @@ def scan_database(
             for secret in secrets:
                 try:
                     cursor.execute(
-                        f"SELECT id FROM {schema}.{table} "
+                        f"SELECT 1 FROM {schema}.{table} "
                         f"WHERE {col} LIKE %s LIMIT 5",
                         (f"%{secret}%",),
                     )
                     rows = cursor.fetchall()
                     if rows:
-                        row_ids = [str(r[0]) for r in rows]
                         violations.append(
                             f"PLAINTEXT HIT: {schema}.{table}.{col} "
-                            f"(rows: {', '.join(row_ids)}) "
+                            f"(rows matched: {len(rows)}) "
                             f"secret_hash={secret_hash(secret)}"
                         )
                 except pymysql.err.ProgrammingError as e:
@@ -224,6 +223,11 @@ def scan_database(
 def main():
     parser = argparse.ArgumentParser(
         description="P1 E2EE Database Plaintext Scan")
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Backend base URL (accepted for compatibility with p1_sit_gate.py, ignored)",
+    )
     parser.add_argument(
         "--db-url",
         default=None,

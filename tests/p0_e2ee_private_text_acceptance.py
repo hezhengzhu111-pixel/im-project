@@ -514,7 +514,7 @@ def scan_database(db_url: str, secrets: List[str],
 
     # Check that client_message_id column exists.
     try:
-        cursor.execute("SELECT 1 FROM messages WHERE 1=0")
+        cursor.execute("SELECT * FROM messages WHERE 1=0")
         cols = [d[0] for d in cursor.description]
     except pymysql.err.ProgrammingError:
         cols = []

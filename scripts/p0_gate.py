@@ -45,9 +45,9 @@ def _run(cmd: str, cwd: str, timeout: int = 300) -> Tuple[int, str, str]:
     try:
         proc = subprocess.run(
             cmd, shell=True, cwd=cwd, capture_output=True, text=True,
-            timeout=timeout,
+            timeout=timeout, encoding="utf-8", errors="replace",
         )
-        return (proc.returncode, proc.stdout, proc.stderr)
+        return (proc.returncode, proc.stdout or "", proc.stderr or "")
     except subprocess.TimeoutExpired:
         return (-1, "", f"TIMEOUT after {timeout}s: {cmd}")
     except Exception as e:

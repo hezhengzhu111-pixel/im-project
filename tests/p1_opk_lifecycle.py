@@ -408,8 +408,8 @@ def run_tests(base_url: str, db_url: Optional[str]):
     alice_api = APIClient(base_url)
     bob_api = APIClient(base_url)
 
-    alice = E2EEUser(alice_api, f"p1_opk_alice_{secrets.token_hex(4)}")
-    bob = E2EEUser(bob_api, f"p1_opk_bob_{secrets.token_hex(4)}")
+    alice = E2EEUser(alice_api, f"oa{secrets.token_hex(3)}")
+    bob = E2EEUser(bob_api, f"ob{secrets.token_hex(3)}")
 
     alice.register_and_login()
     bob.register_and_login()
@@ -441,7 +441,9 @@ def run_tests(base_url: str, db_url: Optional[str]):
         status = bob.api.opk_status(bob.device_id)
         http_response_snapshots.append(status)
         assert status["count"] > 0, f"Expected OTK count > 0, got {status['count']}"
-        assert status["device_id"] == bob.device_id, "Device ID mismatch in OPK status"
+        device_id_from_status = status.get("deviceId") or status.get("device_id")
+        assert device_id_from_status == bob.device_id, \
+            f"Device ID mismatch in OPK status: {status}"
 
     runner.test("Upload OPK pool", test_upload_opk_pool)
 
@@ -543,7 +545,7 @@ def run_tests(base_url: str, db_url: Optional[str]):
 
         # Create dedicated user for exhaustion
         exhaust_api = APIClient(base_url)
-        exhaust_user = E2EEUser(exhaust_api, f"p1_exhaust_{secrets.token_hex(4)}")
+        exhaust_user = E2EEUser(exhaust_api, f"ex{secrets.token_hex(3)}")
         exhaust_user.register_and_login()
         exhaust_user.api.send_friend_request(bob.user_id)
         time.sleep(0.3)
@@ -621,7 +623,7 @@ def run_tests(base_url: str, db_url: Optional[str]):
 
         # Verify new OTK can be fetched
         test_api = APIClient(base_url)
-        test_user = E2EEUser(test_api, f"p1_refill_test_{secrets.token_hex(4)}")
+        test_user = E2EEUser(test_api, f"rf{secrets.token_hex(3)}")
         test_user.register_and_login()
         test_user.api.send_friend_request(bob.user_id)
         time.sleep(0.3)
