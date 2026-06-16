@@ -1,188 +1,8 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:im_core/core.dart';
-import 'package:im_shared_features/chat.dart' show OutboxPort, OutboxEvent, OutboxMessage, OutboxMessageStatus, OutboxEventType;
-
-/// In-memory storage for testing (substitutes SharedPreferences).
-class _FakePrefs {
-  final _store = <String, String>{};
-  String? getString(String key) => _store[key];
-  Future<bool> setString(String key, String value) async {
-    _store[key] = value;
-    return true;
-  }
-  Future<bool> remove(String key) async {
-    _store.remove(key);
-    return true;
-  }
-}
-
-/// A minimal outbox implementation with in-memory storage for testing.
-class TestMobileMessageOutbox implements OutboxPort {
-  TestMobileMessageOutbox() {
-    _loadFromStorage();
-  }
-
-  final _prefs = _FakePrefs();
-  final _eventController = StreamController<OutboxEvent>.broadcast();
-  final _messages = <OutboxMessage>[];
-  static const _storageKey = 'im_outbox_messages';
-
-  @override
-  Stream<OutboxEvent> get events => _eventController.stream;
-
-  @override
-  Future<int> getPendingCount() async =>
-      _messages.where((m) => m.isPending).length;
-
-  @override
-  Future<int> getFailedCount() async =>
-      _messages.where((m) => m.isFailed).length;
-
-  @override
-  Future<void> enqueue(OutboxMessage message) async {
-    // Dedup: skip if already sent, keep existing if pending/failed/retrying.
-    final existing = _messages.where(
-      (m) => m.clientMessageId == message.clientMessageId,
-    ).firstOrNull;
-    if (existing != null) {
-      if (existing.isSent) return;
-      return;
-    }
-    _messages.add(message);
-    _eventController.add(const OutboxEvent(type: OutboxEventType.messageAdded));
-    await _saveToStorage();
-  }
-
-  @override
-  Future<void> retryAllFailed(
-    Future<Message?> Function(OutboxMessage message) sender,
-  ) async {
-    if (_messages.isEmpty) return;
-
-    _eventController
-        .add(const OutboxEvent(type: OutboxEventType.retryAllStarted));
-
-    final toRetry = _messages
-        .where((m) => m.isPending || m.isFailed)
-        .toList();
-
-    for (final msg in toRetry) {
-      // Pre-flight: encrypted outbox requires envelope and deviceId.
-      if (msg.isEncrypted) {
-        if (msg.e2eeEnvelope == null) {
-          _updateMessage(msg.copyWith(
-            status: OutboxMessageStatus.failed,
-            lastError: 'encrypted_outbox_missing_envelope',
-          ));
-          _eventController.add(const OutboxEvent(
-            type: OutboxEventType.messageFailed,
-          ));
-          continue;
-        }
-        if (msg.e2eeDeviceId == null || msg.e2eeDeviceId!.isEmpty) {
-          _updateMessage(msg.copyWith(
-            status: OutboxMessageStatus.failed,
-            lastError: 'encrypted_outbox_missing_device_id',
-          ));
-          _eventController.add(const OutboxEvent(
-            type: OutboxEventType.messageFailed,
-          ));
-          continue;
-        }
-      }
-
-      if (msg.retryCount >= msg.maxRetries) {
-        _updateMessage(msg.copyWith(
-          status: OutboxMessageStatus.failed,
-          lastError: 'max_retries_exceeded',
-        ));
-        _eventController.add(const OutboxEvent(
-          type: OutboxEventType.messageFailed,
-        ));
-        continue;
-      }
-
-      _updateMessage(msg.copyWith(
-        status: OutboxMessageStatus.retrying,
-        lastRetryAt: DateTime.now().toIso8601String(),
-      ));
-      _eventController
-          .add(const OutboxEvent(type: OutboxEventType.messageRetrying));
-
-      try {
-        final result = await sender(msg);
-        if (result != null) {
-          _updateMessage(msg.copyWith(status: OutboxMessageStatus.sent));
-          _eventController.add(OutboxEvent(
-            type: OutboxEventType.messageSent,
-            message: result,
-          ));
-          _messages.removeWhere((m) => m.id == msg.id);
-        } else {
-          _updateMessage(msg.copyWith(
-            status: OutboxMessageStatus.failed,
-            retryCount: msg.retryCount + 1,
-            lastError: 'send_returned_null',
-            lastRetryAt: DateTime.now().toIso8601String(),
-          ));
-          _eventController.add(const OutboxEvent(
-            type: OutboxEventType.messageFailed,
-          ));
-        }
-      } catch (e) {
-        _updateMessage(msg.copyWith(
-          status: OutboxMessageStatus.failed,
-          retryCount: msg.retryCount + 1,
-          lastError: e.toString(),
-          lastRetryAt: DateTime.now().toIso8601String(),
-        ));
-        _eventController.add(const OutboxEvent(
-          type: OutboxEventType.messageFailed,
-        ));
-      }
-    }
-
-    await _saveToStorage();
-    _eventController
-        .add(const OutboxEvent(type: OutboxEventType.retryAllCompleted));
-  }
-
-  @override
-  Future<void> clearAll() async {
-    _messages.clear();
-    await _prefs.remove(_storageKey);
-  }
-
-  void _updateMessage(OutboxMessage updated) {
-    final index = _messages.indexWhere((m) => m.id == updated.id);
-    if (index != -1) {
-      _messages[index] = updated;
-    }
-  }
-
-  Future<void> _saveToStorage() async {
-    final list = _messages.map((m) => jsonEncode(m.toMap())).toList();
-    await _prefs.setString(_storageKey, jsonEncode(list));
-  }
-
-  void _loadFromStorage() {
-    final raw = _prefs.getString(_storageKey);
-    if (raw == null) return;
-    try {
-      final list = jsonDecode(raw) as List;
-      for (final item in list) {
-        if (item is String) {
-          _messages.add(OutboxMessage.fromMap(
-              jsonDecode(item) as Map<String, dynamic>));
-        } else if (item is Map<String, dynamic>) {
-          _messages.add(OutboxMessage.fromMap(item));
-        }
-      }
-    } catch (_) {}
-  }
-}
+import 'package:im_shared_features/chat.dart' show OutboxMessage;
+import 'package:im_mobile/features/chat/data/mobile_message_outbox.dart';
 
 // ============================================================================
 // Test helpers
@@ -238,15 +58,19 @@ Message _makeFakeServerMessage(String id) {
 // ============================================================================
 
 void main() {
-  group('MobileMessageOutbox', () {
-    late TestMobileMessageOutbox outbox;
+  group('MobileMessageOutbox (production)', () {
+    late SharedPreferences prefs;
+    late MobileMessageOutbox outbox;
 
-    setUp(() {
-      outbox = TestMobileMessageOutbox();
+    setUp(() async {
+      // Use mock SharedPreferences to avoid real device storage.
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+      outbox = MobileMessageOutbox(prefs);
     });
 
-    tearDown(() {
-      outbox.clearAll();
+    tearDown(() async {
+      await outbox.clearAll();
     });
 
     // ---- Encrypted retry success ----
@@ -254,8 +78,7 @@ void main() {
       final msg = _makeEncryptedWithEnvelope();
       await outbox.enqueue(msg);
 
-      await _retryWithSender(
-        outbox,
+      await outbox.retryAllFailed(
         (_) async => _makeFakeServerMessage('server-1'),
       );
 
@@ -337,12 +160,79 @@ void main() {
       expect(await outbox.getPendingCount(), 0);
       expect(await outbox.getFailedCount(), 1);
     });
-  });
-}
 
-Future<void> _retryWithSender(
-  TestMobileMessageOutbox outbox,
-  Future<Message?> Function(OutboxMessage) sender,
-) async {
-  await outbox.retryAllFailed(sender);
+    // =====================================================================
+    // Persistence tests — verify production SharedPreferences backing
+    // =====================================================================
+
+    test('pending message survives outbox re-creation', () async {
+      final msg = _makeEncryptedWithEnvelope(clientMessageId: 'persist-1');
+      await outbox.enqueue(msg);
+
+      expect(await outbox.getPendingCount(), 1);
+
+      // Re-create outbox with same prefs — pending message must still exist.
+      final outbox2 = MobileMessageOutbox(prefs);
+      addTearDown(() => outbox2.clearAll());
+
+      expect(await outbox2.getPendingCount(), 1);
+      expect(await outbox2.getFailedCount(), 0);
+    });
+
+    test('sent message is removed after re-creation', () async {
+      final msg = _makeEncryptedWithEnvelope(clientMessageId: 'persist-2');
+      await outbox.enqueue(msg);
+
+      await outbox.retryAllFailed(
+        (_) async => _makeFakeServerMessage('server-ok'),
+      );
+
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+
+      // Re-create outbox — sent message must be gone.
+      final outbox2 = MobileMessageOutbox(prefs);
+      addTearDown(() => outbox2.clearAll());
+
+      expect(await outbox2.getPendingCount(), 0);
+      expect(await outbox2.getFailedCount(), 0);
+    });
+
+    test('failed message survives outbox re-creation', () async {
+      final msg = _makeEncryptedWithEnvelope(clientMessageId: 'persist-3');
+      await outbox.enqueue(msg);
+
+      await outbox.retryAllFailed((_) async => null); // sender returns null → fail
+
+      expect(await outbox.getFailedCount(), 1);
+
+      // Re-create outbox — failed status must persist.
+      final outbox2 = MobileMessageOutbox(prefs);
+      addTearDown(() => outbox2.clearAll());
+
+      expect(await outbox2.getFailedCount(), 1);
+      expect(await outbox2.getPendingCount(), 0);
+    });
+
+    test('enqueue dedup survives re-creation', () async {
+      final msg = _makeEncryptedWithEnvelope(
+          id: 'id-10', clientMessageId: 'persist-dup');
+      await outbox.enqueue(msg);
+
+      // Re-create and try to enqueue duplicate.
+      final outbox2 = MobileMessageOutbox(prefs);
+      addTearDown(() => outbox2.clearAll());
+
+      await outbox2.enqueue(_makeEncryptedWithEnvelope(
+          id: 'id-11', clientMessageId: 'persist-dup'));
+
+      // Should still be only 1 message.
+      var count = 0;
+      await outbox2.retryAllFailed((_) async {
+        count++;
+        return _makeFakeServerMessage('dedup-ok');
+      });
+      expect(count, 1);
+    });
+  });
 }

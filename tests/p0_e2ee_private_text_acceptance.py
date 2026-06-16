@@ -474,8 +474,13 @@ class E2EEUser:
 # Database Scanner
 # ============================================================================
 
-def scan_database(db_url: str, secrets: List[str]) -> List[str]:
-    """Scan MySQL messages table for plaintext secrets. Returns violations."""
+def scan_database(db_url: str, secrets: List[str],
+                  client_message_ids: List[str]) -> List[str]:
+    """Scan MySQL messages table for plaintext secrets. Returns violations.
+
+    Uses client_message_ids to precisely locate test messages, then
+    performs a global LIKE scan as a safety net.
+    """
     try:
         import pymysql
     except ImportError:
@@ -501,23 +506,68 @@ def scan_database(db_url: str, secrets: List[str]) -> List[str]:
     )
     cursor = conn.cursor()
 
-    columns_to_scan = ["content", "e2ee_envelope_json"]
-    for col in columns_to_scan:
+    # ---- Phase 1: Precise lookup by client_message_id ----
+    if not client_message_ids:
+        raise AssertionError(
+            "DB scan requires client_message_ids to locate test messages; "
+            "none provided")
+
+    # Check that client_message_id column exists.
+    try:
+        cursor.execute("SELECT 1 FROM messages WHERE 1=0")
+        cols = [d[0] for d in cursor.description]
+    except pymysql.err.ProgrammingError:
+        cols = []
+
+    if "client_message_id" not in cols:
+        raise AssertionError(
+            "messages.client_message_id column is missing; "
+            "cannot locate test messages for DB scan")
+
+    placeholders = ",".join(["%s"] * len(client_message_ids))
+    cursor.execute(
+        f"SELECT id, client_message_id, content, e2ee_envelope_json "
+        f"FROM messages WHERE client_message_id IN ({placeholders})",
+        client_message_ids,
+    )
+    found_rows = cursor.fetchall()
+
+    found_ids = {row[1] for row in found_rows if row[1]}
+    missing = set(client_message_ids) - found_ids
+    if missing:
+        raise AssertionError(
+            f"Test messages not found by client_message_id: {missing}")
+
+    # Scan the located test messages for secret leakage.
+    for row in found_rows:
+        msg_id, cid, content_val, envelope_val = row
+        for col_name, col_val in [("content", content_val), ("e2ee_envelope_json", envelope_val)]:
+            value_str = str(col_val) if col_val else ""
+            for secret in secrets:
+                if secret in value_str:
+                    violations.append(
+                        f"P0 secret leaked in messages.{col_name} "
+                        f"for message {msg_id}")
+
+    # ---- Phase 2: Global LIKE scan (safety net) ----
+    for secret in secrets:
         try:
             cursor.execute(
-                f"SELECT id, {col} FROM messages WHERE {col} IS NOT NULL "
-                f"AND {col} != '' LIMIT 500"
+                "SELECT id, client_message_id, content, e2ee_envelope_json "
+                "FROM messages "
+                "WHERE content LIKE %s OR e2ee_envelope_json LIKE %s",
+                (f"%{secret}%", f"%{secret}%"),
             )
             for row in cursor.fetchall():
-                msg_id, value = row
-                value_str = str(value) if value else ""
-                for secret in secrets:
-                    if secret in value_str:
-                        violations.append(
-                            f"Plaintext '{secret}' found in messages.{col} "
-                            f"for message {msg_id}")
-        except pymysql.err.ProgrammingError:
-            pass  # Column may not exist
+                msg_id, cid, content_val, envelope_val = row
+                violations.append(
+                    f"P0 secret leaked in messages (global LIKE) "
+                    f"for message {msg_id}")
+        except pymysql.err.ProgrammingError as e:
+            # Column may not exist — still fail for test messages but
+            # global scan continues for existing columns.
+            violations.append(
+                f"DB column error during global LIKE scan: {e}")
 
     cursor.close()
     conn.close()
@@ -610,6 +660,12 @@ def run_tests(base_url: str, db_url: Optional[str], allow_skip_db: bool = False)
         session_id = f"p_{bob.user_id}_{alice.user_id}"
     print(f"  Session: {session_id}")
 
+    # Pre-generate clientMessageIds so DB scan can locate test messages.
+    web_to_mobile_client_id = f"p0-w2m-{secrets.token_hex(4)}"
+    mobile_to_web_client_id = f"p0-m2w-{secrets.token_hex(4)}"
+    p0_client_message_ids = [web_to_mobile_client_id, mobile_to_web_client_id]
+    print(f"  clientMessageIds: w2m={web_to_mobile_client_id}, m2w={mobile_to_web_client_id}")
+
     # ---- E2EE Negotiation ----
     print("\n[E2EE Negotiation]")
     # Send encryption request (minimal — handshake comes in first message envelope).
@@ -644,9 +700,9 @@ def run_tests(base_url: str, db_url: Optional[str], allow_skip_db: bool = False)
         envelope = alice.encrypt_to_envelope(
             session_id, bob.user_id, None,
             SECRET_WEB_TO_MOBILE)
-        # Send via API.
+        # Send via API with pre-generated clientMessageId.
         result = alice.api.send_private_encrypted(
-            bob.user_id, f"p0-w2m-{secrets.token_hex(4)}",
+            bob.user_id, web_to_mobile_client_id,
             "TEXT", envelope, alice.device_id)
         assert result.get("data") or result.get("success"), \
             f"Encrypted send failed: {result}"
@@ -689,7 +745,7 @@ def run_tests(base_url: str, db_url: Optional[str], allow_skip_db: bool = False)
             SECRET_MOBILE_TO_WEB)
 
         result = bob.api.send_private_encrypted(
-            alice.user_id, f"p0-m2w-{secrets.token_hex(4)}",
+            alice.user_id, mobile_to_web_client_id,
             "TEXT", envelope, bob.device_id)
         assert result.get("data") or result.get("success"), \
             f"Encrypted send failed: {result}"
@@ -819,7 +875,9 @@ def run_tests(base_url: str, db_url: Optional[str], allow_skip_db: bool = False)
 
     def test_db_plaintext_scan():
         violations = scan_database(
-            db_url, [SECRET_WEB_TO_MOBILE, SECRET_MOBILE_TO_WEB])
+            db_url,
+            [SECRET_WEB_TO_MOBILE, SECRET_MOBILE_TO_WEB],
+            p0_client_message_ids)
         assert len(violations) == 0, \
             f"Database plaintext violations: {violations}"
 
