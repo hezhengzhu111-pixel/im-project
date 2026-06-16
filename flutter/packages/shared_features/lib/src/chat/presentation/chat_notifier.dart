@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_non_null_assertion
 
 import 'dart:async';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/message_api.dart';
@@ -194,17 +195,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  /// Retry pending outbox messages if any exist.
+  ///
+  /// Exposed for testing the network recovery → outbox retry glue.
+  @visibleForTesting
+  Future<void> retryPendingOutboxIfNeeded() async {
+    if (_outbox == null) return;
+    final pendingCount = await _outbox!.getPendingCount();
+    if (pendingCount > 0) {
+      await _outbox!.retryAllFailed(_sendOutboxMessage);
+    }
+  }
+
   Future<void> _syncOfflineMessages() async {
     try {
       await loadSessions();
       await _syncKnownE2eeStatuses();
       // Auto-retry pending outbox messages on network recovery.
-      if (_outbox != null) {
-        final pendingCount = await _outbox!.getPendingCount();
-        if (pendingCount > 0) {
-          await _outbox!.retryAllFailed(_sendOutboxMessage);
-        }
-      }
+      await retryPendingOutboxIfNeeded();
       final activeId = state.activeSessionId;
       if (activeId != null) {
         final session =
