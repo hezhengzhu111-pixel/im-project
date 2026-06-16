@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
+import '../../chat/data/sent_message_cache_port.dart';
 import '../domain/auth_status.dart';
 
 /// 认证模块的不可变状态。
@@ -77,7 +78,8 @@ class AuthState {
 /// 并在状态变更时自动管理 WebSocket 连接和分析事件上报。
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(
-      this._repository, this._wsClient, this._httpClient, this._analytics)
+      this._repository, this._wsClient, this._httpClient, this._analytics,
+      [this._sentMessageCache])
       : super(const AuthState());
 
   /// Matches HTTP 5xx status codes (e.g. 500, 502, 503).
@@ -87,6 +89,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final WsClientPort _wsClient;
   final HttpClientPort _httpClient;
   final AnalyticsPort _analytics;
+  final SentMessageCachePort? _sentMessageCache;
 
   /// 使用用户名和密码登录。
   ///
@@ -163,6 +166,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e, st) {
       AppLogger.instance.error('Server logout failed', e, st, 'auth');
     } finally {
+      try {
+        await _sentMessageCache?.clearAll();
+      } catch (e, st) {
+        AppLogger.instance.error(
+            'Failed to clear E2EE sent message cache on logout', e, st, 'e2ee');
+      }
       state = const AuthState(status: AuthStatus.unauthenticated);
     }
   }

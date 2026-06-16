@@ -55,6 +55,8 @@ Future<void> main() async {
 
   // Initialize SharedPreferences for E2EE chat (outbox + sent message cache).
   final sharedPrefs = await SharedPreferences.getInstance();
+  final mobileSentMessageCache =
+      MobileSentMessageCache(sharedPrefs, secureStorage);
 
   runApp(ProviderScope(
     overrides: [
@@ -88,8 +90,8 @@ Future<void> main() async {
       e2eeKeyStoreProvider.overrideWithValue(MobileKeyStore()),
       e2eeSessionStoreProvider.overrideWithValue(MobileSessionStore()),
       // Mobile E2EE chat providers (outbox + sent message cache)
-      mobileSentMessageCacheProvider
-          .overrideWithValue(MobileSentMessageCache(sharedPrefs)),
+      sentMessageCacheProvider.overrideWithValue(mobileSentMessageCache),
+      mobileSentMessageCacheProvider.overrideWithValue(mobileSentMessageCache),
       mobileMessageOutboxProvider
           .overrideWithValue(MobileMessageOutbox(sharedPrefs)),
       // Override shared chatStateProvider with E2EE-capable ChatNotifier

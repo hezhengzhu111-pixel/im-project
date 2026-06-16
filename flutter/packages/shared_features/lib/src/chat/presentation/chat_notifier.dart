@@ -15,21 +15,7 @@ import '../data/outbox_port.dart';
 import '../data/e2ee_history_recovery.dart';
 import '../data/session_key_codec.dart';
 import '../data/retryable_error_classifier.dart';
-
-/// Abstract interface for sent message cache (platform-specific storage).
-abstract class SentMessageCachePort {
-  Future<void> put({
-    required String clientMessageId,
-    required String plaintext,
-    required String e2eeSessionId,
-    String? serverMessageId,
-  });
-  Future<String?> getPlaintextByClientId(String clientMessageId);
-  Future<String?> getPlaintextByServerId(String serverMessageId);
-  Future<void> updateServerId(String clientMessageId, String serverMessageId);
-  Future<void> clearAll();
-  Future<void> clearSession(String e2eeSessionId);
-}
+import '../data/sent_message_cache_port.dart';
 
 /// Simplified chat notifier for desktop (no IndexedDB outbox).
 class ChatNotifier extends StateNotifier<ChatState> {
@@ -130,8 +116,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void _handleOutboxMessageSent(Message message) {
-    final sessionKey = _normalizeIncomingSessionKey(
-        _sessionKeyForMessage(message));
+    final sessionKey =
+        _normalizeIncomingSessionKey(_sessionKeyForMessage(message));
     final messages = state.messages[sessionKey];
     if (messages == null) return;
 
@@ -391,9 +377,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
-      final messages = _e2eeAvailable
-          ? await _decryptLoadedMessages(history)
-          : history;
+      final messages =
+          _e2eeAvailable ? await _decryptLoadedMessages(history) : history;
       _ensureE2eeSessionKeyInMessages(messages);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -419,9 +404,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
-      final messages = _e2eeAvailable
-          ? await _decryptLoadedMessages(history)
-          : history;
+      final messages =
+          _e2eeAvailable ? await _decryptLoadedMessages(history) : history;
       _ensureE2eeSessionKeyInMessages(messages);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -1386,10 +1370,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
     )..removeWhere((key, event) {
         return keys.contains(key) ||
             SessionKeyCodec.negotiationLookupKeys(
-                  event.sessionId,
-                  state.sessions,
-                  currentUserId: _currentUserId(),
-                ).any(keys.contains);
+              event.sessionId,
+              state.sessions,
+              currentUserId: _currentUserId(),
+            ).any(keys.contains);
       });
     state = state.copyWith(pendingNegotiations: updated);
   }

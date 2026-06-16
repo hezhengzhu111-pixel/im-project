@@ -7,6 +7,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
+import '../../chat/data/sent_message_cache_provider.dart';
 import '../data/auth_repository_impl.dart';
 import 'auth_provider.dart';
 
@@ -35,6 +36,7 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     ref.watch(wsClientProvider),
     ref.watch(httpClientProvider),
     ref.watch(analyticsProvider),
+    ref.watch(sentMessageCacheProvider),
   );
 });
 

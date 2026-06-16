@@ -1,22 +1,42 @@
 import 'dart:convert';
+import 'package:im_core/core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:im_shared_features/chat.dart' show SentMessageCachePort;
 
-/// Mobile implementation of [SentMessageCachePort] using SharedPreferences.
+/// Mobile implementation of [SentMessageCachePort] using secure storage.
 ///
 /// Caches plaintext of self-sent E2EE messages for history recovery since the
 /// server only stores the encrypted envelope and cannot decrypt.
 ///
+/// SharedPreferences is used only for non-sensitive index metadata. Plaintext
+/// entries are stored behind [SecureStoragePort].
+///
 /// TTL: 24 hours, max entries: 500.
 class MobileSentMessageCache implements SentMessageCachePort {
-  MobileSentMessageCache(this._prefs);
+  MobileSentMessageCache(
+    this._prefs,
+    this._secureStorage, {
+    DateTime Function()? now,
+    int maxEntries = _defaultMaxEntries,
+    int ttlMs = _defaultTtlMs,
+  })  : _now = now ?? DateTime.now,
+        _maxEntries = maxEntries,
+        _ttlMs = ttlMs;
 
   final SharedPreferences _prefs;
+  final SecureStoragePort _secureStorage;
+  final DateTime Function() _now;
+  final int _maxEntries;
+  final int _ttlMs;
 
   static const _prefix = 'e2ee_sent_';
   static const _indexKey = 'e2ee_sent_index';
-  static const _maxEntries = 500;
-  static const _ttlMs = 24 * 60 * 60 * 1000; // 24 hours
+  static const _metaPrefix = 'e2ee_sent_meta_';
+  static const _securePrefix = 'e2ee_secure_sent_';
+  static const _defaultMaxEntries = 500;
+  static const _defaultTtlMs = 24 * 60 * 60 * 1000; // 24 hours
+
+  bool _migrationAttempted = false;
 
   @override
   Future<void> put({
@@ -26,45 +46,45 @@ class MobileSentMessageCache implements SentMessageCachePort {
     String? serverMessageId,
   }) async {
     if (clientMessageId.isEmpty || plaintext.isEmpty) return;
+    await _migrateLegacyIfNeeded();
 
-    final entry = jsonEncode({
+    final secureKey = _secureKey(clientMessageId);
+    final createdAtMs = _now().millisecondsSinceEpoch;
+    final metadata = jsonEncode({
       'clientMessageId': clientMessageId,
-      'plaintext': plaintext,
       'e2eeSessionId': e2eeSessionId,
       'serverMessageId': serverMessageId,
-      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      'createdAtMs': createdAtMs,
+      'secureKey': secureKey,
+    });
+    final payload = jsonEncode({
+      'plaintext': plaintext,
+      'createdAtMs': createdAtMs,
     });
 
-    await _prefs.setString('$_prefix$clientMessageId', entry);
+    await _secureStorage.write(secureKey, payload);
+    await _prefs.setString('$_metaPrefix$clientMessageId', metadata);
+    await _prefs.remove('$_prefix$clientMessageId');
 
-    // Update index for cleanup.
     final index = _getIndex();
     index.add(clientMessageId);
-    if (serverMessageId != null && serverMessageId.isNotEmpty) {
-      index.add('srv_$serverMessageId');
-    }
     await _saveIndex(index);
-
-    // Trim if over capacity.
+    await _cleanupExpired();
     await _trimIfNeeded();
   }
 
   @override
   Future<String?> getPlaintextByClientId(String clientMessageId) async {
     if (clientMessageId.isEmpty) return null;
-    final raw = _prefs.getString('$_prefix$clientMessageId');
-    if (raw == null) return null;
+    await _migrateLegacyIfNeeded();
 
-    try {
-      final entry = jsonDecode(raw) as Map<String, dynamic>;
-      if (_isExpired(entry)) {
-        await _prefs.remove('$_prefix$clientMessageId');
-        return null;
-      }
-      return entry['plaintext'] as String?;
-    } catch (_) {
+    final metadata = _getMetadata(clientMessageId);
+    if (metadata == null) return null;
+    if (_isExpired(metadata)) {
+      await _removeEntry(clientMessageId);
       return null;
     }
+    return _readPlaintext(metadata);
   }
 
   @override
@@ -72,34 +92,20 @@ class MobileSentMessageCache implements SentMessageCachePort {
     if (serverMessageId.isEmpty || serverMessageId.startsWith('local_')) {
       return null;
     }
+    await _migrateLegacyIfNeeded();
 
-    // Try the dedicated server-ID key first.
-    final raw = _prefs.getString('$_prefix$serverMessageId');
-    if (raw != null) {
-      try {
-        final entry = jsonDecode(raw) as Map<String, dynamic>;
-        if (!_isExpired(entry)) {
-          return entry['plaintext'] as String?;
-        }
-      } catch (_) {}
-    }
-
-    // Fall back to scanning index.
     final index = _getIndex();
     for (final key in index.toList()) {
       if (key.startsWith('srv_')) continue;
-      final rawEntry = _prefs.getString('$_prefix$key');
-      if (rawEntry == null) continue;
-      try {
-        final entry = jsonDecode(rawEntry) as Map<String, dynamic>;
-        if (entry['serverMessageId'] == serverMessageId) {
-          if (_isExpired(entry)) {
-            await _prefs.remove('$_prefix$key');
-            continue;
-          }
-          return entry['plaintext'] as String?;
+      final metadata = _getMetadata(key);
+      if (metadata == null) continue;
+      if (metadata['serverMessageId'] == serverMessageId) {
+        if (_isExpired(metadata)) {
+          await _removeEntry(key);
+          continue;
         }
-      } catch (_) {}
+        return _readPlaintext(metadata);
+      }
     }
 
     return null;
@@ -108,48 +114,64 @@ class MobileSentMessageCache implements SentMessageCachePort {
   @override
   Future<void> updateServerId(
       String clientMessageId, String serverMessageId) async {
-    final raw = _prefs.getString('$_prefix$clientMessageId');
-    if (raw == null) return;
+    if (clientMessageId.isEmpty || serverMessageId.isEmpty) return;
+    await _migrateLegacyIfNeeded();
 
-    try {
-      final entry = jsonDecode(raw) as Map<String, dynamic>;
-      entry['serverMessageId'] = serverMessageId;
-      await _prefs.setString(
-          '$_prefix$clientMessageId', jsonEncode(entry));
-    } catch (_) {}
+    final metadata = _getMetadata(clientMessageId);
+    if (metadata == null) return;
+    metadata['serverMessageId'] = serverMessageId;
+    await _prefs.setString(
+        '$_metaPrefix$clientMessageId', jsonEncode(metadata));
   }
 
   @override
   Future<void> clearAll() async {
     final index = _getIndex();
     for (final key in index) {
+      if (!key.startsWith('srv_')) {
+        await _secureStorage.delete(_secureKey(key));
+      }
+      await _prefs.remove('$_metaPrefix$key');
       await _prefs.remove('$_prefix$key');
+    }
+    for (final key in _prefs.getKeys()) {
+      if (key.startsWith(_prefix) || key.startsWith(_metaPrefix)) {
+        if (key.startsWith(_metaPrefix)) {
+          final raw = _prefs.getString(key);
+          try {
+            final decoded = raw == null ? null : jsonDecode(raw);
+            if (decoded is Map<String, dynamic>) {
+              final secureKey = decoded['secureKey'] as String?;
+              if (secureKey != null && secureKey.isNotEmpty) {
+                await _secureStorage.delete(secureKey);
+              }
+            }
+          } catch (_) {}
+        }
+        await _prefs.remove(key);
+      }
     }
     await _prefs.remove(_indexKey);
   }
 
   @override
   Future<void> clearSession(String e2eeSessionId) async {
+    await _migrateLegacyIfNeeded();
     final index = _getIndex();
     final toRemove = <String>[];
 
     for (final key in index) {
       if (key.startsWith('srv_')) continue;
-      final raw = _prefs.getString('$_prefix$key');
-      if (raw == null) continue;
-      try {
-        final entry = jsonDecode(raw) as Map<String, dynamic>;
-        if (entry['e2eeSessionId'] == e2eeSessionId) {
-          toRemove.add(key);
-        }
-      } catch (_) {}
+      final metadata = _getMetadata(key);
+      if (metadata == null) continue;
+      if (metadata['e2eeSessionId'] == e2eeSessionId) {
+        toRemove.add(key);
+      }
     }
 
     for (final key in toRemove) {
-      await _prefs.remove('$_prefix$key');
-      index.remove(key);
+      await _removeEntry(key);
     }
-    await _saveIndex(index);
   }
 
   // ---- Internal helpers ----
@@ -171,7 +193,59 @@ class MobileSentMessageCache implements SentMessageCachePort {
   bool _isExpired(Map<String, dynamic> entry) {
     final createdAtMs = entry['createdAtMs'] as int?;
     if (createdAtMs == null) return true;
-    return (DateTime.now().millisecondsSinceEpoch - createdAtMs) > _ttlMs;
+    return (_now().millisecondsSinceEpoch - createdAtMs) > _ttlMs;
+  }
+
+  String _secureKey(String clientMessageId) => '$_securePrefix$clientMessageId';
+
+  Map<String, dynamic>? _getMetadata(String clientMessageId) {
+    final raw = _prefs.getString('$_metaPrefix$clientMessageId');
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _readPlaintext(Map<String, dynamic> metadata) async {
+    final secureKey = metadata['secureKey'] as String?;
+    if (secureKey == null || secureKey.isEmpty) return null;
+    final raw = await _secureStorage.read(secureKey);
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded['plaintext'] as String?;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Future<void> _removeEntry(String clientMessageId) async {
+    await _secureStorage.delete(_secureKey(clientMessageId));
+    await _prefs.remove('$_metaPrefix$clientMessageId');
+    await _prefs.remove('$_prefix$clientMessageId');
+    final index = _getIndex()..remove(clientMessageId);
+    await _saveIndex(index);
+  }
+
+  Future<void> _cleanupExpired() async {
+    final index = _getIndex();
+    for (final key in index.toList()) {
+      if (key.startsWith('srv_')) {
+        index.remove(key);
+        continue;
+      }
+      final metadata = _getMetadata(key);
+      if (metadata == null || _isExpired(metadata)) {
+        await _removeEntry(key);
+      }
+    }
   }
 
   Future<void> _trimIfNeeded() async {
@@ -179,15 +253,10 @@ class MobileSentMessageCache implements SentMessageCachePort {
     final userKeys = index.where((k) => !k.startsWith('srv_')).toList();
     if (userKeys.length <= _maxEntries) return;
 
-    // Sort by creation time (oldest first) and remove excess.
     final entries = <Map<String, dynamic>>[];
     for (final key in userKeys) {
-      final raw = _prefs.getString('$_prefix$key');
-      if (raw == null) continue;
-      try {
-        final entry = jsonDecode(raw) as Map<String, dynamic>;
-        entries.add(entry);
-      } catch (_) {}
+      final metadata = _getMetadata(key);
+      if (metadata != null) entries.add(metadata);
     }
     entries.sort((a, b) {
       final aTime = a['createdAtMs'] as int? ?? 0;
@@ -202,9 +271,67 @@ class MobileSentMessageCache implements SentMessageCachePort {
         .toList();
 
     for (final id in toRemove) {
-      await _prefs.remove('$_prefix$id');
-      index.remove(id);
+      await _removeEntry(id);
     }
-    await _saveIndex(index);
+  }
+
+  Future<void> _migrateLegacyIfNeeded() async {
+    if (_migrationAttempted) return;
+    _migrationAttempted = true;
+
+    final index = _getIndex();
+    final migratedIndex = <String>{
+      for (final key in index)
+        if (!key.startsWith('srv_')) key,
+    };
+
+    for (final key in index.toList()) {
+      if (key.startsWith('srv_')) continue;
+
+      final legacyKey = '$_prefix$key';
+      final raw = _prefs.getString(legacyKey);
+      if (raw == null) continue;
+
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map<String, dynamic>) {
+          await _prefs.remove(legacyKey);
+          migratedIndex.remove(key);
+          continue;
+        }
+        final plaintext = decoded['plaintext'] as String?;
+        if (plaintext == null || plaintext.isEmpty || _isExpired(decoded)) {
+          await _prefs.remove(legacyKey);
+          migratedIndex.remove(key);
+          continue;
+        }
+
+        final secureKey = _secureKey(key);
+        final createdAtMs = decoded['createdAtMs'] as int?;
+        final metadata = jsonEncode({
+          'clientMessageId': decoded['clientMessageId'] as String? ?? key,
+          'e2eeSessionId': decoded['e2eeSessionId'] as String? ?? '',
+          'serverMessageId': decoded['serverMessageId'] as String?,
+          'createdAtMs': createdAtMs ?? _now().millisecondsSinceEpoch,
+          'secureKey': secureKey,
+        });
+        final payload = jsonEncode({
+          'plaintext': plaintext,
+          'createdAtMs': createdAtMs ?? _now().millisecondsSinceEpoch,
+        });
+
+        await _secureStorage.write(secureKey, payload);
+        await _prefs.setString('$_metaPrefix$key', metadata);
+        await _prefs.remove(legacyKey);
+        migratedIndex.add(key);
+      } catch (_) {
+        await _prefs.remove(legacyKey);
+        migratedIndex.remove(key);
+      }
+    }
+
+    await _saveIndex(migratedIndex);
+    await _cleanupExpired();
+    await _trimIfNeeded();
   }
 }
