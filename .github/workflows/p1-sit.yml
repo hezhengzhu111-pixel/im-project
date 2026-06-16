@@ -1,0 +1,69 @@
+name: P1 SIT Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Backend base URL
+        type: string
+        default: http://localhost:8082
+      db_url:
+        description: MySQL URL for plaintext scan
+        type: string
+        default: mysql://root:root123@127.0.0.1:3306/service_message_service_db
+      skip_p0_gate:
+        description: Skip nested P0 gate
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: "3.29"
+
+jobs:
+  p1-sit:
+    name: P1 staged SIT
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install requests pymysql
+
+      - name: Run P1 SIT gate
+        run: |
+          args=(
+            --base-url "${{ inputs.base_url }}"
+            --db-url "${{ inputs.db_url }}"
+          )
+          if [ "${{ inputs.skip_p0_gate }}" = "true" ]; then
+            args+=(--skip-p0-gate)
+          fi
+          python scripts/p1_sit_gate.py "${args[@]}"
+
+      - name: Upload P1 SIT artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-sit-artifacts
+          path: artifacts/p1-sit/
