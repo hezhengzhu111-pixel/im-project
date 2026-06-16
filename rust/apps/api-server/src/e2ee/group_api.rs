@@ -1,4 +1,4 @@
-﻿use crate::access_control;
+use crate::access_control;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
@@ -56,6 +56,7 @@ pub struct PushSenderKeyRequest {
 pub struct SenderKeyDto {
     pub sender_id: String,
     pub device_id: String,
+    pub epoch: i32,
     pub encrypted_sender_key: String,
     pub counter: i32,
 }
@@ -68,6 +69,7 @@ pub struct SenderKeyDto {
 pub struct GroupEncryptionStatusDto {
     pub status: String,
     pub enabled_by: Option<String>,
+    pub epoch: Option<i32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +135,62 @@ async fn ensure_all_devices_belong_to_recipients(
     Ok(())
 }
 
+pub(crate) async fn current_group_epoch(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+) -> Result<Option<i32>, AppError> {
+    let epoch = sqlx::query_scalar(
+        "SELECT MAX(epoch) FROM service_user_service_db.e2ee_group_epochs WHERE group_id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(db)
+    .await?
+    .flatten();
+    Ok(epoch)
+}
+
+async fn next_group_epoch(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+    user_id: i64,
+    reason: &str,
+) -> Result<i32, AppError> {
+    let current = current_group_epoch(db, group_id).await?.unwrap_or(0);
+    let next = current.saturating_add(1);
+    sqlx::query(
+        "INSERT INTO service_user_service_db.e2ee_group_epochs \
+         (group_id, epoch, key_version, rotate_reason, created_by_user_id) \
+         VALUES (?, ?, ?, ?, ?) \
+         ON DUPLICATE KEY UPDATE rotate_reason = VALUES(rotate_reason)",
+    )
+    .bind(group_id)
+    .bind(next)
+    .bind(next)
+    .bind(reason)
+    .bind(user_id)
+    .execute(db)
+    .await?;
+    Ok(next)
+}
+
+pub(crate) async fn rotate_group_epoch_if_encrypted(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+    user_id: i64,
+    reason: &str,
+) -> Result<Option<i32>, AppError> {
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM service_user_service_db.e2ee_groups WHERE group_id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(db)
+    .await?;
+    if status.as_deref() != Some("encrypted") {
+        return Ok(None);
+    }
+    Ok(Some(next_group_epoch(db, group_id, user_id, reason).await?))
+}
+
 // ---------------------------------------------------------------------------
 // 处理器
 // ---------------------------------------------------------------------------
@@ -169,6 +227,7 @@ pub async fn enable_group_encryption(
         .map(|e| (e.recipient_id, e.device_id.clone()))
         .collect();
     ensure_all_devices_belong_to_recipients(&state.db, &device_entries).await?;
+    let epoch = next_group_epoch(&state.db, group_id, identity.user_id, "enable").await?;
 
     // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
     let mut tx = state.db.begin().await?;
@@ -188,8 +247,8 @@ pub async fn enable_group_encryption(
     for entry in &request.sender_keys {
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_sender_keys
-               (group_id, sender_id, device_id, recipient_id, encrypted_sender_key, counter)
-               VALUES (?, ?, ?, ?, ?, 0)
+               (group_id, sender_id, device_id, recipient_id, epoch, encrypted_sender_key, counter)
+               VALUES (?, ?, ?, ?, ?, ?, 0)
                ON DUPLICATE KEY UPDATE
                  encrypted_sender_key = VALUES(encrypted_sender_key),
                  counter = 0"#,
@@ -198,6 +257,7 @@ pub async fn enable_group_encryption(
         .bind(identity.user_id)
         .bind(&entry.device_id)
         .bind(entry.recipient_id)
+        .bind(epoch)
         .bind(&entry.encrypted_sender_key)
         .execute(&mut *tx)
         .await?;
@@ -225,6 +285,8 @@ pub async fn disable_group_encryption(
 
     // 验证管理员权限
     access_control::ensure_group_admin(&state.db, group_id, identity.user_id).await?;
+    let _ =
+        rotate_group_epoch_if_encrypted(&state.db, group_id, identity.user_id, "disable").await?;
 
     // 更新群聊加密状态为明文
     sqlx::query(
@@ -268,12 +330,24 @@ pub async fn push_sender_key(
 
     // 校验设备属于接收方且处于有效状态
     ensure_device_exists(&state.db, request.recipient_id, &request.device_id).await?;
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM service_user_service_db.e2ee_groups WHERE group_id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(&state.db)
+    .await?;
+    if status.as_deref() != Some("encrypted") {
+        return Err(AppError::Conflict("group e2ee is not enabled".to_string()));
+    }
+    let epoch = current_group_epoch(&state.db, group_id)
+        .await?
+        .ok_or_else(|| AppError::Conflict("group e2ee epoch missing".to_string()))?;
 
     // 插入 Sender Key
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_sender_keys
-           (group_id, sender_id, device_id, recipient_id, encrypted_sender_key, counter)
-           VALUES (?, ?, ?, ?, ?, 0)
+           (group_id, sender_id, device_id, recipient_id, epoch, encrypted_sender_key, counter)
+           VALUES (?, ?, ?, ?, ?, ?, 0)
            ON DUPLICATE KEY UPDATE
              encrypted_sender_key = VALUES(encrypted_sender_key),
              counter = 0"#,
@@ -282,6 +356,7 @@ pub async fn push_sender_key(
     .bind(identity.user_id)
     .bind(&request.device_id)
     .bind(request.recipient_id)
+    .bind(epoch)
     .bind(&request.encrypted_sender_key)
     .execute(&state.db)
     .await?;
@@ -308,10 +383,10 @@ pub async fn get_my_sender_keys(
     access_control::ensure_group_member(&state.db, group_id, identity.user_id).await?;
 
     let rows = sqlx::query(
-        r#"SELECT sender_id, device_id, encrypted_sender_key, counter
+        r#"SELECT sender_id, device_id, epoch, encrypted_sender_key, counter
            FROM service_user_service_db.e2ee_sender_keys
            WHERE group_id = ? AND recipient_id = ?
-           ORDER BY sender_id ASC"#,
+           ORDER BY epoch DESC, sender_id ASC"#,
     )
     .bind(group_id)
     .bind(identity.user_id)
@@ -322,6 +397,7 @@ pub async fn get_my_sender_keys(
         .iter()
         .map(|row| {
             let sender_id: i64 = row.get("sender_id");
+            let epoch: i32 = row.get("epoch");
             let counter: i32 = row.get("counter");
             let encrypted_sender_key: String = row
                 .try_get::<Vec<u8>, _>("encrypted_sender_key")
@@ -330,6 +406,7 @@ pub async fn get_my_sender_keys(
             SenderKeyDto {
                 sender_id: sender_id.to_string(),
                 device_id: row.get("device_id"),
+                epoch,
                 encrypted_sender_key,
                 counter,
             }
@@ -405,11 +482,13 @@ pub async fn get_group_status(
             GroupEncryptionStatusDto {
                 status: row.get("status"),
                 enabled_by: Some(enabled_by.to_string()),
+                epoch: current_group_epoch(&state.db, group_id).await?,
             }
         }
         None => GroupEncryptionStatusDto {
             status: "plaintext".to_string(),
             enabled_by: None,
+            epoch: None,
         },
     };
 

@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::access_control;
 use crate::auth::identity_from_headers;
 use crate::auth_api;
@@ -264,6 +264,13 @@ pub(crate) async fn leave_group(
 
     tx.commit().await?;
 
+    let _ = crate::e2ee::group_api::rotate_group_epoch_if_encrypted(
+        &state.db,
+        group_id,
+        identity.user_id,
+        "member_remove",
+    )
+    .await?;
     refresh_group_member_count(&state.db, group_id).await?;
     Ok(Json(ApiResponse::success(true)))
 }
@@ -390,6 +397,13 @@ pub(crate) async fn add_group_member(
     .bind(user_id)
     .bind(role)
     .execute(db)
+    .await?;
+    let _ = crate::e2ee::group_api::rotate_group_epoch_if_encrypted(
+        db,
+        group_id,
+        user_id,
+        "member_add",
+    )
     .await?;
     Ok(())
 }

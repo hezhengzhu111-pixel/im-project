@@ -132,12 +132,40 @@ CREATE TABLE IF NOT EXISTS e2ee_sender_keys (
     sender_id             BIGINT NOT NULL COMMENT 'Sender user ID',
     device_id             VARCHAR(64) NOT NULL COMMENT 'Sender device ID',
     recipient_id          BIGINT NOT NULL COMMENT 'Recipient user ID',
+    epoch                 INT NOT NULL DEFAULT 1 COMMENT 'Group E2EE epoch',
     encrypted_sender_key  TEXT NOT NULL COMMENT 'Encrypted sender key',
+    counter               INT NOT NULL DEFAULT 0 COMMENT 'Sender key message counter',
     created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
     updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
-    PRIMARY KEY (group_id, sender_id, device_id, recipient_id),
-    KEY idx_e2ee_sender_keys_recipient (recipient_id, device_id)
+    PRIMARY KEY (group_id, sender_id, device_id, recipient_id, epoch),
+    KEY idx_e2ee_sender_keys_recipient (recipient_id, device_id, epoch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group sender keys';
+
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing(
+    IN target_table VARCHAR(64),
+    IN target_column VARCHAR(64),
+    IN column_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND COLUMN_NAME = target_column
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD COLUMN `', target_column, '` ', column_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+CALL add_column_if_missing('e2ee_sender_keys', 'epoch', 'INT NOT NULL DEFAULT 1 COMMENT ''Group E2EE epoch'' AFTER `recipient_id`');
+CALL add_column_if_missing('e2ee_sender_keys', 'counter', 'INT NOT NULL DEFAULT 0 COMMENT ''Sender key message counter'' AFTER `encrypted_sender_key`');
+DROP PROCEDURE IF EXISTS add_column_if_missing;
 
 USE service_message_service_db;
 

@@ -221,7 +221,18 @@ pub(crate) async fn send_group(
     .await?;
     let conversation_id = keys::group_conversation_id(group_id);
     let e2ee_enabled = group_e2ee_enabled(db, group_id).await?;
+    if request.encrypted.unwrap_or(false) && !e2ee_enabled {
+        return Err(AppError::Conflict(
+            "group e2ee is not enabled; refresh group encryption status".to_string(),
+        ));
+    }
     if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
+        let ty = MessageType::from_text(request.message_type.as_deref().unwrap_or("TEXT"));
+        if !matches!(ty, MessageType::Text | MessageType::System) {
+            return Err(AppError::BadRequest(
+                "encrypted group media is unsupported".to_string(),
+            ));
+        }
         let envelope = request
             .e2ee_envelope
             .as_ref()
@@ -236,6 +247,14 @@ pub(crate) async fn send_group(
             ));
         }
         validate_e2ee_envelope(envelope, &conversation_id, identity.user_id, None, db).await?;
+        let epoch = crate::e2ee::group_api::current_group_epoch(db, group_id)
+            .await?
+            .ok_or_else(|| AppError::Conflict("group e2ee epoch missing".to_string()))?;
+        if envelope.key_version != epoch {
+            return Err(AppError::Conflict(
+                "group e2ee envelope epoch is stale".to_string(),
+            ));
+        }
         let device_ids = resolve_recipient_device_ids(envelope);
         validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
@@ -253,7 +272,11 @@ pub(crate) async fn send_group(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
-            encrypted: request.encrypted,
+            encrypted: if e2ee_enabled || request.encrypted.unwrap_or(false) {
+                Some(true)
+            } else {
+                request.encrypted
+            },
             e2ee_header: None,
             e2ee_device_id: request
                 .e2ee_envelope

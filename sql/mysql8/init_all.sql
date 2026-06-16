@@ -282,11 +282,13 @@ CREATE TABLE IF NOT EXISTS e2ee_sender_keys (
   sender_id             BIGINT NOT NULL COMMENT 'Sender user ID',
   device_id             VARCHAR(64) NOT NULL COMMENT 'Sender device ID',
   recipient_id          BIGINT NOT NULL COMMENT 'Recipient user ID',
+  epoch                 INT NOT NULL DEFAULT 1 COMMENT 'Group E2EE epoch',
   encrypted_sender_key  TEXT NOT NULL COMMENT 'Encrypted sender key',
+  counter               INT NOT NULL DEFAULT 0 COMMENT 'Sender key message counter',
   created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
   updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
-  PRIMARY KEY (group_id, sender_id, device_id, recipient_id),
-  KEY idx_e2ee_sender_keys_recipient (recipient_id, device_id)
+  PRIMARY KEY (group_id, sender_id, device_id, recipient_id, epoch),
+  KEY idx_e2ee_sender_keys_recipient (recipient_id, device_id, epoch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group sender keys';
 
 USE service_group_service_db;
