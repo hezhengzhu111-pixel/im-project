@@ -98,6 +98,7 @@ class FakeMessageApi extends MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? mediaUrl,
     String? mediaName,
     int? mediaSize,

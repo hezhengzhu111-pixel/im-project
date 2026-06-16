@@ -45,8 +45,12 @@ class TestMessageApi extends MessageApi {
   }
 
   @override
-  Future<List<Message>> getPrivateHistory(String friendId,
-      {int? page, int? size}) async {
+  Future<List<Message>> getPrivateHistory(
+    String friendId, {
+    int? page,
+    int? size,
+    String? deviceId,
+  }) async {
     getPrivateHistoryCallCount++;
     lastPrivateHistoryId = friendId;
     if (errorToThrow != null) throw errorToThrow!;

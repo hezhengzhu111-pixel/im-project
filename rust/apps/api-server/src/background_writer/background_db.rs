@@ -159,6 +159,46 @@ pub(crate) async fn insert_messages(
     Ok(())
 }
 
+pub(crate) async fn insert_message_device_envelopes(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    envelopes: &[(String, MessageDeviceEnvelopeDto)],
+) -> anyhow::Result<()> {
+    if envelopes.is_empty() {
+        return Ok(());
+    }
+
+    let records = envelopes
+        .iter()
+        .filter_map(|(message_id, envelope)| {
+            let message_id = parse_i64(message_id)?;
+            let envelope_json = serde_json::to_string(&envelope.envelope).ok()?;
+            let ciphertext = envelope.envelope.wire.clone().unwrap_or_default();
+            Some((
+                message_id,
+                envelope.recipient_device_id.clone(),
+                ciphertext,
+                envelope_json,
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    for chunk in records.chunks(max_rows_per_statement(MESSAGE_DEVICE_ENVELOPE_INSERT_BINDS)) {
+        let mut query = QueryBuilder::<MySql>::new(
+            "INSERT INTO service_message_service_db.message_deliveries \
+             (message_id, device_id, ciphertext, header) ",
+        );
+        query.push_values(chunk.iter(), |mut row, record| {
+            row.push_bind(record.0)
+                .push_bind(record.1.clone())
+                .push_bind(record.2.clone())
+                .push_bind(record.3.clone());
+        });
+        query.push(" ON DUPLICATE KEY UPDATE header = VALUES(header)");
+        query.build().persistent(false).execute(&mut **tx).await?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn upsert_private_read_cursors(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     cursors: &[PrivateReadCursor],

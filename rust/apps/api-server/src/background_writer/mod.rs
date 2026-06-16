@@ -6,7 +6,9 @@ use crate::config::{AppConfig, EventStreamConfig, EventStreamKind};
 use crate::observability;
 use crate::redis_streams;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use im_common::event::{ImEvent, ImEventType, MessageDto, MessageStatus, MessageType};
+use im_common::event::{
+    ImEvent, ImEventType, MessageDeviceEnvelopeDto, MessageDto, MessageStatus, MessageType,
+};
 use im_common::{ids, keys};
 use sqlx::{MySql, MySqlPool, QueryBuilder};
 use std::collections::HashMap;
@@ -16,6 +18,7 @@ use std::time::{Duration, Instant};
 
 const MYSQL_BIND_LIMIT: usize = 60_000;
 const MESSAGE_INSERT_BINDS: usize = 25;
+const MESSAGE_DEVICE_ENVELOPE_INSERT_BINDS: usize = 4;
 const PRIVATE_READ_CURSOR_INSERT_BINDS: usize = 6;
 const GROUP_READ_CURSOR_INSERT_BINDS: usize = 8;
 
@@ -110,7 +113,7 @@ struct Processor {
     db: MySqlPool,
     event_redis: redis::Connection,
     hot_redis: Vec<redis::Connection>,
-    message_batch: Vec<MessageDto>,
+    message_batch: Vec<PendingMessageWrite>,
     private_read_batch: Vec<PrivateReadCursor>,
     group_read_batch: Vec<GroupReadCursor>,
     last_flush: Instant,
@@ -133,7 +136,10 @@ impl Processor {
         match event.event_type {
             ImEventType::MessageCreated => {
                 if let Some(message) = event.payload {
-                    self.message_batch.push(message);
+                    self.message_batch.push(PendingMessageWrite {
+                        message,
+                        device_envelopes: event.device_envelopes.unwrap_or_default(),
+                    });
                     if self.message_batch.len() >= self.config.writer_batch_size
                         && self.flush_messages().await?
                     {
@@ -196,9 +202,24 @@ impl Processor {
         let count = self.message_batch.len();
         let started = Instant::now();
         let mut tx = self.db.begin().await?;
-        insert_messages(&mut tx, &self.message_batch).await?;
+        let messages = self
+            .message_batch
+            .iter()
+            .map(|item| item.message.clone())
+            .collect::<Vec<_>>();
+        let device_envelopes = self
+            .message_batch
+            .iter()
+            .flat_map(|item| {
+                item.device_envelopes
+                    .iter()
+                    .map(|envelope| (item.message.id.clone(), envelope.clone()))
+            })
+            .collect::<Vec<_>>();
+        insert_messages(&mut tx, &messages).await?;
+        insert_message_device_envelopes(&mut tx, &device_envelopes).await?;
         tx.commit().await?;
-        let messages = std::mem::take(&mut self.message_batch);
+        self.message_batch.clear();
         tracing::debug!(count, "batch inserted messages");
         observability::writer_flush(
             "messages",
@@ -338,6 +359,12 @@ impl Processor {
             read_at,
         });
     }
+}
+
+#[derive(Clone)]
+struct PendingMessageWrite {
+    message: MessageDto,
+    device_envelopes: Vec<MessageDeviceEnvelopeDto>,
 }
 
 #[cfg(test)]

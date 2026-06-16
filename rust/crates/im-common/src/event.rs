@@ -158,6 +158,14 @@ pub struct E2eeEnvelopeDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MessageDeviceEnvelopeDto {
+    pub recipient_user_id: String,
+    pub recipient_device_id: String,
+    pub envelope: E2eeEnvelopeDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageDto {
     pub id: String,
     pub message_id: String,
@@ -358,6 +366,8 @@ pub struct ImEvent {
     pub group: bool,
     pub new_status: Option<String>,
     pub payload: Option<MessageDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_envelopes: Option<Vec<MessageDeviceEnvelopeDto>>,
     pub read_receipt: Option<ReadReceipt>,
     pub timestamp: DateTime<Utc>,
 }
@@ -377,6 +387,7 @@ impl ImEvent {
             group: false,
             new_status: None,
             payload: None,
+            device_envelopes: None,
             read_receipt: None,
             timestamp: Utc::now(),
         }

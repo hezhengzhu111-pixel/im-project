@@ -424,6 +424,7 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
   header      JSON NULL COMMENT 'Double Ratchet header',
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
   PRIMARY KEY (id),
+  UNIQUE KEY uk_message_deliveries_message_device (message_id, device_id),
   INDEX idx_message_device (message_id, device_id),
   INDEX idx_device_messages (device_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE message deliveries';

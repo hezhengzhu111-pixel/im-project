@@ -26,6 +26,16 @@ pub(crate) struct SendPrivateRequest {
     pub e2ee_sender_identity_key: Option<String>,
     pub e2ee_ephemeral_key: Option<String>,
     pub e2ee_envelope: Option<E2eeEnvelopeDto>,
+    pub e2ee_envelopes: Option<Vec<PrivateDeviceEnvelopeRequest>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PrivateDeviceEnvelopeRequest {
+    #[serde(deserialize_with = "deserialize_i64")]
+    pub recipient_user_id: i64,
+    pub recipient_device_id: String,
+    pub envelope: E2eeEnvelopeDto,
 }
 
 /// 群聊消息发送请求体。
@@ -61,6 +71,8 @@ pub(crate) struct HistoryQuery {
     pub limit: Option<i64>,
     pub last_message_id: Option<i64>,
     pub after_message_id: Option<i64>,
+    #[serde(alias = "deviceId")]
+    pub device_id: Option<String>,
 }
 
 /// 消息客户端配置，告知前端当前的消息约束。

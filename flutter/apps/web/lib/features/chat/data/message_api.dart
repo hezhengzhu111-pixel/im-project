@@ -97,13 +97,18 @@ class MessageApi {
     return response.data.cast<ChatSession>();
   }
 
-  Future<List<Message>> getPrivateHistory(String friendId,
-      {int? page, int? size}) async {
+  Future<List<Message>> getPrivateHistory(
+    String friendId, {
+    int? page,
+    int? size,
+    String? deviceId,
+  }) async {
     final response = await _httpClient.get<List<dynamic>>(
       MessageEndpoints.privateHistory(friendId),
       queryParameters: {
         if (page != null) 'page': page,
         if (size != null) 'size': size,
+        if (deviceId != null) 'deviceId': deviceId,
       },
       fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
@@ -112,13 +117,18 @@ class MessageApi {
     return response.data.cast<Message>();
   }
 
-  Future<List<Message>> getPrivateHistoryCursor(String friendId,
-      {int? limit, String? lastMessageId}) async {
+  Future<List<Message>> getPrivateHistoryCursor(
+    String friendId, {
+    int? limit,
+    String? lastMessageId,
+    String? deviceId,
+  }) async {
     final response = await _httpClient.get<List<dynamic>>(
       MessageEndpoints.privateHistoryCursor(friendId),
       queryParameters: {
         if (limit != null) 'limit': limit,
         if (lastMessageId != null) 'last_message_id': lastMessageId,
+        if (deviceId != null) 'deviceId': deviceId,
       },
       fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
@@ -142,6 +152,7 @@ class MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? mediaUrl,
     String? mediaName,
     int? mediaSize,
@@ -156,6 +167,7 @@ class MessageApi {
         'messageType': messageType,
         'encrypted': true,
         'e2eeEnvelope': e2eeEnvelope,
+        if (e2eeEnvelopes != null) 'e2eeEnvelopes': e2eeEnvelopes,
         'e2eeDeviceId': e2eeDeviceId,
         if (mediaUrl != null) 'mediaUrl': mediaUrl,
         if (mediaName != null) 'mediaName': mediaName,

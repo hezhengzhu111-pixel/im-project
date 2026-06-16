@@ -88,6 +88,7 @@ mod tests {
             e2ee_sender_identity_key: None,
             e2ee_ephemeral_key: None,
             e2ee_envelope: Some(envelope),
+            e2ee_envelopes: None,
         }
     }
 
@@ -123,6 +124,45 @@ mod tests {
         let mut request = private_request_with_e2ee_envelope(rust_e2ee_envelope_for_tests());
         request.e2ee_header = Some("legacy-header".to_string());
         assert!(private_e2ee_envelope_from_request(&request).is_err());
+    }
+
+    #[test]
+    fn private_e2ee_batch_is_normalized() -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = rust_e2ee_envelope_for_tests();
+        let mut request = private_request_with_e2ee_envelope(envelope.clone());
+        request.e2ee_envelope = None;
+        request.e2ee_envelopes = Some(vec![PrivateDeviceEnvelopeRequest {
+            recipient_user_id: 2,
+            recipient_device_id: "mobile-recipient".to_string(),
+            envelope,
+        }]);
+
+        let normalized = private_e2ee_envelopes_from_request(&request, 1, 2)?;
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].recipient_user_id, 2);
+        assert_eq!(normalized[0].recipient_device_id, "mobile-recipient");
+        Ok(())
+    }
+
+    #[test]
+    fn private_e2ee_batch_rejects_duplicate_recipient_device() {
+        let envelope = rust_e2ee_envelope_for_tests();
+        let mut request = private_request_with_e2ee_envelope(envelope.clone());
+        request.e2ee_envelope = None;
+        request.e2ee_envelopes = Some(vec![
+            PrivateDeviceEnvelopeRequest {
+                recipient_user_id: 2,
+                recipient_device_id: "mobile-recipient".to_string(),
+                envelope: envelope.clone(),
+            },
+            PrivateDeviceEnvelopeRequest {
+                recipient_user_id: 2,
+                recipient_device_id: "mobile-recipient".to_string(),
+                envelope,
+            },
+        ]);
+
+        assert!(private_e2ee_envelopes_from_request(&request, 1, 2).is_err());
     }
 
     #[test]

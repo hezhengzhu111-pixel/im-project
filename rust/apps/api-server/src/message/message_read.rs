@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::error::AppError;
 use crate::id_resolver::resolve_existing_message_id;
 use crate::observability;
@@ -8,7 +8,7 @@ use im_common::{keys, time};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde_json;
-use sqlx::MySqlPool;
+use sqlx::{MySql, MySqlPool, QueryBuilder, Row};
 
 /// 标记会话为已读。
 ///
@@ -288,7 +288,11 @@ pub(crate) async fn private_history(
     .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
     validate_friend(cache_redis, db, identity.user_id, peer_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
-    load_history(hot_redis, db, &conversation_id, query).await
+    let device_id = query.device_id.clone();
+    if let Some(device_id) = device_id.as_deref() {
+        validate_device_ownership(db, device_id, identity.user_id).await?;
+    }
+    load_history(hot_redis, db, &conversation_id, query, device_id.as_deref()).await
 }
 
 /// 查询群聊历史消息。
@@ -314,7 +318,7 @@ pub(crate) async fn group_history(
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
     validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
-    load_history(hot_redis, db, &conversation_id, query).await
+    load_history(hot_redis, db, &conversation_id, query, None).await
 }
 
 pub(crate) async fn load_message(
@@ -405,6 +409,7 @@ pub(crate) async fn load_history(
     db: &MySqlPool,
     conversation_id: &str,
     query: HistoryQuery,
+    device_id: Option<&str>,
 ) -> Result<Vec<MessageDto>, AppError> {
     let limit = query.limit.or(query.size).unwrap_or(20).clamp(1, 100);
     let limit_usize = usize::try_from(limit)
@@ -452,6 +457,9 @@ pub(crate) async fn load_history(
             .checked_add(messages.len())
             .ok_or_else(|| AppError::BadRequest("history limit overflow".to_string()))?;
         messages.extend(load_history_from_db(db, conversation_id, &query, db_limit).await?);
+    }
+    if let Some(device_id) = device_id {
+        apply_device_envelopes(db, &mut messages, device_id).await?;
     }
     messages.sort_by(|a, b| {
         let aid = a.id.parse::<i64>().unwrap_or(0);
@@ -508,6 +516,57 @@ pub(crate) async fn load_history_from_db(
     Ok(rows.iter().map(message_from_row).collect())
 }
 
+pub(crate) async fn apply_device_envelopes(
+    db: &MySqlPool,
+    messages: &mut [MessageDto],
+    device_id: &str,
+) -> Result<(), AppError> {
+    let device_id = device_id.trim();
+    if device_id.is_empty() || device_id == "unknown" {
+        return Err(AppError::BadRequest("invalid deviceId".to_string()));
+    }
+    let message_ids = messages
+        .iter()
+        .filter(|message| message.encrypted.unwrap_or(false))
+        .filter_map(|message| message.id.parse::<i64>().ok())
+        .collect::<Vec<_>>();
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut query = QueryBuilder::<MySql>::new(
+        "SELECT message_id, CAST(header AS CHAR) AS envelope_json \
+         FROM service_message_service_db.message_deliveries \
+         WHERE device_id = ",
+    );
+    query.push_bind(device_id);
+    query.push(" AND message_id IN (");
+    let mut separated = query.separated(", ");
+    for message_id in &message_ids {
+        separated.push_bind(message_id);
+    }
+    separated.push_unseparated(")");
+
+    let rows = query.build().persistent(false).fetch_all(db).await?;
+    let envelopes = rows
+        .iter()
+        .filter_map(|row| {
+            let message_id = row.try_get::<i64, _>("message_id").ok()?;
+            let envelope_json = row.try_get::<Option<String>, _>("envelope_json").ok()??;
+            let envelope = serde_json::from_str(&envelope_json).ok()?;
+            Some((message_id, envelope))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+
+    for message in messages {
+        if message.encrypted.unwrap_or(false) {
+            let message_id = message.id.parse::<i64>().ok();
+            message.e2ee_envelope = message_id.and_then(|id| envelopes.get(&id).cloned());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn latest_message_id(
     redis: &mut ConnectionManager,
     db: &MySqlPool,
@@ -535,6 +594,7 @@ pub(crate) async fn latest_message_id(
             limit: Some(1),
             last_message_id: None,
             after_message_id: None,
+            device_id: None,
         },
         1,
     )

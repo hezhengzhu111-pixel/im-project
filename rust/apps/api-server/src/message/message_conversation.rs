@@ -434,6 +434,7 @@ pub(crate) async fn batch_load_last_messages_from_db(
                 limit: Some(1),
                 last_message_id: None,
                 after_message_id: None,
+                device_id: None,
             },
             1,
         )

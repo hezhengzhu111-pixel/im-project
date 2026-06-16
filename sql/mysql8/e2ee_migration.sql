@@ -199,9 +199,39 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
     header      JSON NULL COMMENT 'Double Ratchet header',
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
     PRIMARY KEY (id),
+    UNIQUE KEY uk_message_deliveries_message_device (message_id, device_id),
     INDEX idx_message_device (message_id, device_id),
     INDEX idx_device_messages (device_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE message deliveries';
+
+DROP PROCEDURE IF EXISTS add_index_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_index_if_missing(
+    IN target_table VARCHAR(64),
+    IN target_index VARCHAR(64),
+    IN index_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND INDEX_NAME = target_index
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD ', index_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+CALL add_index_if_missing(
+    'message_deliveries',
+    'uk_message_deliveries_message_device',
+    'UNIQUE KEY uk_message_deliveries_message_device (message_id, device_id)'
+);
+DROP PROCEDURE IF EXISTS add_index_if_missing;
 
 -- 2026-05-10 E2EE envelope/session hardening
 -- Switch back to service_user_service_db for e2ee_devices / e2ee_one_time_pre_keys additions

@@ -54,8 +54,12 @@ class TestMessageApi extends MessageApi {
   }
 
   @override
-  Future<List<Message>> getPrivateHistory(String friendId,
-      {int? page, int? size}) async {
+  Future<List<Message>> getPrivateHistory(
+    String friendId, {
+    int? page,
+    int? size,
+    String? deviceId,
+  }) async {
     if (errorToThrow != null) throw errorToThrow!;
     return privateHistoryResponse ?? [];
   }
@@ -90,6 +94,7 @@ class TestMessageApi extends MessageApi {
     required String messageType,
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? mediaUrl,
     String? mediaName,
     int? mediaSize,

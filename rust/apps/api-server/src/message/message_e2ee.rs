@@ -1,7 +1,8 @@
 ﻿use super::*;
 use crate::error::AppError;
-use im_common::event::E2eeEnvelopeDto;
+use im_common::event::{E2eeEnvelopeDto, MessageDeviceEnvelopeDto};
 use sqlx::MySqlPool;
+use std::collections::HashSet;
 
 pub(crate) fn decode_base64url(value: &str) -> Result<Vec<u8>, AppError> {
     let normalized = value.replace('-', "+").replace('_', "/");
@@ -61,13 +62,103 @@ pub(crate) fn validate_e2ee_envelope_format(envelope: &E2eeEnvelopeDto) -> Resul
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn private_e2ee_envelope_from_request(
     request: &SendPrivateRequest,
 ) -> Result<&E2eeEnvelopeDto, AppError> {
+    validate_private_e2ee_request_shape(request)?;
     let envelope = request
         .e2ee_envelope
         .as_ref()
         .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
+    Ok(envelope)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NormalizedPrivateDeviceEnvelope {
+    pub(crate) recipient_user_id: i64,
+    pub(crate) recipient_device_id: String,
+    pub(crate) envelope: E2eeEnvelopeDto,
+}
+
+impl NormalizedPrivateDeviceEnvelope {
+    pub(crate) fn to_event_dto(&self) -> MessageDeviceEnvelopeDto {
+        MessageDeviceEnvelopeDto {
+            recipient_user_id: self.recipient_user_id.to_string(),
+            recipient_device_id: self.recipient_device_id.clone(),
+            envelope: self.envelope.clone(),
+        }
+    }
+}
+
+pub(crate) fn private_e2ee_envelopes_from_request(
+    request: &SendPrivateRequest,
+    sender_user_id: i64,
+    receiver_user_id: i64,
+) -> Result<Vec<NormalizedPrivateDeviceEnvelope>, AppError> {
+    validate_private_e2ee_request_shape(request)?;
+    let mut normalized = Vec::new();
+
+    if let Some(batch) = request.e2ee_envelopes.as_ref() {
+        if request.e2ee_envelope.is_some() {
+            return Err(AppError::BadRequest(
+                "use either e2eeEnvelope or e2eeEnvelopes, not both".to_string(),
+            ));
+        }
+        if batch.is_empty() {
+            return Err(AppError::BadRequest(
+                "e2eeEnvelopes cannot be empty".to_string(),
+            ));
+        }
+        for item in batch {
+            push_private_device_envelope(
+                &mut normalized,
+                sender_user_id,
+                receiver_user_id,
+                item.recipient_user_id,
+                &item.recipient_device_id,
+                &item.envelope,
+            )?;
+        }
+    } else {
+        let envelope = request
+            .e2ee_envelope
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
+        let device_ids = resolve_recipient_device_ids(envelope);
+        if device_ids.len() != 1 {
+            return Err(AppError::BadRequest(
+                "single e2eeEnvelope must target exactly one recipient device".to_string(),
+            ));
+        }
+        let recipient_user_id = envelope
+            .recipient_user_id
+            .as_deref()
+            .and_then(|value| value.trim().parse::<i64>().ok())
+            .unwrap_or(receiver_user_id);
+        push_private_device_envelope(
+            &mut normalized,
+            sender_user_id,
+            receiver_user_id,
+            recipient_user_id,
+            &device_ids[0],
+            envelope,
+        )?;
+    }
+
+    let mut devices = HashSet::new();
+    for item in &normalized {
+        if !devices.insert(item.recipient_device_id.clone()) {
+            return Err(AppError::BadRequest(
+                "duplicate e2ee recipient device".to_string(),
+            ));
+        }
+    }
+
+    Ok(normalized)
+}
+
+fn validate_private_e2ee_request_shape(request: &SendPrivateRequest) -> Result<(), AppError> {
     if request.e2ee_header.is_some()
         || request.e2ee_sender_identity_key.is_some()
         || request.e2ee_ephemeral_key.is_some()
@@ -85,7 +176,40 @@ pub(crate) fn private_e2ee_envelope_from_request(
             "plaintext content forbidden in e2ee session".to_string(),
         ));
     }
-    Ok(envelope)
+    Ok(())
+}
+
+fn push_private_device_envelope(
+    out: &mut Vec<NormalizedPrivateDeviceEnvelope>,
+    sender_user_id: i64,
+    receiver_user_id: i64,
+    recipient_user_id: i64,
+    recipient_device_id: &str,
+    envelope: &E2eeEnvelopeDto,
+) -> Result<(), AppError> {
+    if recipient_user_id != receiver_user_id && recipient_user_id != sender_user_id {
+        return Err(AppError::BadRequest(
+            "e2ee recipient user must be sender or receiver".to_string(),
+        ));
+    }
+    let device_id = recipient_device_id.trim();
+    if device_id.is_empty() || device_id == "unknown" {
+        return Err(AppError::BadRequest(
+            "e2ee recipient device id required".to_string(),
+        ));
+    }
+    let envelope_device_ids = resolve_recipient_device_ids(envelope);
+    if !envelope_device_ids.iter().any(|item| item == device_id) {
+        return Err(AppError::BadRequest(
+            "e2ee envelope recipient device mismatch".to_string(),
+        ));
+    }
+    out.push(NormalizedPrivateDeviceEnvelope {
+        recipient_user_id,
+        recipient_device_id: device_id.to_string(),
+        envelope: envelope.clone(),
+    });
+    Ok(())
 }
 
 pub(crate) async fn validate_e2ee_envelope(

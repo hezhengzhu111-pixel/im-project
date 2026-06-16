@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::config::AppConfig;
 use crate::error::AppError;
 use im_common::auth::Identity;
@@ -50,25 +50,37 @@ pub(crate) async fn send_private(
     validate_friend(cache_redis, db, identity.user_id, receiver_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
     let e2ee_enabled = private_e2ee_enabled(db, &conversation_id).await?;
-    let has_e2ee_payload = request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some();
+    let has_e2ee_payload = request.encrypted.unwrap_or(false)
+        || request.e2ee_envelope.is_some()
+        || request.e2ee_envelopes.is_some();
     if has_e2ee_payload && !e2ee_enabled {
         return Err(AppError::Conflict(
             "e2ee session is not encrypted; refresh session status".to_string(),
         ));
     }
+    let mut device_envelopes = Vec::new();
     if e2ee_enabled || has_e2ee_payload {
-        let envelope = private_e2ee_envelope_from_request(&request)?;
-        validate_e2ee_envelope(
-            envelope,
-            &conversation_id,
-            identity.user_id,
-            Some(receiver_id),
-            db,
-        )
-        .await?;
-        let device_ids = resolve_recipient_device_ids(envelope);
-        validate_recipient_devices_not_revoked(db, &device_ids).await?;
+        device_envelopes =
+            private_e2ee_envelopes_from_request(&request, identity.user_id, receiver_id)?;
+        for item in &device_envelopes {
+            validate_e2ee_envelope(
+                &item.envelope,
+                &conversation_id,
+                identity.user_id,
+                Some(item.recipient_user_id),
+                db,
+            )
+            .await?;
+            validate_recipient_devices_not_revoked(db, &[item.recipient_device_id.clone()]).await?;
+        }
     }
+    let response_envelope = request.e2ee_envelope.clone().or_else(|| {
+        device_envelopes
+            .iter()
+            .find(|item| item.recipient_user_id == receiver_id)
+            .or_else(|| device_envelopes.first())
+            .map(|item| item.envelope.clone())
+    });
     let message = build_message(
         config,
         identity,
@@ -85,17 +97,24 @@ pub(crate) async fn send_private(
             duration: request.duration,
             encrypted: request.encrypted,
             e2ee_header: None,
-            e2ee_device_id: request
-                .e2ee_envelope
+            e2ee_device_id: response_envelope
                 .as_ref()
                 .map(|envelope| envelope.sender_device_id.clone())
                 .or(request.e2ee_device_id),
             e2ee_sender_identity_key: None,
             e2ee_ephemeral_key: None,
-            e2ee_envelope: request.e2ee_envelope,
+            e2ee_envelope: response_envelope,
         },
     );
-    let event = build_message_created_event(&conversation_id, &message);
+    let mut event = build_message_created_event(&conversation_id, &message);
+    if !device_envelopes.is_empty() {
+        event.device_envelopes = Some(
+            device_envelopes
+                .iter()
+                .map(NormalizedPrivateDeviceEnvelope::to_event_dto)
+                .collect(),
+        );
+    }
     let hot_redis_clone = hot_redis.clone();
     let result = write_private_message_hot(hot_redis, &conversation_id, &message, &event).await;
 
