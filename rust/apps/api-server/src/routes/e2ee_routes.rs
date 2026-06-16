@@ -9,6 +9,12 @@ pub fn routes() -> Router<AppState> {
         .route("/api/keys/bundle", get(e2ee::key_api::get_bundle))
         .route("/api/keys/devices", get(e2ee::key_api::get_devices))
         .route("/api/keys/heartbeat", post(e2ee::key_api::heartbeat))
+        .route("/api/keys/opk/status", get(e2ee::key_api::opk_status))
+        .route("/api/keys/opk/refill", post(e2ee::key_api::refill_opk))
+        .route(
+            "/api/keys/opk/expired",
+            delete(e2ee::key_api::delete_expired_opk),
+        )
         .route("/api/keys/salt", get(e2ee::key_api::get_salt))
         .route("/api/keys/backup", post(e2ee::key_api::upload_backup))
         .route("/api/keys/backup", get(e2ee::key_api::get_backup))

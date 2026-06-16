@@ -152,6 +152,31 @@ class E2eeApi {
   }
 
   /// Get remaining OTK (One-Time Key) count.
+  Future<Map<String, dynamic>> getOpkStatus(String deviceId) async {
+    final response = await _httpClient.get<Map<String, dynamic>>(
+      E2eeEndpoints.opkStatus,
+      queryParameters: {'deviceId': deviceId},
+      fromJson: (json) => json,
+    );
+    return response.data;
+  }
+
+  Future<void> refillOpk(Map<String, dynamic> opkData) async {
+    await _httpClient.post<void>(
+      E2eeEndpoints.opkRefill,
+      body: opkData,
+      fromJson: (_) {},
+    );
+  }
+
+  Future<void> deleteExpiredOpk() async {
+    await _httpClient.delete<void>(
+      E2eeEndpoints.opkExpired,
+      fromJson: (_) {},
+    );
+  }
+
+  /// Legacy OTK count API kept for compatibility.
   Future<int> getOtkCount() async {
     final response = await _httpClient.get<Map<String, dynamic>>(
       E2eeEndpoints.otkCount,

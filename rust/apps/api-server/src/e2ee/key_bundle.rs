@@ -9,6 +9,10 @@ use im_common::api::ApiResponse;
 use sqlx::Row;
 use std::collections::HashMap;
 
+const OPK_LOW_WATERMARK_THRESHOLD: i64 = 20;
+const OPK_TARGET_COUNT: i64 = 100;
+const OPK_CONSUMED_RETENTION_DAYS: i64 = 7;
+
 /// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
 
 /// Ed25519 签名的字节长度。
@@ -162,6 +166,7 @@ pub(crate) async fn get_bundle(
         signed_pre_key_signature: signed_pre_key_signature.clone(),
         one_time_pre_key: None,
         one_time_pre_key_id: None,
+        opk_fallback: false,
     };
 
     // ---- conversationId：强制要求 ----
@@ -313,7 +318,9 @@ pub(crate) async fn get_bundle(
                 } else {
                     // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
                     tx.commit().await?;
-                    return Ok(Json(ApiResponse::success(base_dto)));
+                    let mut dto = base_dto;
+                    dto.opk_fallback = true;
+                    return Ok(Json(ApiResponse::success(dto)));
                 }
             }
             Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
@@ -383,6 +390,7 @@ pub(crate) async fn get_bundle(
                 if let Some(claim) = claim {
                     dto.one_time_pre_key = claim.get("one_time_pre_key");
                     dto.one_time_pre_key_id = claim.get("one_time_pre_key_id");
+                    dto.opk_fallback = dto.one_time_pre_key.is_none();
                 }
                 return Ok(Json(ApiResponse::success(dto)));
             }
@@ -393,4 +401,101 @@ pub(crate) async fn get_bundle(
     Err(AppError::Conflict(
         "pre-key claim unavailable, please retry".to_string(),
     ))
+}
+
+pub(crate) async fn opk_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<ApiResponse<OpkStatusDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let device_id = params
+        .get("deviceId")
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("missing deviceId".to_string()))?;
+    ensure_device_belongs_to_user(&state.db, device_id, identity.user_id).await?;
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
+         WHERE user_id = ? AND device_id = ? AND consumed = 0",
+    )
+    .bind(identity.user_id)
+    .bind(device_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(ApiResponse::success(OpkStatusDto {
+        device_id: device_id.to_string(),
+        count,
+        low_watermark: count < OPK_LOW_WATERMARK_THRESHOLD,
+        low_watermark_threshold: OPK_LOW_WATERMARK_THRESHOLD,
+        target_count: OPK_TARGET_COUNT,
+        fallback_policy: "signed_pre_key_marked".to_string(),
+    })))
+}
+
+pub(crate) async fn refill_opk(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RefillOpkRequest>,
+) -> Result<Json<ApiResponse<OpkStatusDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    if request.device_id.is_empty() || request.device_id.len() > MAX_DEVICE_ID_LEN {
+        return Err(AppError::BadRequest("invalid deviceId".to_string()));
+    }
+    ensure_device_belongs_to_user(&state.db, &request.device_id, identity.user_id).await?;
+    validate_pre_key_entries(&request.one_time_pre_keys)?;
+
+    let mut tx = state.db.begin().await?;
+    for entry in &request.one_time_pre_keys {
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
+               (user_id, device_id, pre_key, pre_key_id, consumed)
+               VALUES (?, ?, ?, ?, 0)"#,
+        )
+        .bind(identity.user_id)
+        .bind(&request.device_id)
+        .bind(&entry.key)
+        .bind(entry.id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
+         WHERE user_id = ? AND device_id = ? AND consumed = 0",
+    )
+    .bind(identity.user_id)
+    .bind(&request.device_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(ApiResponse::success(OpkStatusDto {
+        device_id: request.device_id,
+        count,
+        low_watermark: count < OPK_LOW_WATERMARK_THRESHOLD,
+        low_watermark_threshold: OPK_LOW_WATERMARK_THRESHOLD,
+        target_count: OPK_TARGET_COUNT,
+        fallback_policy: "signed_pre_key_marked".to_string(),
+    })))
+}
+
+pub(crate) async fn delete_expired_opk(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<u64>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let result = sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_one_time_pre_keys \
+         WHERE user_id = ? AND consumed = 1 \
+           AND consumed_time IS NOT NULL \
+           AND consumed_time < DATE_SUB(NOW(), INTERVAL ? DAY)",
+    )
+    .bind(identity.user_id)
+    .bind(OPK_CONSUMED_RETENTION_DAYS)
+    .execute(&state.db)
+    .await?;
+    Ok(Json(ApiResponse::success(result.rows_affected())))
 }

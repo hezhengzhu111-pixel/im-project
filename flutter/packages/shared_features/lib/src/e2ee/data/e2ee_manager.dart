@@ -114,44 +114,49 @@ class E2eeManager {
         // Heartbeat failure is non-fatal; continue with local state.
       }
 
-      // Replenish OTKs when running low.
-      final keyMaterial = jsonDecode(existingKeys) as Map<String, dynamic>;
-      final otkPairs = keyMaterial['otk_pairs'] as List<dynamic>? ?? [];
-
-      if (otkPairs.length < _otkReplenishThreshold) {
-        try {
-          final freshBundle = await adapter.generateKeyBundleJson(_otkCount);
-
-          // Merge fresh OTKs into existing key material, preserving identity + SPK.
-          keyMaterial['otk_pairs'] = freshBundle['otk_pairs'];
-          final publicBundle =
-              keyMaterial['public_bundle'] as Map<String, dynamic>;
-          publicBundle['one_time_pre_keys'] = (freshBundle['public_bundle']
-              as Map<String, dynamic>)['one_time_pre_keys'];
-
-          await keyStore.saveKeyMaterial(jsonEncode(keyMaterial));
-          await keyStore.savePublicBundle(jsonEncode(publicBundle));
-
-          final newOtkIds = (freshBundle['otk_pairs'] as List<dynamic>)
-              .map((otk) => (otk as Map<String, dynamic>)['id'] as int)
-              .toList();
-          await api.uploadBundle({
-            'deviceId': _deviceId,
-            'identityKey': publicBundle['identity_key'],
-            'signingIdentityKey': publicBundle['signing_key'],
-            'signedPreKey':
-                (publicBundle['signed_pre_key'] as Map<String, dynamic>)['key'],
-            'signedPreKeySignature': publicBundle['signed_pre_key_signature'],
-            'oneTimePreKeys': publicBundle['one_time_pre_keys'],
-          });
-          await metaStore.setPublishedOtkIds(_deviceId, newOtkIds);
-        } catch (_) {
-          // OTK replenishment failure is non-fatal.
-        }
-      }
+      await _refillOpkIfServerLow(existingKeys);
     }
 
     return _deviceId;
+  }
+
+  Future<void> _refillOpkIfServerLow(String existingKeys) async {
+    try {
+      final status = await api.getOpkStatus(_deviceId);
+      final isLow = status['lowWatermark'] as bool? ?? false;
+      final count = status['count'] as int? ?? 0;
+      if (!isLow && count >= _otkReplenishThreshold) return;
+
+      final keyMaterial = jsonDecode(existingKeys) as Map<String, dynamic>;
+      final freshBundle = await adapter.generateKeyBundleJson(_otkCount);
+      final existingOtkPairs = List<dynamic>.from(
+        keyMaterial['otk_pairs'] as List<dynamic>? ?? const [],
+      );
+      final freshOtkPairs = List<dynamic>.from(
+        freshBundle['otk_pairs'] as List<dynamic>? ?? const [],
+      );
+      keyMaterial['otk_pairs'] = [...existingOtkPairs, ...freshOtkPairs];
+
+      final publicBundle = keyMaterial['public_bundle'] as Map<String, dynamic>;
+      final freshPublicBundle =
+          freshBundle['public_bundle'] as Map<String, dynamic>;
+      final freshPublicOpks =
+          freshPublicBundle['one_time_pre_keys'] as List<dynamic>? ?? const [];
+
+      await keyStore.saveKeyMaterial(jsonEncode(keyMaterial));
+      await keyStore.savePublicBundle(jsonEncode(publicBundle));
+      await api.refillOpk({
+        'deviceId': _deviceId,
+        'oneTimePreKeys': freshPublicOpks,
+      });
+
+      final newOtkIds = freshOtkPairs
+          .map((otk) => (otk as Map<String, dynamic>)['id'] as int)
+          .toList();
+      await metaStore.setPublishedOtkIds(_deviceId, newOtkIds);
+    } catch (_) {
+      // OPK replenishment failure is non-fatal; the server will mark SPK fallback.
+    }
   }
 
   // ---------------------------------------------------------------------------

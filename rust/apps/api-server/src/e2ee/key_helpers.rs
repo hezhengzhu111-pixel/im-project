@@ -57,15 +57,20 @@ pub(crate) fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError>
         ED25519_SIGNATURE_BYTES,
     )?;
 
-    // one_time_pre_keys：数量限制、id 合法性、Base64+字节长度校验
-    if req.one_time_pre_keys.len() > MAX_ONE_TIME_KEYS {
+    validate_pre_key_entries(&req.one_time_pre_keys)?;
+
+    Ok(())
+}
+
+pub(crate) fn validate_pre_key_entries(entries: &[PreKeyEntry]) -> Result<(), AppError> {
+    if entries.len() > MAX_ONE_TIME_KEYS {
         return Err(AppError::BadRequest(
             "too many one_time_pre_keys".to_string(),
         ));
     }
 
-    let mut seen_ids: HashSet<i32> = HashSet::with_capacity(req.one_time_pre_keys.len());
-    for entry in &req.one_time_pre_keys {
+    let mut seen_ids: HashSet<i32> = HashSet::with_capacity(entries.len());
+    for entry in entries {
         if entry.id < 0 {
             return Err(AppError::BadRequest(format!(
                 "invalid one_time_pre_key id={}",
@@ -84,7 +89,6 @@ pub(crate) fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError>
             X25519_KEY_BYTES,
         )?;
     }
-
     Ok(())
 }
 

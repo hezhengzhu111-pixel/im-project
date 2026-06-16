@@ -117,6 +117,9 @@ class E2eeEndpoints {
   static const pending = '/api/e2ee/pending';
   static String status(String sessionId) => '/api/e2ee/status/$sessionId';
   static const heartbeat = '/api/keys/heartbeat';
+  static const opkStatus = '/api/keys/opk/status';
+  static const opkRefill = '/api/keys/opk/refill';
+  static const opkExpired = '/api/keys/opk/expired';
   static const otkCount = '/api/keys/otk-count';
   static const otk = '/api/keys/otk';
 }

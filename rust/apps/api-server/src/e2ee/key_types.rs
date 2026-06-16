@@ -25,6 +25,7 @@ pub(crate) const ED25519_SIGNATURE_BYTES: usize = 64;
 /// 包含设备公钥材料（identity key、signed pre-key、one-time pre-keys），
 /// 客户端上传的一次性预密钥条目（含 ID）。
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreKeyEntry {
     pub id: i32,
@@ -60,6 +61,26 @@ pub(crate) struct PreKeyBundleDto {
     pub one_time_pre_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub one_time_pre_key_id: Option<i32>,
+    pub opk_fallback: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OpkStatusDto {
+    pub device_id: String,
+    pub count: i64,
+    pub low_watermark: bool,
+    pub low_watermark_threshold: i64,
+    pub target_count: i64,
+    pub fallback_policy: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RefillOpkRequest {
+    pub device_id: String,
+    pub one_time_pre_keys: Vec<PreKeyEntry>,
 }
 
 /// 设备公开信息 DTO。
