@@ -196,6 +196,7 @@ def write_summary(
 
     print(f"P1 SIT artifacts: {artifact_dir}")
     print(summary_path.read_text(encoding="utf-8"))
+    return 1 if fail_count else 0
 
     # Compute exit code.
     if fail_count > 0:
