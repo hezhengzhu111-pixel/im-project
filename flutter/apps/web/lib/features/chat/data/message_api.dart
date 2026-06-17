@@ -204,6 +204,24 @@ class MessageApi {
     return response.data;
   }
 
+  Future<Message> recallMessage(String messageId) async {
+    final response = await _httpClient.post<Message>(
+      MessageEndpoints.recall(messageId),
+      body: {},
+      fromJson: Message.fromJson,
+    );
+    return response.data;
+  }
+
+  Future<Message> deleteMessage(String messageId) async {
+    final response = await _httpClient.post<Message>(
+      MessageEndpoints.delete(messageId),
+      body: {},
+      fromJson: Message.fromJson,
+    );
+    return response.data;
+  }
+
   Future<List<Message>> getGroupHistory(String groupId,
       {int? page, int? size}) async {
     final response = await _httpClient.get<List<dynamic>>(

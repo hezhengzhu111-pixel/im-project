@@ -32,6 +32,7 @@ void main() {
       expect(UserEndpoints.emailBind, '/api/user/email/bind');
       expect(UserEndpoints.account, '/api/user/account');
       expect(UserEndpoints.settings, '/api/user/settings');
+      expect(UserEndpoints.offline, '/api/user/offline');
     });
 
     test('settingsType returns parameterized path', () {
@@ -194,6 +195,9 @@ void main() {
     test('static paths are correct', () {
       expect(AiEndpoints.keys, '/api/ai/keys');
       expect(AiEndpoints.settings, '/api/ai/settings');
+      expect(AiEndpoints.summary, '/api/ai/summary');
+      expect(AiEndpoints.ragDocs, '/api/ai/rag/docs');
+      expect(AiEndpoints.ragQuery, '/api/ai/rag/query');
     });
 
     test('keyById returns parameterized path', () {
@@ -203,6 +207,14 @@ void main() {
     test('keyTest returns parameterized path', () {
       expect(AiEndpoints.keyTest('k1'), '/api/ai/keys/k1/test');
     });
+
+    test('stream returns parameterized path', () {
+      expect(AiEndpoints.stream('task-1'), '/api/ai/stream/task-1');
+    });
+
+    test('ragDocById returns parameterized path', () {
+      expect(AiEndpoints.ragDocById('doc1'), '/api/ai/rag/docs/doc1');
+    });
   });
 
   group('PushEndpoints', () {
@@ -211,6 +223,62 @@ void main() {
       expect(PushEndpoints.unregisterDevice, '/api/push/devices/unregister');
       expect(PushEndpoints.updateDeviceToken, '/api/push/devices/token');
       expect(PushEndpoints.settings, '/api/push/settings');
+    });
+  });
+
+  group('E2eeEndpoints', () {
+    test('key management paths are correct', () {
+      expect(E2eeEndpoints.bundle, '/api/keys/bundle');
+      expect(E2eeEndpoints.devices, '/api/keys/devices');
+      expect(E2eeEndpoints.heartbeat, '/api/keys/heartbeat');
+      expect(E2eeEndpoints.opkStatus, '/api/keys/opk/status');
+      expect(E2eeEndpoints.opkRefill, '/api/keys/opk/refill');
+      expect(E2eeEndpoints.opkExpired, '/api/keys/opk/expired');
+      expect(E2eeEndpoints.otkCount, '/api/keys/otk-count');
+      expect(E2eeEndpoints.otk, '/api/keys/otk');
+      expect(E2eeEndpoints.salt, '/api/keys/salt');
+      expect(E2eeEndpoints.backup, '/api/keys/backup');
+    });
+
+    test('deleteDevice returns parameterized path', () {
+      expect(E2eeEndpoints.deleteDevice('dev-1'), '/api/keys/device/dev-1');
+    });
+
+    test('session management paths are correct', () {
+      expect(E2eeEndpoints.createSession, '/api/e2ee/sessions');
+      expect(E2eeEndpoints.request, '/api/e2ee/request');
+      expect(E2eeEndpoints.accept, '/api/e2ee/accept');
+      expect(E2eeEndpoints.reject, '/api/e2ee/reject');
+      expect(E2eeEndpoints.disable, '/api/e2ee/disable');
+      expect(E2eeEndpoints.pending, '/api/e2ee/pending');
+    });
+
+    test('status returns parameterized path', () {
+      expect(E2eeEndpoints.status('s1'), '/api/e2ee/status/s1');
+    });
+
+    test('conversation session paths are correct', () {
+      expect(E2eeEndpoints.conversationSession('conv1'),
+          '/api/e2ee/conversations/conv1/session');
+      expect(E2eeEndpoints.rotateConversationSession('conv1'),
+          '/api/e2ee/conversations/conv1/rotate');
+    });
+
+    test('devicesByUser returns parameterized path', () {
+      expect(E2eeEndpoints.devicesByUser('u1'), '/api/e2ee/devices/u1');
+    });
+
+    test('group e2ee paths are correct', () {
+      expect(E2eeEndpoints.groupEnable('g1'), '/api/e2ee/groups/g1/enable');
+      expect(E2eeEndpoints.groupDisable('g1'), '/api/e2ee/groups/g1/disable');
+      expect(E2eeEndpoints.groupSenderKey('g1'),
+          '/api/e2ee/groups/g1/sender-key');
+      expect(E2eeEndpoints.groupSenderKeys('g1'),
+          '/api/e2ee/groups/g1/sender-keys');
+      expect(E2eeEndpoints.groupRemoveSenderKey('g1', 'u1'),
+          '/api/e2ee/groups/g1/sender-keys/u1');
+      expect(E2eeEndpoints.groupStatus('g1'), '/api/e2ee/groups/g1/status');
+      expect(E2eeEndpoints.groupDevices('g1'), '/api/e2ee/groups/g1/devices');
     });
   });
 
@@ -269,6 +337,7 @@ void main() {
       expect(UserEndpoints.profile.startsWith('/api/'), isTrue);
       expect(UserEndpoints.settings.startsWith('/api/'), isTrue);
       expect(UserEndpoints.settingsType('x').startsWith('/api/'), isTrue);
+      expect(UserEndpoints.offline.startsWith('/api/'), isTrue);
     });
 
     test('MessageEndpoints', () {
@@ -308,6 +377,27 @@ void main() {
     test('PushEndpoints', () {
       expect(PushEndpoints.registerDevice.startsWith('/api/'), isTrue);
       expect(PushEndpoints.settings.startsWith('/api/'), isTrue);
+    });
+
+    test('AiEndpoints', () {
+      expect(AiEndpoints.keys.startsWith('/api/'), isTrue);
+      expect(AiEndpoints.settings.startsWith('/api/'), isTrue);
+      expect(AiEndpoints.summary.startsWith('/api/'), isTrue);
+      expect(AiEndpoints.stream('t1').startsWith('/api/'), isTrue);
+      expect(AiEndpoints.ragDocs.startsWith('/api/'), isTrue);
+      expect(AiEndpoints.ragDocById('d1').startsWith('/api/'), isTrue);
+      expect(AiEndpoints.ragQuery.startsWith('/api/'), isTrue);
+    });
+
+    test('E2eeEndpoints', () {
+      expect(E2eeEndpoints.bundle.startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.salt.startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.backup.startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.deleteDevice('d1').startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.createSession.startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.conversationSession('c1').startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.groupEnable('g1').startsWith('/api/'), isTrue);
+      expect(E2eeEndpoints.groupDevices('g1').startsWith('/api/'), isTrue);
     });
 
     test('WsEndpoints is the only exception', () {

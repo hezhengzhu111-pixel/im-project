@@ -7,4 +7,5 @@ export 'src/contacts/contacts.dart';
 export 'src/e2ee/e2ee.dart';
 export 'src/group/group.dart';
 export 'src/moments/moments.dart';
+export 'src/push/push.dart';
 export 'src/settings/settings.dart';
