@@ -104,4 +104,37 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
       rethrow;
     }
   }
+
+  Future<AiApiKey> updateKey(String id, AiApiKeyUpdateRequest request) async {
+    final updated = await _api.updateKey(id, request);
+    state = state.copyWith(
+      keys: state.keys.map((k) => k.id == id ? updated : k).toList(),
+    );
+    return updated;
+  }
+
+  Future<Map<String, dynamic>> createSummary(AiSummaryRequest request) async {
+    return _api.createSummary(request);
+  }
+
+  String buildStreamUrl(String taskId) {
+    return _api.buildStreamUrl(taskId);
+  }
+
+  Future<Map<String, dynamic>> uploadRagDoc(
+      AiRagDocUploadRequest request) async {
+    return _api.uploadRagDoc(request);
+  }
+
+  Future<List<Map<String, dynamic>>> listRagDocs() async {
+    return _api.listRagDocs();
+  }
+
+  Future<void> deleteRagDoc(String id) async {
+    await _api.deleteRagDoc(id);
+  }
+
+  Future<Map<String, dynamic>> queryRag(AiRagQueryRequest request) async {
+    return _api.queryRag(request);
+  }
 }
