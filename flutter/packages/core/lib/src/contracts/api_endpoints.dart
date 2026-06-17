@@ -21,6 +21,7 @@ class UserEndpoints {
   static const settings = '/api/user/settings';
   static String settingsType(String type) => '/api/user/settings/$type';
   static const avatar = '/api/user/avatar';
+  static const offline = '/api/user/offline';
 }
 
 class MessageEndpoints {
@@ -96,6 +97,11 @@ class AiEndpoints {
   static String keyById(String id) => '/api/ai/keys/$id';
   static String keyTest(String id) => '/api/ai/keys/$id/test';
   static const settings = '/api/ai/settings';
+  static const summary = '/api/ai/summary';
+  static String stream(String taskId) => '/api/ai/stream/$taskId';
+  static const ragDocs = '/api/ai/rag/docs';
+  static String ragDocById(String id) => '/api/ai/rag/docs/$id';
+  static const ragQuery = '/api/ai/rag/query';
 }
 
 class PushEndpoints {
@@ -125,6 +131,28 @@ class E2eeEndpoints {
   static const opkExpired = '/api/keys/opk/expired';
   static const otkCount = '/api/keys/otk-count';
   static const otk = '/api/keys/otk';
+  static const salt = '/api/keys/salt';
+  static const backup = '/api/keys/backup';
+  static String deleteDevice(String deviceId) => '/api/keys/device/$deviceId';
+  static const createSession = '/api/e2ee/sessions';
+  static String conversationSession(String conversationId) =>
+      '/api/e2ee/conversations/$conversationId/session';
+  static String rotateConversationSession(String conversationId) =>
+      '/api/e2ee/conversations/$conversationId/rotate';
+  static String groupEnable(String groupId) =>
+      '/api/e2ee/groups/$groupId/enable';
+  static String groupDisable(String groupId) =>
+      '/api/e2ee/groups/$groupId/disable';
+  static String groupSenderKey(String groupId) =>
+      '/api/e2ee/groups/$groupId/sender-key';
+  static String groupSenderKeys(String groupId) =>
+      '/api/e2ee/groups/$groupId/sender-keys';
+  static String groupRemoveSenderKey(String groupId, String userId) =>
+      '/api/e2ee/groups/$groupId/sender-keys/$userId';
+  static String groupStatus(String groupId) =>
+      '/api/e2ee/groups/$groupId/status';
+  static String groupDevices(String groupId) =>
+      '/api/e2ee/groups/$groupId/devices';
 }
 
 class WsEndpoints {
