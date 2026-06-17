@@ -1,4 +1,5 @@
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/auth.dart';
 
 /// Fake HttpClientPort for unit tests that records calls and delegates to
 /// configurable callbacks.
@@ -99,4 +100,114 @@ class FakeAnalyticsPort implements AnalyticsPort {
 
   @override
   void setUserProperties(Map<String, dynamic> properties) {}
+}
+
+/// Fake WsClientPort for tests.
+class FakeWsClient implements WsClientPort {
+  @override
+  Stream<WsEvent> get events => const Stream.empty();
+  @override
+  Stream<WsConnectionState> get connectionState => const Stream.empty();
+  @override
+  bool get isConnected => true;
+  @override
+  String get wsBaseUrl => 'ws://localhost';
+  @override
+  Future<void> connect(String url) async {}
+  @override
+  Future<void> disconnect() async {}
+  @override
+  Future<void> reconnect() async {}
+  @override
+  void send(Map<String, dynamic> message) {}
+}
+
+/// Fake AuthRepository for tests.
+class FakeAuthRepository implements AuthRepository {
+  FakeAuthRepository({this.user});
+  final User? user;
+
+  User get _user =>
+      user ??
+      const User(id: 'u1', username: 'testuser', nickname: 'Test');
+
+  @override
+  Future<UserAuthResponse> login(LoginRequest request) async {
+    return UserAuthResponse(success: true, user: _user, token: 'fake-token');
+  }
+
+  @override
+  Future<UserAuthResponse> register(RegisterRequest request) async {
+    return UserAuthResponse(success: true, user: _user, token: 'fake-token');
+  }
+
+  @override
+  Future<AuthResult> restoreSession() async {
+    return AuthSuccess(user: _user, permissions: []);
+  }
+
+  @override
+  Future<void> logout() async {}
+}
+
+/// Creates an AuthNotifier pre-populated with an authenticated user.
+///
+/// Use in tests that need authStateProvider to resolve without
+/// complex platform adapter setup.
+AuthNotifier createTestAuthNotifier({
+  User? user,
+  HttpClientPort? httpClient,
+}) {
+  final http = httpClient ?? FakeHttpClientPort();
+  final authenticatedUser = user ??
+      const User(
+        id: 'u1',
+        username: 'testuser',
+        nickname: 'Test User',
+        email: 'test@example.com',
+      );
+  final notifier = AuthNotifier(
+    FakeAuthRepository(user: authenticatedUser),
+    FakeWsClient(),
+    http,
+    FakeAnalyticsPort(),
+  );
+  // Set authenticated state immediately so the page doesn't show loading.
+  notifier.state = AuthState(
+    user: authenticatedUser,
+    status: AuthStatus.authenticated,
+  );
+  return notifier;
+}
+
+/// Returns a default onGet handler for AiSettings-aware tests.
+///
+/// Distinguishes between AiEndpoints.settings (returns AiSettings JSON)
+/// and other paths (returns empty items list).
+Future<ApiResponse<T>> Function<T>(
+  String path, {
+  Map<String, dynamic>? queryParameters,
+  required T Function(Map<String, dynamic>) fromJson,
+}) aiAwareOnGet() {
+  return <T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    required T Function(Map<String, dynamic>) fromJson,
+  }) async {
+    if (path == AiEndpoints.settings) {
+      return ApiResponse<T>(
+        code: 200,
+        message: 'ok',
+        data: fromJson({
+          'autoReplyEnabled': false,
+          'autoReplyPersona': '',
+        }),
+      );
+    }
+    return ApiResponse<T>(
+      code: 200,
+      message: 'ok',
+      data: fromJson({'items': <dynamic>[]}),
+    );
+  };
 }

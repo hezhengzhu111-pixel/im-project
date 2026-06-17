@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/di/platform_providers.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -66,9 +67,7 @@ class SettingsPage extends ConsumerWidget {
             leading: const Icon(Icons.person),
             title: const Text('个人资料'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // TODO: 打开个人资料页面
-            },
+            onTap: () => context.push('/settings/profile'),
           ),
         ),
 
@@ -78,9 +77,7 @@ class SettingsPage extends ConsumerWidget {
             leading: const Icon(Icons.smart_toy),
             title: const Text('AI 设置'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // TODO: 打开 AI 设置页面
-            },
+            onTap: () => context.push('/settings/ai'),
           ),
         ),
 

@@ -10,3 +10,5 @@ export 'presentation/settings_provider.dart';
 export 'presentation/settings_providers.dart';
 export 'presentation/profile_provider.dart';
 export 'presentation/ai_settings_provider.dart';
+export 'presentation/profile_settings_page.dart';
+export 'presentation/ai_settings_page.dart';

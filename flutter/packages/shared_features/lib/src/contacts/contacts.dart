@@ -5,3 +5,4 @@ export 'data/contacts_api.dart';
 export 'presentation/contacts_provider.dart';
 export 'presentation/contacts_providers.dart';
 export 'presentation/contacts_page.dart';
+export 'presentation/add_friend_page.dart';

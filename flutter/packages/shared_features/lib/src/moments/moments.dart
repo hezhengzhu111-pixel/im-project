@@ -9,4 +9,5 @@ export 'presentation/feed/moments_feed_provider.dart';
 export 'presentation/feed/moments_interactions_provider.dart';
 export 'presentation/composer/composer_provider.dart';
 export 'presentation/notifications/notifications_provider.dart';
+export 'presentation/notifications/moments_notifications_page.dart';
 export 'presentation/widgets/post_card.dart';

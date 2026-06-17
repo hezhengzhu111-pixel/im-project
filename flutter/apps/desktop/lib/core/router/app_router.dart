@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
@@ -49,9 +50,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ContactsPage(),
           ),
           GoRoute(
+            path: '/contacts/add',
+            name: RouteNames.contactsAdd,
+            builder: (context, state) => const AddFriendPage(),
+          ),
+          GoRoute(
             path: '/groups',
             name: RouteNames.groups,
             builder: (context, state) => const GroupListPage(),
+          ),
+          GoRoute(
+            path: '/groups/create',
+            name: RouteNames.groupsCreate,
+            builder: (context, state) => const CreateGroupPage(),
           ),
           GoRoute(
             path: '/moments',
@@ -59,11 +70,40 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const MomentsMainPage(),
           ),
           GoRoute(
+            path: '/moments/notifications',
+            name: RouteNames.momentsNotifications,
+            builder: (context, state) => const MomentsNotificationsPage(),
+          ),
+          GoRoute(
             path: '/settings',
             name: RouteNames.settings,
             builder: (context, state) => const SettingsPage(),
           ),
+          GoRoute(
+            path: '/settings/profile',
+            name: RouteNames.settingsProfile,
+            builder: (context, state) => const ProfileSettingsPage(),
+          ),
+          GoRoute(
+            path: '/settings/ai',
+            name: RouteNames.settingsAi,
+            builder: (context, state) => const AiSettingsPage(),
+          ),
         ],
+      ),
+      // 404 catch-all -- must be last
+      GoRoute(
+        path: '/:pathMatch(.*)*',
+        name: RouteNames.notFound,
+        builder: (_, __) => Scaffold(
+          appBar: AppBar(title: const Text('404')),
+          body: const Center(
+            child: Text(
+              'Page not found',
+              style: TextStyle(fontSize: 24),
+            ),
+          ),
+        ),
       ),
     ],
   );

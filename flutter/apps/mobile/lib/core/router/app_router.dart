@@ -97,9 +97,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/contacts/add',
             name: RouteNames.contactsAdd,
-            pageBuilder: (_, __) => const NoTransitionPage(
-              child: _PlaceholderPage(title: 'Add Friend'),
-            ),
+            builder: (_, __) => const AddFriendPage(),
           ),
           GoRoute(
             path: '/groups',
@@ -109,9 +107,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/groups/create',
             name: RouteNames.groupsCreate,
-            pageBuilder: (_, __) => const NoTransitionPage(
-              child: _PlaceholderPage(title: 'Create Group'),
-            ),
+            builder: (_, __) => const CreateGroupPage(),
           ),
           GoRoute(
             path: '/moments',
@@ -121,9 +117,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/moments/notifications',
             name: RouteNames.momentsNotifications,
-            pageBuilder: (_, __) => const NoTransitionPage(
-              child: _PlaceholderPage(title: 'Notifications'),
-            ),
+            builder: (_, __) => const MomentsNotificationsPage(),
           ),
           GoRoute(
             path: '/settings',
@@ -133,16 +127,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/profile',
             name: RouteNames.settingsProfile,
-            pageBuilder: (_, __) => const NoTransitionPage(
-              child: _PlaceholderPage(title: 'Profile'),
-            ),
+            builder: (_, __) => const ProfileSettingsPage(),
           ),
           GoRoute(
             path: '/settings/ai',
             name: RouteNames.settingsAi,
-            pageBuilder: (_, __) => const NoTransitionPage(
-              child: _PlaceholderPage(title: 'AI Settings'),
-            ),
+            builder: (_, __) => const AiSettingsPage(),
           ),
         ],
       ),
@@ -156,7 +146,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-/// Temporary placeholder page for routes not yet implemented.
+/// 404 fallback page. Only used for unmatched routes.
 class _PlaceholderPage extends StatelessWidget {
   const _PlaceholderPage({required this.title});
 
