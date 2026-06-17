@@ -298,6 +298,195 @@ void main() {
     });
   });
 
+  group('Dynamic path URI encoding', () {
+    test('MessageEndpoints.recall encodes special chars', () {
+      expect(MessageEndpoints.recall('msg/1 #x'), contains('msg%2F1%20%23x'));
+    });
+
+    test('GroupEndpoints.addMembers encodes slash', () {
+      expect(GroupEndpoints.addMembers('group/1'), contains('group%2F1'));
+    });
+
+    test('MomentsEndpoints.postById encodes space', () {
+      expect(MomentsEndpoints.postById('post 1'), contains('post%201'));
+    });
+
+    test('AiEndpoints.stream encodes slash and query', () {
+      expect(AiEndpoints.stream('task/1?x=1'), contains('task%2F1%3Fx%3D1'));
+    });
+
+    test('E2eeEndpoints.groupRemoveSenderKey encodes both params', () {
+      final path = E2eeEndpoints.groupRemoveSenderKey('g/1', 'u#2');
+      expect(path, contains('g%2F1'));
+      expect(path, contains('u%232'));
+    });
+
+    test('E2eeEndpoints.conversationSession encodes colon', () {
+      final path = E2eeEndpoints.conversationSession('private:1:2');
+      expect(path, contains('private%3A1%3A2'));
+    });
+
+    test('UserEndpoints.settingsType encodes slash', () {
+      expect(UserEndpoints.settingsType('privacy/security'),
+          contains('privacy%2Fsecurity'));
+    });
+
+    test('MessageEndpoints.privateHistory encodes special chars', () {
+      expect(MessageEndpoints.privateHistory('user/1'),
+          contains('user%2F1'));
+    });
+
+    test('MessageEndpoints.groupHistoryCursor encodes special chars', () {
+      expect(MessageEndpoints.groupHistoryCursor('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('MessageEndpoints.markRead encodes special chars', () {
+      expect(MessageEndpoints.markRead('conv:1'),
+          contains('conv%3A1'));
+    });
+
+    test('MessageEndpoints.delete encodes special chars', () {
+      expect(MessageEndpoints.delete('msg/1'),
+          contains('msg%2F1'));
+    });
+
+    test('GroupEndpoints.userGroups encodes special chars', () {
+      expect(GroupEndpoints.userGroups('user/1'),
+          contains('user%2F1'));
+    });
+
+    test('GroupEndpoints.join encodes special chars', () {
+      expect(GroupEndpoints.join('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('GroupEndpoints.leave encodes special chars', () {
+      expect(GroupEndpoints.leave('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('GroupEndpoints.dismiss encodes special chars', () {
+      expect(GroupEndpoints.dismiss('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('GroupEndpoints.update encodes special chars', () {
+      expect(GroupEndpoints.update('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('MomentsEndpoints.deletePost encodes special chars', () {
+      expect(MomentsEndpoints.deletePost('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.addMedia encodes special chars', () {
+      expect(MomentsEndpoints.addMedia('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.userPosts encodes special chars', () {
+      expect(MomentsEndpoints.userPosts('u/1'),
+          contains('u%2F1'));
+    });
+
+    test('MomentsEndpoints.like encodes special chars', () {
+      expect(MomentsEndpoints.like('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.unlike encodes special chars', () {
+      expect(MomentsEndpoints.unlike('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.likes encodes special chars', () {
+      expect(MomentsEndpoints.likes('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.createComment encodes special chars', () {
+      expect(MomentsEndpoints.createComment('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('MomentsEndpoints.deleteComment encodes special chars', () {
+      expect(MomentsEndpoints.deleteComment('c/1'),
+          contains('c%2F1'));
+    });
+
+    test('MomentsEndpoints.comments encodes special chars', () {
+      expect(MomentsEndpoints.comments('p/1'),
+          contains('p%2F1'));
+    });
+
+    test('AiEndpoints.keyById encodes special chars', () {
+      expect(AiEndpoints.keyById('k/1'),
+          contains('k%2F1'));
+    });
+
+    test('AiEndpoints.keyTest encodes special chars', () {
+      expect(AiEndpoints.keyTest('k/1'),
+          contains('k%2F1'));
+    });
+
+    test('AiEndpoints.ragDocById encodes special chars', () {
+      expect(AiEndpoints.ragDocById('doc/1'),
+          contains('doc%2F1'));
+    });
+
+    test('E2eeEndpoints.devicesByUser encodes special chars', () {
+      expect(E2eeEndpoints.devicesByUser('u/1'),
+          contains('u%2F1'));
+    });
+
+    test('E2eeEndpoints.status encodes special chars', () {
+      expect(E2eeEndpoints.status('s/1'),
+          contains('s%2F1'));
+    });
+
+    test('E2eeEndpoints.deleteDevice encodes special chars', () {
+      expect(E2eeEndpoints.deleteDevice('dev/1'),
+          contains('dev%2F1'));
+    });
+
+    test('E2eeEndpoints.rotateConversationSession encodes special chars', () {
+      expect(E2eeEndpoints.rotateConversationSession('conv/1'),
+          contains('conv%2F1'));
+    });
+
+    test('E2eeEndpoints.groupEnable encodes special chars', () {
+      expect(E2eeEndpoints.groupEnable('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('E2eeEndpoints.groupDisable encodes special chars', () {
+      expect(E2eeEndpoints.groupDisable('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('E2eeEndpoints.groupSenderKey encodes special chars', () {
+      expect(E2eeEndpoints.groupSenderKey('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('E2eeEndpoints.groupSenderKeys encodes special chars', () {
+      expect(E2eeEndpoints.groupSenderKeys('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('E2eeEndpoints.groupStatus encodes special chars', () {
+      expect(E2eeEndpoints.groupStatus('g/1'),
+          contains('g%2F1'));
+    });
+
+    test('E2eeEndpoints.groupDevices encodes special chars', () {
+      expect(E2eeEndpoints.groupDevices('g/1'),
+          contains('g%2F1'));
+    });
+  });
+
   group('ApiCodes', () {
     test('status codes are correct', () {
       expect(ApiCodes.ok, 200);

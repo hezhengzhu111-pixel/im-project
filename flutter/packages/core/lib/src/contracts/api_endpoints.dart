@@ -19,7 +19,8 @@ class UserEndpoints {
   static const emailBind = '/api/user/email/bind';
   static const account = '/api/user/account';
   static const settings = '/api/user/settings';
-  static String settingsType(String type) => '/api/user/settings/$type';
+  static String settingsType(String type) =>
+      '/api/user/settings/${Uri.encodeComponent(type)}';
   static const avatar = '/api/user/avatar';
   static const offline = '/api/user/offline';
 }
@@ -27,17 +28,21 @@ class UserEndpoints {
 class MessageEndpoints {
   static const sendPrivate = '/api/message/send/private';
   static const sendGroup = '/api/message/send/group';
-  static String privateHistory(String friendId) => '/api/message/private/$friendId';
+  static String privateHistory(String friendId) =>
+      '/api/message/private/${Uri.encodeComponent(friendId)}';
   static String privateHistoryCursor(String friendId) =>
-      '/api/message/private/$friendId/cursor';
-  static String groupHistory(String groupId) => '/api/message/group/$groupId';
+      '/api/message/private/${Uri.encodeComponent(friendId)}/cursor';
+  static String groupHistory(String groupId) =>
+      '/api/message/group/${Uri.encodeComponent(groupId)}';
   static String groupHistoryCursor(String groupId) =>
-      '/api/message/group/$groupId/cursor';
+      '/api/message/group/${Uri.encodeComponent(groupId)}/cursor';
   static const conversations = '/api/message/conversations';
   static String markRead(String conversationId) =>
-      '/api/message/read/$conversationId';
-  static String recall(String messageId) => '/api/message/recall/$messageId';
-  static String delete(String messageId) => '/api/message/delete/$messageId';
+      '/api/message/read/${Uri.encodeComponent(conversationId)}';
+  static String recall(String messageId) =>
+      '/api/message/recall/${Uri.encodeComponent(messageId)}';
+  static String delete(String messageId) =>
+      '/api/message/delete/${Uri.encodeComponent(messageId)}';
   static const config = '/api/message/config';
 }
 
@@ -53,30 +58,45 @@ class FriendEndpoints {
 
 class GroupEndpoints {
   static const create = '/api/group/create';
-  static String userGroups(String userId) => '/api/group/user/$userId';
+  static String userGroups(String userId) =>
+      '/api/group/user/${Uri.encodeComponent(userId)}';
   static const membersList = '/api/group/members/list';
-  static String join(String groupId) => '/api/group/$groupId/join';
-  static String addMembers(String groupId) => '/api/group/$groupId/add-members';
+  static String join(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}/join';
+  static String addMembers(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}/add-members';
   static const search = '/api/group/search';
-  static String leave(String groupId) => '/api/group/$groupId/leave';
-  static String dismiss(String groupId) => '/api/group/$groupId';
-  static String update(String groupId) => '/api/group/$groupId';
+  static String leave(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}/leave';
+  static String dismiss(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}';
+  static String update(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}';
 }
 
 class MomentsEndpoints {
   static const create = '/api/moments';
   static const feed = '/api/moments/feed';
-  static String postById(String postId) => '/api/moments/$postId';
-  static String deletePost(String postId) => '/api/moments/$postId';
-  static String addMedia(String postId) => '/api/moments/$postId/media';
-  static String userPosts(String userId) => '/api/moments/user/$userId';
-  static String like(String postId) => '/api/moments/$postId/like';
-  static String unlike(String postId) => '/api/moments/$postId/like';
-  static String likes(String postId) => '/api/moments/$postId/likes';
-  static String createComment(String postId) => '/api/moments/$postId/comments';
+  static String postById(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}';
+  static String deletePost(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}';
+  static String addMedia(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/media';
+  static String userPosts(String userId) =>
+      '/api/moments/user/${Uri.encodeComponent(userId)}';
+  static String like(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/like';
+  static String unlike(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/like';
+  static String likes(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/likes';
+  static String createComment(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/comments';
   static String deleteComment(String commentId) =>
-      '/api/moments/comments/$commentId';
-  static String comments(String postId) => '/api/moments/$postId/comments';
+      '/api/moments/comments/${Uri.encodeComponent(commentId)}';
+  static String comments(String postId) =>
+      '/api/moments/${Uri.encodeComponent(postId)}/comments';
   static const notifications = '/api/moments/notifications';
   static const markNotificationsRead = '/api/moments/notifications/read';
 }
@@ -94,13 +114,17 @@ class FileEndpoints {
 
 class AiEndpoints {
   static const keys = '/api/ai/keys';
-  static String keyById(String id) => '/api/ai/keys/$id';
-  static String keyTest(String id) => '/api/ai/keys/$id/test';
+  static String keyById(String id) =>
+      '/api/ai/keys/${Uri.encodeComponent(id)}';
+  static String keyTest(String id) =>
+      '/api/ai/keys/${Uri.encodeComponent(id)}/test';
   static const settings = '/api/ai/settings';
   static const summary = '/api/ai/summary';
-  static String stream(String taskId) => '/api/ai/stream/$taskId';
+  static String stream(String taskId) =>
+      '/api/ai/stream/${Uri.encodeComponent(taskId)}';
   static const ragDocs = '/api/ai/rag/docs';
-  static String ragDocById(String id) => '/api/ai/rag/docs/$id';
+  static String ragDocById(String id) =>
+      '/api/ai/rag/docs/${Uri.encodeComponent(id)}';
   static const ragQuery = '/api/ai/rag/query';
 }
 
@@ -118,13 +142,15 @@ class AdminEndpoints {
 class E2eeEndpoints {
   static const bundle = '/api/keys/bundle';
   static const devices = '/api/keys/devices';
-  static String devicesByUser(String userId) => '/api/e2ee/devices/$userId';
+  static String devicesByUser(String userId) =>
+      '/api/e2ee/devices/${Uri.encodeComponent(userId)}';
   static const request = '/api/e2ee/request';
   static const accept = '/api/e2ee/accept';
   static const reject = '/api/e2ee/reject';
   static const disable = '/api/e2ee/disable';
   static const pending = '/api/e2ee/pending';
-  static String status(String sessionId) => '/api/e2ee/status/$sessionId';
+  static String status(String sessionId) =>
+      '/api/e2ee/status/${Uri.encodeComponent(sessionId)}';
   static const heartbeat = '/api/keys/heartbeat';
   static const opkStatus = '/api/keys/opk/status';
   static const opkRefill = '/api/keys/opk/refill';
@@ -133,26 +159,27 @@ class E2eeEndpoints {
   static const otk = '/api/keys/otk';
   static const salt = '/api/keys/salt';
   static const backup = '/api/keys/backup';
-  static String deleteDevice(String deviceId) => '/api/keys/device/$deviceId';
+  static String deleteDevice(String deviceId) =>
+      '/api/keys/device/${Uri.encodeComponent(deviceId)}';
   static const createSession = '/api/e2ee/sessions';
   static String conversationSession(String conversationId) =>
-      '/api/e2ee/conversations/$conversationId/session';
+      '/api/e2ee/conversations/${Uri.encodeComponent(conversationId)}/session';
   static String rotateConversationSession(String conversationId) =>
-      '/api/e2ee/conversations/$conversationId/rotate';
+      '/api/e2ee/conversations/${Uri.encodeComponent(conversationId)}/rotate';
   static String groupEnable(String groupId) =>
-      '/api/e2ee/groups/$groupId/enable';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/enable';
   static String groupDisable(String groupId) =>
-      '/api/e2ee/groups/$groupId/disable';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/disable';
   static String groupSenderKey(String groupId) =>
-      '/api/e2ee/groups/$groupId/sender-key';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/sender-key';
   static String groupSenderKeys(String groupId) =>
-      '/api/e2ee/groups/$groupId/sender-keys';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/sender-keys';
   static String groupRemoveSenderKey(String groupId, String userId) =>
-      '/api/e2ee/groups/$groupId/sender-keys/$userId';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/sender-keys/${Uri.encodeComponent(userId)}';
   static String groupStatus(String groupId) =>
-      '/api/e2ee/groups/$groupId/status';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/status';
   static String groupDevices(String groupId) =>
-      '/api/e2ee/groups/$groupId/devices';
+      '/api/e2ee/groups/${Uri.encodeComponent(groupId)}/devices';
 }
 
 class WsEndpoints {

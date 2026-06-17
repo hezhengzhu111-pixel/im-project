@@ -1083,6 +1083,48 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  /// Recall a sent message. Updates local state to reflect the recall.
+  Future<Message?> recallMessage(String messageId) async {
+    try {
+      final recalled = await _messageApi.recallMessage(messageId);
+      _updateMessageInAllSessions(messageId, recalled);
+      return recalled;
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to recall message', e, st);
+      state = state.copyWith(error: e.toString());
+      return null;
+    }
+  }
+
+  /// Delete a message. Updates local state to reflect the deletion.
+  Future<Message?> deleteMessage(String messageId) async {
+    try {
+      final deleted = await _messageApi.deleteMessage(messageId);
+      _updateMessageInAllSessions(messageId, deleted);
+      return deleted;
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to delete message', e, st);
+      state = state.copyWith(error: e.toString());
+      return null;
+    }
+  }
+
+  void _updateMessageInAllSessions(String messageId, Message replacement) {
+    for (final entry in state.messages.entries) {
+      final index = entry.value.indexWhere(
+        (m) => m.id == messageId || m.clientMessageId == messageId,
+      );
+      if (index != -1) {
+        final updated = List<Message>.from(entry.value);
+        updated[index] = _mergeMessageReplacement(updated[index], replacement);
+        state = state.copyWith(
+          messages: {...state.messages, entry.key: updated},
+        );
+        break;
+      }
+    }
+  }
+
   void setOfflineStatus(bool isOffline) {
     state = state.copyWith(isOffline: isOffline);
   }
