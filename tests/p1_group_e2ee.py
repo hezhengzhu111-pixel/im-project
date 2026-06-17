@@ -208,7 +208,7 @@ class APIClient:
     def send_group_encrypted(self, group_id: int, client_msg_id: str,
                                message_type: str, e2ee_envelope: dict,
                                e2ee_device_id: str) -> dict:
-        return self._post("/message/send/group", {
+        return self._post("/api/message/send/group", {
             "groupId": group_id, "clientMessageId": client_msg_id,
             "messageType": message_type, "encrypted": True,
             "e2eeEnvelope": e2ee_envelope, "e2eeDeviceId": e2ee_device_id,
@@ -216,7 +216,7 @@ class APIClient:
 
     def send_group_plaintext(self, group_id: int, client_msg_id: str,
                                content: str) -> dict:
-        return self._post("/message/send/group", {
+        return self._post("/api/message/send/group", {
             "groupId": group_id, "clientMessageId": client_msg_id,
             "messageType": "TEXT", "content": content, "encrypted": False,
         })
@@ -224,7 +224,7 @@ class APIClient:
     def send_group_encrypted_media(self, group_id: int, client_msg_id: str,
                                      e2ee_envelope: dict, e2ee_device_id: str,
                                      media_url: str) -> dict:
-        return self._post("/message/send/group", {
+        return self._post("/api/message/send/group", {
             "groupId": group_id, "clientMessageId": client_msg_id,
             "messageType": "IMAGE", "encrypted": True,
             "e2eeEnvelope": e2ee_envelope, "e2eeDeviceId": e2ee_device_id,

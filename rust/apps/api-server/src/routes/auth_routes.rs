@@ -5,11 +5,8 @@ use axum::Router;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/auth/refresh", post(auth_api::refresh))
         .route("/api/auth/refresh", post(auth_api::refresh))
-        .route("/auth/parse", post(auth_api::parse))
         .route("/api/auth/parse", post(auth_api::parse))
-        .route("/auth/ws-ticket", post(auth_api::issue_ws_ticket))
         .route("/api/auth/ws-ticket", post(auth_api::issue_ws_ticket))
         .route(
             "/api/auth/internal/token",

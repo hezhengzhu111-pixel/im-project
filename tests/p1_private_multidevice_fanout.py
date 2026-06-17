@@ -171,14 +171,14 @@ class APIClient:
     def send_private_encrypted(self, receiver_id: str, client_msg_id: str,
                                message_type: str, e2ee_envelope: dict,
                                e2ee_device_id: str) -> dict:
-        return self._post("/message/send/private", {
+        return self._post("/api/message/send/private", {
             "receiverId": receiver_id, "clientMessageId": client_msg_id,
             "messageType": message_type, "encrypted": True,
             "e2eeEnvelope": e2ee_envelope, "e2eeDeviceId": e2ee_device_id,
         })
 
     def get_private_history(self, friend_id: str, limit: int = 50) -> list:
-        return self._get(f"/message/private/{friend_id}", {"limit": str(limit)}).get("data", [])
+        return self._get(f"/api/message/private/{friend_id}", {"limit": str(limit)}).get("data", [])
 
     def opk_status(self, device_id: str) -> dict:
         return self._get("/api/keys/opk/status", {"deviceId": device_id})["data"]

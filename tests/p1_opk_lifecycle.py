@@ -193,7 +193,7 @@ class APIClient:
     def send_private_encrypted(self, receiver_id: str, client_msg_id: str,
                                message_type: str, e2ee_envelope: dict,
                                e2ee_device_id: str) -> dict:
-        return self._post("/message/send/private", {
+        return self._post("/api/message/send/private", {
             "receiverId": receiver_id, "clientMessageId": client_msg_id,
             "messageType": message_type, "encrypted": True,
             "e2eeEnvelope": e2ee_envelope, "e2eeDeviceId": e2ee_device_id,

@@ -5,7 +5,7 @@ use api_server_rs::config::AppConfig;
 use api_server_rs::web;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use im_rs_common::auth::Claims;
+use im_common::auth::Claims;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde_json::{json, Value};
 use tower::ServiceExt;

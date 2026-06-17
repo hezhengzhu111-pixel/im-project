@@ -1,91 +1,94 @@
 class AuthEndpoints {
-  static const parse = '/auth/parse';
-  static const refresh = '/auth/refresh';
-  static const wsTicket = '/auth/ws-ticket';
+  static const parse = '/api/auth/parse';
+  static const refresh = '/api/auth/refresh';
+  static const wsTicket = '/api/auth/ws-ticket';
 }
 
 class UserEndpoints {
-  static const login = '/user/login';
-  static const register = '/user/register';
-  static const profile = '/user/profile';
-  static const search = '/user/search';
-  static const logout = '/user/logout';
-  static const heartbeat = '/user/heartbeat';
-  static const onlineStatus = '/user/online-status';
-  static const password = '/user/password';
-  static const phoneCode = '/user/phone/code';
-  static const phoneBind = '/user/phone/bind';
-  static const emailCode = '/user/email/code';
-  static const emailBind = '/user/email/bind';
-  static const account = '/user/account';
-  static const settings = '/user/settings';
-  static String settingsType(String type) => '/user/settings/$type';
-  static const avatar = '/user/avatar';
+  static const login = '/api/user/login';
+  static const register = '/api/user/register';
+  static const profile = '/api/user/profile';
+  static const search = '/api/user/search';
+  static const logout = '/api/user/logout';
+  static const heartbeat = '/api/user/heartbeat';
+  static const onlineStatus = '/api/user/online-status';
+  static const password = '/api/user/password';
+  static const phoneCode = '/api/user/phone/code';
+  static const phoneBind = '/api/user/phone/bind';
+  static const emailCode = '/api/user/email/code';
+  static const emailBind = '/api/user/email/bind';
+  static const account = '/api/user/account';
+  static const settings = '/api/user/settings';
+  static String settingsType(String type) => '/api/user/settings/$type';
+  static const avatar = '/api/user/avatar';
 }
 
 class MessageEndpoints {
-  static const sendPrivate = '/message/send/private';
-  static const sendGroup = '/message/send/group';
-  static String privateHistory(String friendId) => '/message/private/$friendId';
+  static const sendPrivate = '/api/message/send/private';
+  static const sendGroup = '/api/message/send/group';
+  static String privateHistory(String friendId) => '/api/message/private/$friendId';
   static String privateHistoryCursor(String friendId) =>
-      '/message/private/$friendId/cursor';
-  static String groupHistory(String groupId) => '/message/group/$groupId';
+      '/api/message/private/$friendId/cursor';
+  static String groupHistory(String groupId) => '/api/message/group/$groupId';
   static String groupHistoryCursor(String groupId) =>
-      '/message/group/$groupId/cursor';
-  static const conversations = '/message/conversations';
+      '/api/message/group/$groupId/cursor';
+  static const conversations = '/api/message/conversations';
   static String markRead(String conversationId) =>
-      '/message/read/$conversationId';
-  static String recall(String messageId) => '/message/recall/$messageId';
-  static String delete(String messageId) => '/message/delete/$messageId';
-  static const config = '/message/config';
+      '/api/message/read/$conversationId';
+  static String recall(String messageId) => '/api/message/recall/$messageId';
+  static String delete(String messageId) => '/api/message/delete/$messageId';
+  static const config = '/api/message/config';
 }
 
 class FriendEndpoints {
-  static const list = '/friend/list';
-  static const request = '/friend/request';
-  static const requests = '/friend/requests';
-  static const accept = '/friend/accept';
-  static const reject = '/friend/reject';
-  static const remove = '/friend/remove';
-  static const remark = '/friend/remark';
+  static const list = '/api/friend/list';
+  static const request = '/api/friend/request';
+  static const requests = '/api/friend/requests';
+  static const accept = '/api/friend/accept';
+  static const reject = '/api/friend/reject';
+  static const remove = '/api/friend/remove';
+  static const remark = '/api/friend/remark';
 }
 
 class GroupEndpoints {
-  static const create = '/group/create';
-  static String userGroups(String userId) => '/group/user/$userId';
-  static const membersList = '/group/members/list';
-  static String join(String groupId) => '/group/$groupId/join';
-  static String addMembers(String groupId) => '/group/$groupId/add-members';
-  static const search = '/group/search';
-  static String leave(String groupId) => '/group/$groupId/leave';
-  static String dismiss(String groupId) => '/group/$groupId';
-  static String update(String groupId) => '/group/$groupId';
+  static const create = '/api/group/create';
+  static String userGroups(String userId) => '/api/group/user/$userId';
+  static const membersList = '/api/group/members/list';
+  static String join(String groupId) => '/api/group/$groupId/join';
+  static String addMembers(String groupId) => '/api/group/$groupId/add-members';
+  static const search = '/api/group/search';
+  static String leave(String groupId) => '/api/group/$groupId/leave';
+  static String dismiss(String groupId) => '/api/group/$groupId';
+  static String update(String groupId) => '/api/group/$groupId';
 }
 
 class MomentsEndpoints {
-  static const create = '/moments';
-  static const feed = '/moments/feed';
-  static String postById(String postId) => '/moments/$postId';
-  static String deletePost(String postId) => '/moments/$postId';
-  static String addMedia(String postId) => '/moments/$postId/media';
-  static String userPosts(String userId) => '/moments/user/$userId';
-  static String like(String postId) => '/moments/$postId/like';
-  static String unlike(String postId) => '/moments/$postId/like';
-  static String likes(String postId) => '/moments/$postId/likes';
-  static String createComment(String postId) => '/moments/$postId/comments';
+  static const create = '/api/moments';
+  static const feed = '/api/moments/feed';
+  static String postById(String postId) => '/api/moments/$postId';
+  static String deletePost(String postId) => '/api/moments/$postId';
+  static String addMedia(String postId) => '/api/moments/$postId/media';
+  static String userPosts(String userId) => '/api/moments/user/$userId';
+  static String like(String postId) => '/api/moments/$postId/like';
+  static String unlike(String postId) => '/api/moments/$postId/like';
+  static String likes(String postId) => '/api/moments/$postId/likes';
+  static String createComment(String postId) => '/api/moments/$postId/comments';
   static String deleteComment(String commentId) =>
-      '/moments/comments/$commentId';
-  static String comments(String postId) => '/moments/$postId/comments';
-  static const notifications = '/moments/notifications';
-  static const markNotificationsRead = '/moments/notifications/read';
+      '/api/moments/comments/$commentId';
+  static String comments(String postId) => '/api/moments/$postId/comments';
+  static const notifications = '/api/moments/notifications';
+  static const markNotificationsRead = '/api/moments/notifications/read';
 }
 
 class FileEndpoints {
-  static const uploadFile = '/file/upload/file';
-  static const uploadImage = '/file/upload/image';
-  static const uploadVideo = '/file/upload/video';
-  static const uploadAudio = '/file/upload/audio';
-  static const delete = '/file/delete';
+  static const uploadImage = '/api/file/upload/image';
+  static const uploadFile = '/api/file/upload/file';
+  static const uploadAudio = '/api/file/upload/audio';
+  static const uploadVideo = '/api/file/upload/video';
+  static const uploadAvatar = '/api/file/upload/avatar';
+  static const download = '/api/file/download';
+  static const info = '/api/file/info';
+  static const delete = '/api/file/delete';
 }
 
 class AiEndpoints {
@@ -96,10 +99,10 @@ class AiEndpoints {
 }
 
 class PushEndpoints {
-  static const registerDevice = '/push/devices/register';
-  static const unregisterDevice = '/push/devices/unregister';
-  static const updateDeviceToken = '/push/devices/token';
-  static const settings = '/push/settings';
+  static const registerDevice = '/api/push/devices/register';
+  static const unregisterDevice = '/api/push/devices/unregister';
+  static const updateDeviceToken = '/api/push/devices/token';
+  static const settings = '/api/push/settings';
 }
 
 class AdminEndpoints {

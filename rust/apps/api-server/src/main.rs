@@ -8,8 +8,8 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::unwrap_used)]
 
-use api_server::config::AppConfig;
-use api_server::web::{self, AppState};
+use api_server_rs::config::AppConfig;
+use api_server_rs::web::{self, AppState};
 use axum::extract::DefaultBodyLimit;
 use axum::http::{header, HeaderName, Method};
 use redis::aio::ConnectionManager;
@@ -21,7 +21,8 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-const DEFAULT_LOG_FILTER: &str = "api_server=info,im_observe=info,tower_http=warn,sqlx::query=off";
+const DEFAULT_LOG_FILTER: &str =
+    "api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(config.mysql_max_connections)
         .connect_with(mysql_options)
         .await?;
-    api_server::push::ensure_schema(&db).await?;
+    api_server_rs::push::ensure_schema(&db).await?;
     let state = AppState {
         config: config.clone(),
         redis_manager: redis.clone(),
@@ -53,10 +54,10 @@ async fn main() -> anyhow::Result<()> {
         db,
         http: reqwest::Client::new(),
     };
-    api_server::background_publisher::spawn(config.clone());
-    api_server::background_writer::spawn(config.clone(), state.db.clone());
-    api_server::push_dispatcher::spawn(config.clone(), state.db.clone());
-    api_server::e2ee::cleanup::spawn(state.db.clone());
+    api_server_rs::background_publisher::spawn(config.clone());
+    api_server_rs::background_writer::spawn(config.clone(), state.db.clone());
+    api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
+    api_server_rs::e2ee::cleanup::spawn(state.db.clone());
     // CORS 配置：开发环境允许所有 localhost/127.0.0.1 端口
     // 当 allow_credentials(true) 时，不能使用 wildcard "*"，需用 predicate 动态匹配
     let cors = CorsLayer::new()
@@ -140,16 +141,16 @@ mod tests {
     fn should_use_default_log_filter_when_rust_log_is_absent() {
         let rendered = log_filter_from(None).to_string();
 
-        assert!(rendered.contains("api_server=info"));
+        assert!(rendered.contains("api_server_rs=info"));
         assert!(rendered.contains("im_observe=info"));
         assert!(rendered.contains("sqlx::query=off"));
     }
 
     #[test]
     fn should_respect_explicit_rust_log_without_forced_observe_directive() {
-        let rendered = log_filter_from(Some("api_server=warn,im_observe=debug")).to_string();
+        let rendered = log_filter_from(Some("api_server_rs=warn,im_observe=debug")).to_string();
 
-        assert!(rendered.contains("api_server=warn"));
+        assert!(rendered.contains("api_server_rs=warn"));
         assert!(rendered.contains("im_observe=debug"));
         assert!(!rendered.contains("sqlx::query=off"));
     }

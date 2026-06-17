@@ -30,13 +30,8 @@ pub fn is_gateway_whitelist(path: &str) -> bool {
         "/api/user/login",
         "/api/user/register",
         "/api/user/check-username",
-        "/user/login",
-        "/user/register",
-        "/user/check-username",
         "/api/auth/refresh",
         "/api/auth/parse",
-        "/auth/refresh",
-        "/auth/parse",
     ]
     .iter()
     .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))

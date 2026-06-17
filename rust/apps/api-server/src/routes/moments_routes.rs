@@ -5,30 +5,15 @@ use axum::Router;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/moments", post(moments::post_handler::create_post))
         .route("/api/moments", post(moments::post_handler::create_post))
-        .route("/moments/feed", get(moments::post_handler::get_feed))
         .route("/api/moments/feed", get(moments::post_handler::get_feed))
-        .route(
-            "/moments/:id",
-            get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
-        )
         .route(
             "/api/moments/:id",
             get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
         )
         .route(
-            "/moments/user/:user_id",
-            get(moments::post_handler::get_user_posts),
-        )
-        .route(
             "/api/moments/user/:user_id",
             get(moments::post_handler::get_user_posts),
-        )
-        .route(
-            "/moments/:id/like",
-            post(moments::interaction_handler::like_post)
-                .delete(moments::interaction_handler::unlike_post),
         )
         .route(
             "/api/moments/:id/like",
@@ -36,17 +21,8 @@ pub fn routes() -> Router<AppState> {
                 .delete(moments::interaction_handler::unlike_post),
         )
         .route(
-            "/moments/:id/likes",
-            get(moments::interaction_handler::get_likes),
-        )
-        .route(
             "/api/moments/:id/likes",
             get(moments::interaction_handler::get_likes),
-        )
-        .route(
-            "/moments/:id/comments",
-            post(moments::interaction_handler::create_comment)
-                .get(moments::interaction_handler::get_comments),
         )
         .route(
             "/api/moments/:id/comments",
@@ -54,29 +30,16 @@ pub fn routes() -> Router<AppState> {
                 .get(moments::interaction_handler::get_comments),
         )
         .route(
-            "/moments/comments/:id",
-            delete(moments::interaction_handler::delete_comment),
-        )
-        .route(
             "/api/moments/comments/:id",
             delete(moments::interaction_handler::delete_comment),
         )
-        .route("/moments/:id/media", post(moments::post_handler::add_media))
         .route(
             "/api/moments/:id/media",
             post(moments::post_handler::add_media),
         )
         .route(
-            "/moments/notifications",
-            get(moments::notification_handler::get_notifications),
-        )
-        .route(
             "/api/moments/notifications",
             get(moments::notification_handler::get_notifications),
-        )
-        .route(
-            "/moments/notifications/read",
-            put(moments::notification_handler::mark_all_read),
         )
         .route(
             "/api/moments/notifications/read",

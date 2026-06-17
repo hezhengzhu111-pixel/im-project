@@ -487,7 +487,7 @@ def main() -> int:
         "register bob",
         lambda: bob.api(
             "POST",
-            "/user/register",
+            "/api/user/register",
             json_body={"username": bob_name, "password": password, "nickname": "Bob"},
         ),
     )
@@ -520,7 +520,7 @@ def main() -> int:
         "login bob",
         lambda: bob.api(
             "POST",
-            "/user/login",
+            "/api/user/login",
             json_body={"username": bob_name, "password": password},
         ),
     )
@@ -540,7 +540,7 @@ def main() -> int:
     carol_headers = carol.auth_headers(carol_token)
     carol_password = password
 
-    parsed_cookie = check("auth parse cookie", lambda: alice.api("POST", "/auth/parse"))
+    parsed_cookie = check("auth parse cookie", lambda: alice.api("POST", "/api/auth/parse"))
     if parsed_cookie.get("userId") != str(alice_id):
         raise TestFailure(f"auth parse userId must be exact string: {parsed_cookie}")
     refreshed = check("auth refresh", lambda: alice.api("POST", "/api/auth/refresh"))
@@ -635,7 +635,7 @@ def main() -> int:
     )
     search_result = check(
         "search user",
-        lambda: alice.api("GET", f"/user/search?{query({'keyword': bob_name})}"),
+        lambda: alice.api("GET", f"/api/user/search?{query({'keyword': bob_name})}"),
     )
     found_bob = next((item for item in search_result if item.get("username") == bob_name), None)
     if not found_bob or found_bob.get("id") != str(bob_id):
@@ -645,7 +645,7 @@ def main() -> int:
         "settings update",
         lambda: alice.api(
             "PUT",
-            "/user/settings/general",
+            "/api/user/settings/general",
             headers=alice_headers,
             json_body={"language": "zh-CN"},
         ),
@@ -655,7 +655,7 @@ def main() -> int:
         "send phone code",
         lambda: carol.api(
             "POST",
-            "/user/phone/code",
+            "/api/user/phone/code",
             headers=carol_headers,
             json_body={"target": phone_target},
         ),
@@ -683,7 +683,7 @@ def main() -> int:
         "bind email",
         lambda: carol.api(
             "POST",
-            "/user/email/bind",
+            "/api/user/email/bind",
             headers=carol_headers,
             json_body={"email": email_target, "code": str(email_code)},
         ),
@@ -711,7 +711,7 @@ def main() -> int:
         "online status",
         lambda: alice.api(
             "POST",
-            "/user/online-status",
+            "/api/user/online-status",
             headers=alice_headers,
             json_body=[alice_id, bob_id],
         ),
@@ -724,7 +724,7 @@ def main() -> int:
         raise TestFailure("bob missing from alice friend list")
     check(
         "friend requests list",
-        lambda: alice.api("GET", "/friend/requests", headers=alice_headers),
+        lambda: alice.api("GET", "/api/friend/requests", headers=alice_headers),
     )
     rounded_alice_id = js_number_string(alice_id)
     if rounded_alice_id == str(alice_id):
@@ -766,7 +766,7 @@ def main() -> int:
         "accept friend request",
         lambda: alice.api(
             "POST",
-            "/friend/accept",
+            "/api/friend/accept",
             headers=alice_headers,
             json_body={"requestId": str(pending_request["id"]), "action": "ACCEPT"},
         ),
@@ -781,7 +781,7 @@ def main() -> int:
         "group members",
         lambda: alice.api(
             "POST",
-            "/group/members/list",
+            "/api/group/members/list",
             headers=alice_headers,
             json_body={"groupId": str(group_id)},
         ),
@@ -815,7 +815,7 @@ def main() -> int:
         "update group",
         lambda: alice.api(
             "PUT",
-            f"/group/{created_group_id}",
+            f"/api/group/{created_group_id}",
             headers=alice_headers,
             json_body={"groupName": f"api-dynamic-updated-{suffix}"},
         ),
@@ -832,7 +832,7 @@ def main() -> int:
         "leave group",
         lambda: carol.api(
             "POST",
-            f"/group/{created_group_id}/leave",
+            f"/api/group/{created_group_id}/leave",
             headers=carol_headers,
         ),
     )
@@ -863,7 +863,7 @@ def main() -> int:
         "date": upload["uploadDate"],
         "filename": upload["filename"],
     }
-    check("file info", lambda: alice.api("POST", "/file/info", headers=alice_headers, json_body=locator))
+    check("file info", lambda: alice.api("POST", "/api/file/info", headers=alice_headers, json_body=locator))
     download_path = f"/api/file/download?{query(locator)}"
     downloaded = check(
         "file download",
@@ -875,7 +875,7 @@ def main() -> int:
         "file delete",
         lambda: alice.api(
             "DELETE",
-            f"/file/delete?{query(locator)}",
+            f"/api/file/delete?{query(locator)}",
             headers=alice_headers,
         ),
     )
@@ -884,7 +884,7 @@ def main() -> int:
         lambda: alice.request("GET", download_path, headers=alice_headers, expected=(403, 404)),
     )
 
-    check("issue ws ticket for bob push", lambda: bob.api("POST", "/auth/ws-ticket", headers=bob.auth_headers(bob_token)))
+    check("issue ws ticket for bob push", lambda: bob.api("POST", "/api/auth/ws-ticket", headers=bob.auth_headers(bob_token)))
     bob_push_sock = check(
         "open bob websocket for push",
         lambda: open_websocket(ws_url(bob_id), bob_token, bob.cookie_header()),
@@ -922,7 +922,7 @@ def main() -> int:
         raise TestFailure("private message was not sent")
     check(
         "private history",
-        lambda: alice.api("GET", f"/message/private/{bob_id}?size=20", headers=alice_headers),
+        lambda: alice.api("GET", f"/api/message/private/{bob_id}?size=20", headers=alice_headers),
     )
     check("conversations", lambda: alice.api("GET", "/api/message/conversations", headers=alice_headers))
     check(
@@ -937,7 +937,7 @@ def main() -> int:
         "recall private message",
         lambda: alice.api(
             "POST",
-            f"/message/recall/{private_message['id']}",
+            f"/api/message/recall/{private_message['id']}",
             headers=alice_headers,
         ),
     )
@@ -954,7 +954,7 @@ def main() -> int:
         "send group message",
         lambda: alice.api(
             "POST",
-            "/message/send/group",
+            "/api/message/send/group",
             headers=alice_headers,
             json_body={
                 "groupId": group_id,
@@ -972,14 +972,14 @@ def main() -> int:
         "mark group read",
         lambda: bob.api(
             "POST",
-            f"/message/read/group_{group_id}",
+            f"/api/message/read/group_{group_id}",
             headers=bob_headers,
         ),
     )
     if not group_message.get("id"):
         raise TestFailure("group message missing id")
 
-    check("issue ws ticket for websocket", lambda: alice.api("POST", "/auth/ws-ticket", headers=alice_headers))
+    check("issue ws ticket for websocket", lambda: alice.api("POST", "/api/auth/ws-ticket", headers=alice_headers))
     check(
         "websocket heartbeat",
         lambda: websocket_ping(ws_url(alice_id), alice_token, alice.cookie_header()),

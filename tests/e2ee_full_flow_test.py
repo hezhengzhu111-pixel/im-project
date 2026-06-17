@@ -196,7 +196,7 @@ class APIClient:
 
     def send_private_message(self, receiver_id: str, client_msg_id: str,
                              message_type: str, content: str) -> dict:
-        return self._post("/message/send/private", {
+        return self._post("/api/message/send/private", {
             "receiverId": receiver_id,
             "clientMessageId": client_msg_id,
             "messageType": message_type,
@@ -207,7 +207,7 @@ class APIClient:
     def send_private_encrypted(self, receiver_id: str, client_msg_id: str,
                                message_type: str, e2ee_envelope: dict,
                                e2ee_device_id: str) -> dict:
-        return self._post("/message/send/private", {
+        return self._post("/api/message/send/private", {
             "receiverId": receiver_id,
             "clientMessageId": client_msg_id,
             "messageType": message_type,
@@ -217,7 +217,7 @@ class APIClient:
         })
 
     def get_private_history(self, friend_id: str, limit: int = 50) -> list:
-        body = self._get(f"/message/private/{friend_id}", {"limit": str(limit)})
+        body = self._get(f"/api/message/private/{friend_id}", {"limit": str(limit)})
         return body.get("data", [])
 
 

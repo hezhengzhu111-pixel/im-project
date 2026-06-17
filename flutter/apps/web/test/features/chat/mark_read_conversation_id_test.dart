@@ -46,7 +46,7 @@ class SpyMessageApi extends MessageApi {
     lastMarkReadConversationId = conversationId;
     // Make the real HTTP call so FakeHttpClientPort records the path.
     await _fakeHttp.post<void>(
-      '/message/read/$conversationId',
+      '/api/message/read/$conversationId',
       fromJson: (_) {},
     );
   }
@@ -259,11 +259,11 @@ void main() {
   /// Extract the conversationId from the last recorded markRead HTTP request.
   String? lastHttpMarkReadId() {
     final markReadRequests = fakeHttp.requests
-        .where((r) => r.$1 == 'POST' && r.$2.startsWith('/message/read/'))
+        .where((r) => r.$1 == 'POST' && r.$2.startsWith('/api/message/read/'))
         .toList();
     if (markReadRequests.isEmpty) return null;
     final path = markReadRequests.last.$2;
-    return path.replaceFirst('/message/read/', '');
+    return path.replaceFirst('/api/message/read/', '');
   }
 
   // =========================================================================

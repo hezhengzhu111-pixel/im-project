@@ -4,186 +4,189 @@ import 'package:im_core/core.dart';
 void main() {
   group('AuthEndpoints', () {
     test('parse path is correct', () {
-      expect(AuthEndpoints.parse, '/auth/parse');
+      expect(AuthEndpoints.parse, '/api/auth/parse');
     });
 
     test('refresh path is correct', () {
-      expect(AuthEndpoints.refresh, '/auth/refresh');
+      expect(AuthEndpoints.refresh, '/api/auth/refresh');
     });
 
     test('wsTicket path is correct', () {
-      expect(AuthEndpoints.wsTicket, '/auth/ws-ticket');
+      expect(AuthEndpoints.wsTicket, '/api/auth/ws-ticket');
     });
   });
 
   group('UserEndpoints', () {
     test('static paths are correct', () {
-      expect(UserEndpoints.login, '/user/login');
-      expect(UserEndpoints.register, '/user/register');
-      expect(UserEndpoints.profile, '/user/profile');
-      expect(UserEndpoints.search, '/user/search');
-      expect(UserEndpoints.logout, '/user/logout');
-      expect(UserEndpoints.heartbeat, '/user/heartbeat');
-      expect(UserEndpoints.onlineStatus, '/user/online-status');
-      expect(UserEndpoints.password, '/user/password');
-      expect(UserEndpoints.phoneCode, '/user/phone/code');
-      expect(UserEndpoints.phoneBind, '/user/phone/bind');
-      expect(UserEndpoints.emailCode, '/user/email/code');
-      expect(UserEndpoints.emailBind, '/user/email/bind');
-      expect(UserEndpoints.account, '/user/account');
-      expect(UserEndpoints.settings, '/user/settings');
+      expect(UserEndpoints.login, '/api/user/login');
+      expect(UserEndpoints.register, '/api/user/register');
+      expect(UserEndpoints.profile, '/api/user/profile');
+      expect(UserEndpoints.search, '/api/user/search');
+      expect(UserEndpoints.logout, '/api/user/logout');
+      expect(UserEndpoints.heartbeat, '/api/user/heartbeat');
+      expect(UserEndpoints.onlineStatus, '/api/user/online-status');
+      expect(UserEndpoints.password, '/api/user/password');
+      expect(UserEndpoints.phoneCode, '/api/user/phone/code');
+      expect(UserEndpoints.phoneBind, '/api/user/phone/bind');
+      expect(UserEndpoints.emailCode, '/api/user/email/code');
+      expect(UserEndpoints.emailBind, '/api/user/email/bind');
+      expect(UserEndpoints.account, '/api/user/account');
+      expect(UserEndpoints.settings, '/api/user/settings');
     });
 
     test('settingsType returns parameterized path', () {
-      expect(UserEndpoints.settingsType('general'), '/user/settings/general');
-      expect(UserEndpoints.settingsType('privacy'), '/user/settings/privacy');
+      expect(UserEndpoints.settingsType('general'), '/api/user/settings/general');
+      expect(UserEndpoints.settingsType('privacy'), '/api/user/settings/privacy');
       expect(UserEndpoints.settingsType('notification'),
-          '/user/settings/notification');
+          '/api/user/settings/notification');
     });
   });
 
   group('MessageEndpoints', () {
     test('static paths are correct', () {
-      expect(MessageEndpoints.sendPrivate, '/message/send/private');
-      expect(MessageEndpoints.sendGroup, '/message/send/group');
-      expect(MessageEndpoints.conversations, '/message/conversations');
-      expect(MessageEndpoints.config, '/message/config');
+      expect(MessageEndpoints.sendPrivate, '/api/message/send/private');
+      expect(MessageEndpoints.sendGroup, '/api/message/send/group');
+      expect(MessageEndpoints.conversations, '/api/message/conversations');
+      expect(MessageEndpoints.config, '/api/message/config');
     });
 
     test('privateHistory returns parameterized path', () {
-      expect(MessageEndpoints.privateHistory('123'), '/message/private/123');
+      expect(MessageEndpoints.privateHistory('123'), '/api/message/private/123');
       expect(MessageEndpoints.privateHistory('friend-abc'),
-          '/message/private/friend-abc');
+          '/api/message/private/friend-abc');
     });
 
     test('privateHistoryCursor returns parameterized path', () {
       expect(MessageEndpoints.privateHistoryCursor('f1'),
-          '/message/private/f1/cursor');
+          '/api/message/private/f1/cursor');
     });
 
     test('groupHistory returns parameterized path', () {
-      expect(MessageEndpoints.groupHistory('g1'), '/message/group/g1');
+      expect(MessageEndpoints.groupHistory('g1'), '/api/message/group/g1');
     });
 
     test('groupHistoryCursor returns parameterized path', () {
       expect(MessageEndpoints.groupHistoryCursor('g1'),
-          '/message/group/g1/cursor');
+          '/api/message/group/g1/cursor');
     });
 
     test('markRead returns parameterized path', () {
-      expect(MessageEndpoints.markRead('conv1'), '/message/read/conv1');
+      expect(MessageEndpoints.markRead('conv1'), '/api/message/read/conv1');
     });
 
     test('recall returns parameterized path', () {
-      expect(MessageEndpoints.recall('msg1'), '/message/recall/msg1');
+      expect(MessageEndpoints.recall('msg1'), '/api/message/recall/msg1');
     });
 
     test('delete returns parameterized path', () {
-      expect(MessageEndpoints.delete('msg1'), '/message/delete/msg1');
+      expect(MessageEndpoints.delete('msg1'), '/api/message/delete/msg1');
     });
   });
 
   group('FriendEndpoints', () {
     test('all paths are correct', () {
-      expect(FriendEndpoints.list, '/friend/list');
-      expect(FriendEndpoints.request, '/friend/request');
-      expect(FriendEndpoints.requests, '/friend/requests');
-      expect(FriendEndpoints.accept, '/friend/accept');
-      expect(FriendEndpoints.reject, '/friend/reject');
-      expect(FriendEndpoints.remove, '/friend/remove');
-      expect(FriendEndpoints.remark, '/friend/remark');
+      expect(FriendEndpoints.list, '/api/friend/list');
+      expect(FriendEndpoints.request, '/api/friend/request');
+      expect(FriendEndpoints.requests, '/api/friend/requests');
+      expect(FriendEndpoints.accept, '/api/friend/accept');
+      expect(FriendEndpoints.reject, '/api/friend/reject');
+      expect(FriendEndpoints.remove, '/api/friend/remove');
+      expect(FriendEndpoints.remark, '/api/friend/remark');
     });
   });
 
   group('GroupEndpoints', () {
     test('static paths are correct', () {
-      expect(GroupEndpoints.create, '/group/create');
-      expect(GroupEndpoints.membersList, '/group/members/list');
-      expect(GroupEndpoints.search, '/group/search');
+      expect(GroupEndpoints.create, '/api/group/create');
+      expect(GroupEndpoints.membersList, '/api/group/members/list');
+      expect(GroupEndpoints.search, '/api/group/search');
     });
 
     test('userGroups returns parameterized path', () {
-      expect(GroupEndpoints.userGroups('u1'), '/group/user/u1');
+      expect(GroupEndpoints.userGroups('u1'), '/api/group/user/u1');
     });
 
     test('join returns parameterized path', () {
-      expect(GroupEndpoints.join('g1'), '/group/g1/join');
+      expect(GroupEndpoints.join('g1'), '/api/group/g1/join');
     });
 
     test('addMembers returns parameterized path', () {
-      expect(GroupEndpoints.addMembers('g1'), '/group/g1/add-members');
+      expect(GroupEndpoints.addMembers('g1'), '/api/group/g1/add-members');
     });
 
     test('leave returns parameterized path', () {
-      expect(GroupEndpoints.leave('g1'), '/group/g1/leave');
+      expect(GroupEndpoints.leave('g1'), '/api/group/g1/leave');
     });
 
     test('dismiss returns parameterized path', () {
-      expect(GroupEndpoints.dismiss('g1'), '/group/g1');
+      expect(GroupEndpoints.dismiss('g1'), '/api/group/g1');
     });
 
     test('update returns parameterized path', () {
-      expect(GroupEndpoints.update('g1'), '/group/g1');
+      expect(GroupEndpoints.update('g1'), '/api/group/g1');
     });
   });
 
   group('MomentsEndpoints', () {
     test('static paths are correct', () {
-      expect(MomentsEndpoints.create, '/moments');
-      expect(MomentsEndpoints.feed, '/moments/feed');
-      expect(MomentsEndpoints.notifications, '/moments/notifications');
+      expect(MomentsEndpoints.create, '/api/moments');
+      expect(MomentsEndpoints.feed, '/api/moments/feed');
+      expect(MomentsEndpoints.notifications, '/api/moments/notifications');
       expect(MomentsEndpoints.markNotificationsRead,
-          '/moments/notifications/read');
+          '/api/moments/notifications/read');
     });
 
     test('postById returns parameterized path', () {
-      expect(MomentsEndpoints.postById('p1'), '/moments/p1');
+      expect(MomentsEndpoints.postById('p1'), '/api/moments/p1');
     });
 
     test('deletePost returns parameterized path', () {
-      expect(MomentsEndpoints.deletePost('p1'), '/moments/p1');
+      expect(MomentsEndpoints.deletePost('p1'), '/api/moments/p1');
     });
 
     test('addMedia returns parameterized path', () {
-      expect(MomentsEndpoints.addMedia('p1'), '/moments/p1/media');
+      expect(MomentsEndpoints.addMedia('p1'), '/api/moments/p1/media');
     });
 
     test('userPosts returns parameterized path', () {
-      expect(MomentsEndpoints.userPosts('u1'), '/moments/user/u1');
+      expect(MomentsEndpoints.userPosts('u1'), '/api/moments/user/u1');
     });
 
     test('like returns parameterized path', () {
-      expect(MomentsEndpoints.like('p1'), '/moments/p1/like');
+      expect(MomentsEndpoints.like('p1'), '/api/moments/p1/like');
     });
 
     test('unlike returns parameterized path', () {
-      expect(MomentsEndpoints.unlike('p1'), '/moments/p1/like');
+      expect(MomentsEndpoints.unlike('p1'), '/api/moments/p1/like');
     });
 
     test('likes returns parameterized path', () {
-      expect(MomentsEndpoints.likes('p1'), '/moments/p1/likes');
+      expect(MomentsEndpoints.likes('p1'), '/api/moments/p1/likes');
     });
 
     test('createComment returns parameterized path', () {
-      expect(MomentsEndpoints.createComment('p1'), '/moments/p1/comments');
+      expect(MomentsEndpoints.createComment('p1'), '/api/moments/p1/comments');
     });
 
     test('deleteComment returns parameterized path', () {
-      expect(MomentsEndpoints.deleteComment('c1'), '/moments/comments/c1');
+      expect(MomentsEndpoints.deleteComment('c1'), '/api/moments/comments/c1');
     });
 
     test('comments returns parameterized path', () {
-      expect(MomentsEndpoints.comments('p1'), '/moments/p1/comments');
+      expect(MomentsEndpoints.comments('p1'), '/api/moments/p1/comments');
     });
   });
 
   group('FileEndpoints', () {
     test('all paths are correct', () {
-      expect(FileEndpoints.uploadFile, '/file/upload/file');
-      expect(FileEndpoints.uploadImage, '/file/upload/image');
-      expect(FileEndpoints.uploadVideo, '/file/upload/video');
-      expect(FileEndpoints.uploadAudio, '/file/upload/audio');
-      expect(FileEndpoints.delete, '/file/delete');
+      expect(FileEndpoints.uploadImage, '/api/file/upload/image');
+      expect(FileEndpoints.uploadFile, '/api/file/upload/file');
+      expect(FileEndpoints.uploadVideo, '/api/file/upload/video');
+      expect(FileEndpoints.uploadAudio, '/api/file/upload/audio');
+      expect(FileEndpoints.uploadAvatar, '/api/file/upload/avatar');
+      expect(FileEndpoints.download, '/api/file/download');
+      expect(FileEndpoints.info, '/api/file/info');
+      expect(FileEndpoints.delete, '/api/file/delete');
     });
   });
 
@@ -204,10 +207,10 @@ void main() {
 
   group('PushEndpoints', () {
     test('all paths are correct', () {
-      expect(PushEndpoints.registerDevice, '/push/devices/register');
-      expect(PushEndpoints.unregisterDevice, '/push/devices/unregister');
-      expect(PushEndpoints.updateDeviceToken, '/push/devices/token');
-      expect(PushEndpoints.settings, '/push/settings');
+      expect(PushEndpoints.registerDevice, '/api/push/devices/register');
+      expect(PushEndpoints.unregisterDevice, '/api/push/devices/unregister');
+      expect(PushEndpoints.updateDeviceToken, '/api/push/devices/token');
+      expect(PushEndpoints.settings, '/api/push/settings');
     });
   });
 
@@ -250,6 +253,66 @@ void main() {
       expect(WsMessageType.friendRequest, 'FRIEND_REQUEST');
       expect(WsMessageType.friendAccepted, 'FRIEND_ACCEPTED');
       expect(WsMessageType.e2eeNegotiation, 'E2EE_NEGOTIATION');
+    });
+  });
+
+  group('Endpoint contract - all REST paths start with /api/', () {
+    test('AuthEndpoints', () {
+      expect(AuthEndpoints.parse.startsWith('/api/'), isTrue);
+      expect(AuthEndpoints.refresh.startsWith('/api/'), isTrue);
+      expect(AuthEndpoints.wsTicket.startsWith('/api/'), isTrue);
+    });
+
+    test('UserEndpoints', () {
+      expect(UserEndpoints.login.startsWith('/api/'), isTrue);
+      expect(UserEndpoints.register.startsWith('/api/'), isTrue);
+      expect(UserEndpoints.profile.startsWith('/api/'), isTrue);
+      expect(UserEndpoints.settings.startsWith('/api/'), isTrue);
+      expect(UserEndpoints.settingsType('x').startsWith('/api/'), isTrue);
+    });
+
+    test('MessageEndpoints', () {
+      expect(MessageEndpoints.sendPrivate.startsWith('/api/'), isTrue);
+      expect(MessageEndpoints.sendGroup.startsWith('/api/'), isTrue);
+      expect(MessageEndpoints.config.startsWith('/api/'), isTrue);
+      expect(MessageEndpoints.privateHistory('1').startsWith('/api/'), isTrue);
+      expect(MessageEndpoints.groupHistory('1').startsWith('/api/'), isTrue);
+    });
+
+    test('FriendEndpoints', () {
+      expect(FriendEndpoints.list.startsWith('/api/'), isTrue);
+      expect(FriendEndpoints.request.startsWith('/api/'), isTrue);
+    });
+
+    test('GroupEndpoints', () {
+      expect(GroupEndpoints.create.startsWith('/api/'), isTrue);
+      expect(GroupEndpoints.search.startsWith('/api/'), isTrue);
+      expect(GroupEndpoints.join('1').startsWith('/api/'), isTrue);
+    });
+
+    test('MomentsEndpoints', () {
+      expect(MomentsEndpoints.create.startsWith('/api/'), isTrue);
+      expect(MomentsEndpoints.feed.startsWith('/api/'), isTrue);
+      expect(MomentsEndpoints.postById('1').startsWith('/api/'), isTrue);
+    });
+
+    test('FileEndpoints', () {
+      expect(FileEndpoints.uploadImage.startsWith('/api/'), isTrue);
+      expect(FileEndpoints.uploadFile.startsWith('/api/'), isTrue);
+      expect(FileEndpoints.uploadAvatar.startsWith('/api/'), isTrue);
+      expect(FileEndpoints.download.startsWith('/api/'), isTrue);
+      expect(FileEndpoints.info.startsWith('/api/'), isTrue);
+      expect(FileEndpoints.delete.startsWith('/api/'), isTrue);
+    });
+
+    test('PushEndpoints', () {
+      expect(PushEndpoints.registerDevice.startsWith('/api/'), isTrue);
+      expect(PushEndpoints.settings.startsWith('/api/'), isTrue);
+    });
+
+    test('WsEndpoints is the only exception', () {
+      expect(WsEndpoints.path, '/websocket');
+      expect(WsEndpoints.path.startsWith('/api/'), isFalse);
     });
   });
 }
