@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../data/ai_api.dart';
 import '../presentation/settings_providers.dart';
 
 class AiSettingsPage extends ConsumerStatefulWidget {
@@ -112,6 +113,94 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(_Strings.keyTestFailed)),
         );
+      }
+    }
+  }
+
+  Future<void> _showEditDialog(AiApiKey apiKey) async {
+    final labelController = TextEditingController(text: apiKey.label ?? '');
+    final providerController = TextEditingController(text: apiKey.provider);
+    final keyController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(_Strings.editKeyTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: providerController.text,
+              decoration: const InputDecoration(
+                labelText: _Strings.providerLabel,
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'openai', child: Text('OpenAI')),
+                DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek')),
+                DropdownMenuItem(value: 'minimax', child: Text('MiniMax')),
+              ],
+              onChanged: (v) {
+                if (v != null) providerController.text = v;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: keyController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: _Strings.keyLabel,
+                hintText: _Strings.keyKeepHint,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: labelController,
+              decoration: const InputDecoration(
+                labelText: _Strings.labelLabel,
+                hintText: _Strings.labelHint,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(_Strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(_Strings.confirm),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      final trimmedKey = keyController.text.trim();
+      final trimmedLabel = labelController.text.trim();
+      try {
+        await ref.read(aiSettingsStateProvider.notifier).updateKey(
+              apiKey.id,
+              AiApiKeyUpdateRequest(
+                provider: providerController.text,
+                key: trimmedKey.isEmpty ? null : trimmedKey,
+                label: trimmedLabel.isEmpty ? null : trimmedLabel,
+              ),
+            );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(_Strings.keyUpdated)),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(_Strings.keyUpdateFailed)),
+          );
+        }
       }
     }
   }
@@ -284,6 +373,11 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                           onPressed: () => _testKey(apiKey.id),
                         ),
                       IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        tooltip: _Strings.editKey,
+                        onPressed: () => _showEditDialog(apiKey),
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.delete_outline, size: 20),
                         tooltip: _Strings.deleteKey,
                         onPressed: () => _deleteKey(apiKey.id),
@@ -383,6 +477,9 @@ class _Strings {
   static const noKeys = 'No API keys configured';
   static const statusLabel = 'Status: ';
   static const testKey = 'Test connection';
+  static const editKey = 'Edit';
+  static const editKeyTitle = 'Edit API Key';
+  static const keyKeepHint = 'Leave empty to keep current key';
   static const deleteKey = 'Delete';
   static const deleteKeyTitle = 'Delete API Key';
   static const deleteKeyConfirm = 'Are you sure you want to delete this key?';
@@ -392,6 +489,8 @@ class _Strings {
   static const keyDeleteFailed = 'Failed to delete API key';
   static const keyTestSuccess = 'Key test completed';
   static const keyTestFailed = 'Key test failed';
+  static const keyUpdated = 'API key updated successfully';
+  static const keyUpdateFailed = 'Failed to update API key';
   static const settingsSection = 'AI Settings';
   static const autoReplyEnabled = 'Auto Reply';
   static const autoReplyDesc = 'Enable AI-powered auto reply';

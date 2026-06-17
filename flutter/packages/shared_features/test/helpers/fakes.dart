@@ -1,6 +1,26 @@
 import 'package:im_core/core.dart';
 import 'package:im_shared_features/auth.dart';
 
+/// Fake FilePickerPort for tests.
+class FakeFilePickerPort implements FilePickerPort {
+  FakeFilePickerPort({this.imageResult, this.fileResult});
+
+  Future<Result<PickedFile>> Function()? imageResult;
+  Future<Result<PickedFile>> Function()? fileResult;
+
+  @override
+  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+    if (imageResult != null) return imageResult!();
+    return const Failure(OperationCancelled());
+  }
+
+  @override
+  Future<Result<PickedFile>> pickFile({List<String>? allowedExtensions}) async {
+    if (fileResult != null) return fileResult!();
+    return const Failure(OperationCancelled());
+  }
+}
+
 /// Fake HttpClientPort for unit tests that records calls and delegates to
 /// configurable callbacks.
 class FakeHttpClientPort implements HttpClientPort {

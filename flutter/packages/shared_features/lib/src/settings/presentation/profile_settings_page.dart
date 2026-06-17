@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../presentation/settings_providers.dart';
 
@@ -63,14 +64,41 @@ class _ProfileSettingsPageState extends ConsumerState<ProfileSettingsPage> {
     final user = ref.read(authStateProvider).user;
     if (user == null) return;
 
-    // On mobile/desktop, image picking requires platform-specific file_picker.
-    // This page provides the entry point; actual picking is delegated to
-    // platform adapters via FileApi.uploadAvatar.
-    // For now, show a snackbar indicating the feature is available.
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(_Strings.avatarTapHint)),
-      );
+    try {
+      final picker = ref.read(filePickerPortProvider);
+      final result = await picker.pickImage(source: ImageSource.gallery);
+
+      if (!mounted) return;
+
+      switch (result) {
+        case Success(:final data):
+          try {
+            final updatedUser = await ref
+                .read(profileStateProvider.notifier)
+                .uploadAvatar(data.bytes, data.name);
+            ref.read(authStateProvider.notifier).updateUser(updatedUser);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text(_Strings.avatarUploadSuccess)),
+              );
+            }
+          } catch (_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text(_Strings.avatarUploadFailed)),
+              );
+            }
+          }
+        case Failure():
+          // User cancelled or picker failed — do nothing
+          break;
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(_Strings.avatarUploadFailed)),
+        );
+      }
     }
   }
 
@@ -237,7 +265,8 @@ class _Strings {
   _Strings._();
   static const title = 'Profile Settings';
   static const avatarHint = 'Tap to change avatar';
-  static const avatarTapHint = 'Avatar upload available on this platform';
+  static const avatarUploadSuccess = 'Avatar updated successfully';
+  static const avatarUploadFailed = 'Failed to upload avatar';
   static const username = 'Username';
   static const nickname = 'Nickname';
   static const nicknameTooLong = 'Nickname must be 20 characters or less';

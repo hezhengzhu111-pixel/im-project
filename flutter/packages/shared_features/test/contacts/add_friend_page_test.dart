@@ -278,5 +278,227 @@ void main() {
       expect(find.textContaining('Placeholder'), findsNothing);
       expect(find.textContaining('TODO'), findsNothing);
     });
+
+    testWidgets('sendFriendRequest success shows Pending state',
+        (tester) async {
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('search')) {
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'items': [
+                {'id': 'u2', 'username': 'target', 'nickname': 'Target'},
+              ],
+            }),
+          );
+        }
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({'items': <dynamic>[]}),
+        );
+      };
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({}),
+        );
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            contactsStateProvider.overrideWith((ref) => notifier),
+            currentUserIdProvider.overrideWithValue('u1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'target');
+      await tester.pumpAndSettle(const Duration(milliseconds: 600));
+      expect(find.text('Add'), findsOneWidget);
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Add'), findsNothing);
+    });
+
+    testWidgets('sendFriendRequest failure does not show Pending',
+        (tester) async {
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('search')) {
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'items': [
+                {'id': 'u2', 'username': 'target', 'nickname': 'Target'},
+              ],
+            }),
+          );
+        }
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({'items': <dynamic>[]}),
+        );
+      };
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        throw Exception('Network error');
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            contactsStateProvider.overrideWith((ref) => notifier),
+            currentUserIdProvider.overrideWithValue('u1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'target');
+      await tester.pumpAndSettle(const Duration(milliseconds: 600));
+      expect(find.text('Add'), findsOneWidget);
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pending'), findsNothing);
+      expect(find.text('Add'), findsOneWidget);
+      expect(find.text('Failed to send request'), findsOneWidget);
+    });
+
+    testWidgets('failure allows retry and succeeds on second attempt',
+        (tester) async {
+      var postCount = 0;
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('search')) {
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'items': [
+                {'id': 'u2', 'username': 'target', 'nickname': 'Target'},
+              ],
+            }),
+          );
+        }
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({'items': <dynamic>[]}),
+        );
+      };
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        postCount++;
+        if (postCount == 1) throw Exception('transient error');
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({}),
+        );
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            contactsStateProvider.overrideWith((ref) => notifier),
+            currentUserIdProvider.overrideWithValue('u1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'target');
+      await tester.pumpAndSettle(const Duration(milliseconds: 600));
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add'), findsOneWidget);
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pending'), findsOneWidget);
+    });
+
+    testWidgets('failure does not change sentRequestUserIds', (tester) async {
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('search')) {
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'items': [
+                {'id': 'u2', 'username': 'target', 'nickname': 'Target'},
+              ],
+            }),
+          );
+        }
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({'items': <dynamic>[]}),
+        );
+      };
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        throw Exception('fail');
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            contactsStateProvider.overrideWith((ref) => notifier),
+            currentUserIdProvider.overrideWithValue('u1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'target');
+      await tester.pumpAndSettle(const Duration(milliseconds: 600));
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      expect(notifier.state.sentRequestUserIds, isEmpty);
+    });
   });
 }

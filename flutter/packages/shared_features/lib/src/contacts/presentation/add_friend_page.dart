@@ -130,7 +130,6 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(_Strings.requestFailed)),
         );
-        ref.read(contactsStateProvider.notifier).markRequestSent(user.id);
       }
     } finally {
       if (mounted) setState(() => _isSending = false);

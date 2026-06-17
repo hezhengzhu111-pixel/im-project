@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/settings_api.dart';
@@ -42,6 +44,24 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
       final updatedUser = await _api.updateProfile(request);
       state = state.copyWith(saving: false, user: updatedUser);
       return updatedUser;
+    } catch (e) {
+      state = state.copyWith(saving: false);
+      rethrow;
+    }
+  }
+
+  Future<User> uploadAvatar(Uint8List bytes, String fileName) async {
+    state = state.copyWith(saving: true);
+    try {
+      final avatarUrl = await _api.uploadAvatar(bytes, fileName);
+      final currentUser = state.user;
+      if (currentUser != null) {
+        final updatedUser = currentUser.copyWith(avatar: avatarUrl);
+        state = state.copyWith(saving: false, user: updatedUser);
+        return updatedUser;
+      }
+      state = state.copyWith(saving: false);
+      throw StateError('No current user');
     } catch (e) {
       state = state.copyWith(saving: false);
       rethrow;
