@@ -50,18 +50,18 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     }
   }
 
-  Future<User> uploadAvatar(Uint8List bytes, String fileName) async {
+  Future<User> uploadAvatar(
+    Uint8List bytes,
+    String fileName, {
+    required User currentUser,
+  }) async {
     state = state.copyWith(saving: true);
     try {
       final avatarUrl = await _api.uploadAvatar(bytes, fileName);
-      final currentUser = state.user;
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(avatar: avatarUrl);
-        state = state.copyWith(saving: false, user: updatedUser);
-        return updatedUser;
-      }
-      state = state.copyWith(saving: false);
-      throw StateError('No current user');
+      final baseUser = state.user ?? currentUser;
+      final updatedUser = baseUser.copyWith(avatar: avatarUrl);
+      state = state.copyWith(saving: false, user: updatedUser);
+      return updatedUser;
     } catch (e) {
       state = state.copyWith(saving: false);
       rethrow;

@@ -75,7 +75,7 @@ class _ProfileSettingsPageState extends ConsumerState<ProfileSettingsPage> {
           try {
             final updatedUser = await ref
                 .read(profileStateProvider.notifier)
-                .uploadAvatar(data.bytes, data.name);
+                .uploadAvatar(data.bytes, data.name, currentUser: user);
             ref.read(authStateProvider.notifier).updateUser(updatedUser);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

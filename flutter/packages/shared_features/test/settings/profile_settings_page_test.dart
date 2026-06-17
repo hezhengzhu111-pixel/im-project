@@ -193,6 +193,64 @@ void main() {
       expect(find.text('Avatar updated successfully'), findsOneWidget);
     });
 
+    testWidgets(
+        'upload succeeds even when profileState.user is null '
+        '(first entry fallback to authState.user)', (tester) async {
+      var uploadCalled = false;
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('avatar')) {
+          uploadCalled = true;
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({'avatar_url': 'https://example.com/new.png'}),
+          );
+        }
+        return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
+      };
+      final fakePicker = FakeFilePickerPort(
+        imageResult: () async => Success(
+          PickedFile.fromBytes(
+            name: 'avatar.jpg',
+            mimeType: 'image/jpeg',
+            bytes: Uint8List.fromList([1, 2, 3]),
+          ),
+        ),
+      );
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+
+      // Do NOT call loadProfile — profileState.user stays null
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider
+                .overrideWith((ref) => ProfileNotifier(SettingsApi(http))),
+            authStateProvider.overrideWith((ref) => authNotifier),
+            filePickerPortProvider.overrideWithValue(fakePicker),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+      while (tester.takeException() != null) {}
+      await tester.pump();
+
+      expect(uploadCalled, isTrue);
+      expect(find.text('Avatar updated successfully'), findsOneWidget);
+      // verify authState avatar was updated
+      expect(
+        authNotifier.state.user?.avatar,
+        'https://example.com/new.png',
+      );
+    });
+
     testWidgets('upload failure shows error snackbar', (tester) async {
       http.onPost = <T>(
         String path, {
