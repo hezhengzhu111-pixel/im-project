@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate root and frontend environment files for dev/SIT/production."""
+"""Generate runtime and frontend environment files for dev/SIT/production."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,9 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from runtime_paths import DEFAULT_RUNTIME_ENV_FILE, relative
 
 PROFILE_ALIASES = {
     "dev": "dev",
@@ -136,11 +139,26 @@ GENERATORS = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate .env for dev, sit, or prd deployment.")
+    parser = argparse.ArgumentParser(
+        description="Generate build/runtime/env/local.env for dev, sit, or prd deployment."
+    )
     parser.add_argument("profile", nargs="?", choices=sorted(PROFILE_ALIASES), help="dev, sit, or prd.")
     parser.add_argument("--profile", dest="profile_option", choices=sorted(PROFILE_ALIASES), help="dev, sit, or prd.")
-    parser.add_argument("--force-secrets", action="store_true", help="Regenerate secrets even when .env already has values.")
-    parser.add_argument("--no-backup", action="store_true", help="Do not create .env.bak before overwriting .env.")
+    parser.add_argument(
+        "--env-file",
+        default=str(DEFAULT_RUNTIME_ENV_FILE),
+        help=f"Output deployment env file. Defaults to {relative(DEFAULT_RUNTIME_ENV_FILE)}.",
+    )
+    parser.add_argument(
+        "--force-secrets",
+        action="store_true",
+        help="Regenerate secrets even when the runtime env already has values.",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not create a .bak file before overwriting the runtime env.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print what would be written without changing files.")
     return parser
 
@@ -224,9 +242,8 @@ def secret_replacements(
     return replacements, sources
 
 
-def render_root_env(profile: str, *, force_secrets: bool) -> tuple[str, dict[str, str]]:
+def render_root_env(profile: str, env_file: Path, *, force_secrets: bool) -> tuple[str, dict[str, str]]:
     env_example = PROJECT_ROOT / ".env.example"
-    env_file = PROJECT_ROOT / ".env"
     if not env_example.is_file():
         print(f"ERROR: {env_example} not found", file=sys.stderr)
         raise SystemExit(1)
@@ -271,18 +288,22 @@ def write_file(path: Path, content: str, *, dry_run: bool) -> None:
 def main() -> None:
     args = parse_args()
     profile = args.resolved_profile
-    env_file = PROJECT_ROOT / ".env"
+    env_file = Path(args.env_file)
+    if not env_file.is_absolute():
+        env_file = PROJECT_ROOT / env_file
     rendered_root, secret_sources = render_root_env(
         profile,
+        env_file,
         force_secrets=args.force_secrets,
     )
     frontend_file, rendered_frontend = render_frontend_env(profile)
 
     if env_file.is_file() and not args.no_backup and not args.dry_run:
-        backup = PROJECT_ROOT / ".env.bak"
+        backup = env_file.with_name(env_file.name + ".bak")
         shutil.copy2(env_file, backup)
-        print(f"Backed up existing .env to {backup.name}")
+        print(f"Backed up existing env to {backup}")
 
+    env_file.parent.mkdir(parents=True, exist_ok=True)
     write_file(env_file, rendered_root, dry_run=args.dry_run)
     write_file(frontend_file, rendered_frontend, dry_run=args.dry_run)
 
@@ -290,7 +311,8 @@ def main() -> None:
     for suffix, (env_key, _generator_name, description) in SECRETS.items():
         source = secret_sources.get(env_key, "unchanged")
         print(f"  {description}: {source}")
-    print("Keep .env secure and do not commit it.")
+    print(f"Runtime env: {relative(env_file)}")
+    print("Keep runtime env files secure and do not commit them.")
     print("Next step: run scripts/deploy_services.py to apply database migrations and start services.")
 
 

@@ -70,7 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Empty means core app services without ai."
         ),
     )
-    parser.add_argument("--env-file", help="Path to the deployment env file. Defaults to .env.")
+    parser.add_argument(
+        "--env-file",
+        help="Path to the deployment env file. Defaults to build/runtime/env/local.env.",
+    )
     parser.add_argument(
         "--include-ai",
         action="store_true",
@@ -153,7 +156,7 @@ def ensure_middleware_ready(config: DeploymentConfig, *, timeout_seconds: int = 
         fatal(
             "Missing middleware containers: "
             + ", ".join(missing)
-            + ". Run scripts/deploy_middleware.py first."
+            + ". Run python scripts/init.py or scripts/deploy_middleware.py first."
         )
     for status in statuses:
         if status.service in ONE_SHOT_SERVICES:

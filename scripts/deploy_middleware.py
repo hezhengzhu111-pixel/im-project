@@ -24,7 +24,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Deploy middleware required by the IM stack: MySQL, Redis shards, and local file volume initialization."
     )
-    parser.add_argument("--env-file", help="Path to the deployment env file. Defaults to .env.")
+    parser.add_argument(
+        "--env-file",
+        help="Path to the deployment env file. Defaults to build/runtime/env/local.env.",
+    )
     parser.add_argument("--pull", action="store_true", help="Pull middleware images before startup.")
     parser.add_argument(
         "--force-recreate",

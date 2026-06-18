@@ -31,9 +31,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from deploy_utils import PROJECT_ROOT, load_env_file
+from deploy_utils import DEFAULT_RUNTIME_ENV_FILE, load_env_file
 
-load_env_file(PROJECT_ROOT / ".env")
+load_env_file(DEFAULT_RUNTIME_ENV_FILE)
 
 API_BASE = os.environ.get("IM_API_BASE", "http://localhost:8082").rstrip("/")
 IM_WS_BASE = os.environ.get("IM_WS_BASE")

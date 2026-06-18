@@ -22,6 +22,15 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from runtime_paths import DEFAULT_RUNTIME_ENV_FILE, GENERATED_COMPOSE_FILE, PROJECT_ROOT, relative
+
+
+def add_env_file_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--env-file",
+        help=f"指定部署环境文件路径，默认为 {relative(DEFAULT_RUNTIME_ENV_FILE)}。"
+    )
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -42,10 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="要启动的服务名称（默认启动所有服务）。"
     )
-    start_parser.add_argument(
-        "--env-file",
-        help="指定部署环境文件路径。"
-    )
+    add_env_file_argument(start_parser)
     start_parser.add_argument(
         "--pull",
         action="store_true",
@@ -72,10 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="要停止的服务名称（默认停止所有服务）。"
     )
-    stop_parser.add_argument(
-        "--env-file",
-        help="指定部署环境文件路径。"
-    )
+    add_env_file_argument(stop_parser)
 
     # restart 命令
     restart_parser = subparsers.add_parser(
@@ -87,10 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="要重启的服务名称（默认重启所有服务）。"
     )
-    restart_parser.add_argument(
-        "--env-file",
-        help="指定部署环境文件路径。"
-    )
+    add_env_file_argument(restart_parser)
     restart_parser.add_argument(
         "--no-wait",
         action="store_true",
@@ -107,10 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="要查看的服务名称（默认查看所有服务）。"
     )
-    status_parser.add_argument(
-        "--env-file",
-        help="指定部署环境文件路径。"
-    )
+    add_env_file_argument(status_parser)
 
     # logs 命令
     logs_parser = subparsers.add_parser(
@@ -133,23 +130,45 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="实时跟踪日志输出。"
     )
-    logs_parser.add_argument(
-        "--env-file",
-        help="指定部署环境文件路径。"
-    )
+    add_env_file_argument(logs_parser)
 
     return parser
+
+
+def ensure_runtime_ready_hint() -> None:
+    if not GENERATED_COMPOSE_FILE.is_file():
+        raise RuntimeError(
+            f"运行时 compose 不存在：{relative(GENERATED_COMPOSE_FILE)}。"
+            "请先运行 `python scripts/init.py --runtime-only` 或 `python scripts/init.py`。"
+        )
+
+
+def warn_if_build_artifacts_missing() -> None:
+    missing = []
+    if not (PROJECT_ROOT / "build" / "manifest.json").is_file():
+        missing.append("build/manifest.json")
+    images_dir = PROJECT_ROOT / "build" / "dist" / "images"
+    if not images_dir.is_dir() or not any(images_dir.iterdir()):
+        missing.append("build/dist/images")
+    if missing:
+        print(
+            "[WARN] 构建产物可能缺失："
+            + ", ".join(missing)
+            + "。如需重新生成，请手动运行 `python scripts/build.py`。"
+        )
 
 
 def cmd_start(args) -> None:
     """启动服务。"""
     print("🚀 启动服务...")
+    ensure_runtime_ready_hint()
+    warn_if_build_artifacts_missing()
 
     try:
         from deploy_services import main as services_main
 
         # 构造参数
-        cmd_args = ["start"]
+        cmd_args = ["start", "--no-build"]
         if args.services:
             cmd_args.extend(args.services)
         if args.env_file:
@@ -177,6 +196,7 @@ def cmd_start(args) -> None:
 def cmd_stop(args) -> None:
     """停止服务。"""
     print("[STOP] 停止服务...")
+    ensure_runtime_ready_hint()
 
     try:
         from deploy_services import main as services_main
@@ -204,6 +224,7 @@ def cmd_stop(args) -> None:
 def cmd_restart(args) -> None:
     """重启服务。"""
     print("[RESTART] 重启服务...")
+    ensure_runtime_ready_hint()
 
     try:
         from deploy_services import main as services_main
@@ -233,18 +254,15 @@ def cmd_restart(args) -> None:
 def cmd_status(args) -> None:
     """查看服务状态。"""
     try:
-        from deploy_utils import load_config, run_command
+        from deploy_utils import compose_base_command, load_config, run_command
+
+        ensure_runtime_ready_hint()
 
         # 加载配置
-        config = load_config(args.env_file)
+        config = load_config(env_file=args.env_file)
 
         # 构造 docker compose ps 命令
-        cmd = [
-            "docker", "compose",
-            "-f", str(config.compose_file),
-            "ps",
-            "--format", "table",
-        ]
+        cmd = [*compose_base_command(config), "ps", "--format", "table"]
 
         # 执行命令
         run_command(cmd, check=False)
@@ -256,19 +274,15 @@ def cmd_status(args) -> None:
 def cmd_logs(args) -> None:
     """查看服务日志。"""
     try:
-        from deploy_utils import load_config, run_command
+        from deploy_utils import compose_base_command, load_config, run_command
+
+        ensure_runtime_ready_hint()
 
         # 加载配置
-        config = load_config(args.env_file)
+        config = load_config(env_file=args.env_file)
 
         # 构造 docker compose logs 命令
-        cmd = [
-            "docker", "compose",
-            "-f", str(config.compose_file),
-            "--project-name", config.project_name,
-            "logs",
-            "--tail", str(args.tail),
-        ]
+        cmd = [*compose_base_command(config), "logs", "--tail", str(args.tail)]
 
         if args.follow:
             cmd.append("--follow")

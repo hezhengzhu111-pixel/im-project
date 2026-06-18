@@ -14,12 +14,15 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
 # 确保 scripts/ 目录在 Python 路径中
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
+
+from runtime_paths import DEFAULT_RUNTIME_ENV_FILE, RUNTIME_DIR, relative
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--check-only",
         action="store_true",
         help="仅检查环境，不执行初始化操作。"
+    )
+    parser.add_argument(
+        "--runtime-only",
+        action="store_true",
+        help="仅创建 build/runtime 目录、runtime env 和 runtime compose，不启动 Docker。"
+    )
+    parser.add_argument(
+        "--middleware-only",
+        action="store_true",
+        help="仅准备 runtime 并初始化中间件。"
+    )
+    parser.add_argument(
+        "--db-only",
+        action="store_true",
+        help="仅准备 runtime 并检查数据库。"
+    )
+    parser.add_argument(
+        "--clean-runtime",
+        action="store_true",
+        help="删除 build/runtime 下的本地 MySQL、Redis、files、logs、env 和 compose 数据。必须配合 --yes。"
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="确认 destructive 操作，例如 --clean-runtime。"
     )
     parser.add_argument(
         "--skip-middleware",
@@ -48,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--env-file",
-        help="指定部署环境文件路径，默认为 .env。"
+        help=f"指定部署环境文件路径，默认为 {relative(DEFAULT_RUNTIME_ENV_FILE)}。"
     )
     parser.add_argument(
         "--pull",
@@ -101,52 +129,48 @@ def check_environment() -> bool:
     return True
 
 
-def init_build_directories() -> bool:
+def init_build_directories(env_file: str | None = None) -> bool:
     """初始化 build/ 标准目录结构。"""
     print("\n[INIT] 初始化 build/ 目录结构...")
 
-    build_dir = Path("build")
+    from deploy_utils import (
+        BUILD_DIR,
+        RUNTIME_DIRECTORIES,
+        ensure_runtime_env_file,
+        generate_runtime_compose,
+    )
+
     subdirs = [
-        # Cache directories
-        "cache/cargo-home",
-        "cache/rust-target",
-        "cache/pub-cache",
-        "cache/maven-repo",
-        "cache/docker",
-        "cache/tools",
-        # Work directories
-        "work/flutter",
-        "work/rust",
-        "work/spring-ai",
-        "work/sql",
-        # Distribution directories
-        "dist/frontend",
-        "dist/rust",
-        "dist/spring-ai",
-        "dist/images",
-        # Runtime directories
-        "runtime/env",
-        "runtime/compose",
-        "runtime/mysql",
-        "runtime/redis",
-        "runtime/files",
-        "runtime/logs",
-        # Reports directories
-        "reports/test",
-        "reports/coverage",
-        "reports/gates",
-        "reports/manifest",
-        # Logs
-        "logs",
+        BUILD_DIR / "cache" / "cargo-home",
+        BUILD_DIR / "cache" / "rust-target",
+        BUILD_DIR / "cache" / "pub-cache",
+        BUILD_DIR / "cache" / "maven-repo",
+        BUILD_DIR / "cache" / "docker",
+        BUILD_DIR / "cache" / "tools",
+        BUILD_DIR / "work" / "flutter",
+        BUILD_DIR / "work" / "rust",
+        BUILD_DIR / "work" / "spring-ai",
+        BUILD_DIR / "work" / "sql",
+        BUILD_DIR / "dist" / "frontend",
+        BUILD_DIR / "dist" / "rust",
+        BUILD_DIR / "dist" / "spring-ai",
+        BUILD_DIR / "dist" / "images",
+        *RUNTIME_DIRECTORIES,
+        BUILD_DIR / "reports" / "test",
+        BUILD_DIR / "reports" / "coverage",
+        BUILD_DIR / "reports" / "gates",
+        BUILD_DIR / "reports" / "manifest",
+        BUILD_DIR / "logs",
     ]
 
     try:
-        for subdir in subdirs:
-            dir_path = build_dir / subdir
+        for dir_path in subdirs:
             dir_path.mkdir(parents=True, exist_ok=True)
-            print(f"  [OK] {dir_path}")
+            print(f"  [OK] {relative(dir_path)}")
+        ensure_runtime_env_file(env_file=env_file)
+        generate_runtime_compose()
 
-        print("  [OK] build/ 目录结构初始化完成")
+        print("  [OK] build/ 和 runtime 目录结构初始化完成")
         return True
     except Exception as e:
         print(f"  [FAIL] 初始化失败: {e}")
@@ -211,12 +235,51 @@ def init_database(env_file: str = None) -> bool:
         return False
 
 
+def clean_runtime(assume_yes: bool) -> bool:
+    if not assume_yes:
+        print(
+            "[FAIL] --clean-runtime 会删除 build/runtime 下的 MySQL、Redis、files、logs、env 和 compose 数据。"
+        )
+        print("       如确认要清空本地 runtime 状态，请重新执行：python scripts/init.py --clean-runtime --yes")
+        return False
+    target = RUNTIME_DIR.resolve()
+    build_root = RUNTIME_DIR.parent.resolve()
+    if build_root not in target.parents:
+        print(f"[FAIL] 拒绝删除异常 runtime 路径: {target}")
+        return False
+    if target.exists():
+        shutil.rmtree(target)
+        print(f"[OK] 已删除 {relative(RUNTIME_DIR)}")
+    else:
+        print(f"[OK] {relative(RUNTIME_DIR)} 不存在，无需清理")
+    return True
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
     print("[INIT] IM Project 初始化")
     print("=" * 60)
+
+    if args.clean_runtime:
+        if not clean_runtime(args.yes):
+            sys.exit(1)
+        if args.runtime_only:
+            if not init_build_directories(args.env_file):
+                sys.exit(1)
+        return
+
+    if args.db_only:
+        args.skip_middleware = True
+    if args.middleware_only:
+        args.skip_db = True
+    if args.runtime_only:
+        if not init_build_directories(args.env_file):
+            print("\n[FAIL] runtime 初始化失败。")
+            sys.exit(1)
+        print("\n[OK] runtime 初始化完成。")
+        return
 
     # 1. 环境检查
     if not check_environment():
@@ -229,7 +292,7 @@ def main() -> None:
 
     # 2. 初始化 build/ 目录结构
     if not args.skip_build_dirs:
-        if not init_build_directories():
+        if not init_build_directories(args.env_file):
             print("\n[FAIL] build/ 目录初始化失败。")
             sys.exit(1)
 

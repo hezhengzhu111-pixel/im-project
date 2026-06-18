@@ -66,7 +66,7 @@
 
 - ❌ 源代码或源码配置文件
 - ❌ 版本控制数据（.git 目录）
-- ❌ 环境变量文件（.env、.env.local 等）—— 这些应在根目录
+- ❌ 根目录运行时环境变量文件（.env、.env.local 等）—— 默认运行时配置应在 `build/runtime/env/local.env`
 
 ## 4. Build/ 子目录结构
 
@@ -153,13 +153,20 @@ build/
 | 子目录 | 内容 | 说明 |
 |-------|------|------|
 | `env/` | 环境配置文件 | 环境变量和配置 |
-| `compose/` | Docker Compose 配置 | 运行时配置文件 |
+| `compose/` | Docker Compose 配置 | 生成的运行时配置文件 |
 | `mysql/` | MySQL 数据 | 数据目录和备份 |
 | `redis/` | Redis 数据和 AOF | 持久化存储 |
 | `files/` | 文件存储数据 | 上传文件存储 |
 | `logs/` | 运行时日志 | 服务运行日志 |
 
-**注意：** 运行时数据不应提交到 Git（已被 .gitignore 忽略）。
+**默认路径：**
+- Runtime env: `build/runtime/env/local.env`
+- Runtime compose: `build/runtime/compose/docker-compose.generated.yml`
+- MySQL 数据: `build/runtime/mysql`
+- Redis 数据: `build/runtime/redis`
+- 文件存储: `build/runtime/files`
+
+**注意：** 运行时数据不应提交到 Git（已被 .gitignore 忽略）。删除 `build/runtime/` 会清空本地中间件数据和本地 runtime 配置。
 
 ### 4.5 reports/ - 测试和质量报告
 
@@ -229,19 +236,19 @@ build/
 - ✅ 配置依赖缓存路径
 - ✅ 不改动业务代码和部署逻辑
 
-### 第 4 批：Phase 5 - 迁移中间件和 runtime
+### 第 4 批：Phase 5 - 迁移中间件和 runtime ✅ 已完成
 
 **目标：**
-- 迁移中间件配置到 `build/runtime/`
-- 生成默认运行时配置（MySQL、Redis、文件存储）
-- 更新所有配置文件中的路径引用
-- 验证本地开发环境启动
+- ✅ 迁移中间件配置到 `build/runtime/`
+- ✅ 生成默认运行时配置（MySQL、Redis、文件存储）
+- ✅ 更新 runtime 配置文件中的路径引用
+- ✅ 验证本地 runtime env 和 generated compose 可生成
 
 **改动范围：**
-- 移动和重构配置文件
-- 创建运行时初始化脚本
-- 更新部署脚本中的路径引用
-- 不改动中间件配置参数
+- ✅ 创建运行时初始化入口
+- ✅ 更新部署脚本中的 runtime 路径引用
+- ✅ 保留 `deploy/sit/docker-compose.yml` 作为生成模板
+- ✅ 不改动中间件配置参数
 
 ### 第 5 批：Phase 6 + Phase 7 - 迁移 tests 和 docs / CI
 
@@ -514,14 +521,13 @@ python scripts/start.py restart
 
 - ✅ **Batch 1:** 建立规则和 build/ 契约（已完成）
 - ✅ **Batch 2:** 迁移 spring-ai 和 scripts 入口（已完成）
-- ⏳ **Batch 3:** 迁移 runtime/ 和中间件配置（待完成）
-- ⏳ **Batch 4:** 迁移 tests/ 和测试配置（待完成）
-- ⏳ **Batch 5:** 迁移 docs/ 和文档结构（待完成）
-- ⏳ **Batch 6:** 更新 CI/CD 和 GitHub Actions（待完成）
-- ⏳ **Batch 7:** 清理和验证（待完成）
+- ✅ **Batch 3:** 完成隔离工作区构建（已完成）
+- ✅ **Batch 4:** 迁移 runtime/ 和中间件配置（已完成）
+- ⏳ **Batch 5:** 迁移 tests/docs/CI（待完成）
+- ⏳ **Batch 6:** 遗留清理和最终验证（待完成）
 
 ---
 
 **最后更新：** 2026-06-18
 **维护者：** IM Developer
-**版本：** 2.0 (Batch 2 - Phase 2 + Phase 3)
+**版本：** 2.1 (Batch 4 - Phase 5)

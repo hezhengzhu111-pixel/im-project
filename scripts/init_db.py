@@ -38,7 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="check",
         help="Use 'full' to drop and re-import all declared databases. Defaults to check.",
     )
-    parser.add_argument("--env-file", help="Path to the deployment env file. Defaults to .env.")
+    parser.add_argument(
+        "--env-file",
+        help="Path to the deployment env file. Defaults to build/runtime/env/local.env.",
+    )
     parser.add_argument(
         "--full",
         action="store_true",

@@ -6,9 +6,24 @@ The local/SIT deployment flow is driven by Docker Compose and the Python scripts
 ## Prerequisites
 
 - Docker daemon is running.
-- `.env` exists in the repository root. Start from `.env.example` and replace all
-  generated passwords and secrets.
+- Runtime env exists at `build/runtime/env/local.env`. Run `python scripts/init.py --runtime-only`
+  to create it from `.env.example`, then replace generated passwords and secrets.
 - Run commands from the repository root.
+
+## Runtime Workspace
+
+Batch 4 moves local runtime state under `build/runtime/`:
+
+- Default env file: `build/runtime/env/local.env`
+- Default generated Compose file: `build/runtime/compose/docker-compose.generated.yml`
+- MySQL data: `build/runtime/mysql`
+- Redis data: `build/runtime/redis`
+- Local file storage: `build/runtime/files`
+- Runtime logs: `build/runtime/logs`
+
+The generated Compose file is created from `deploy/sit/docker-compose.yml`, but runtime
+commands use the generated file by default. The repository root `.env` is no longer the
+recommended default configuration file.
 
 ## Lifecycle Entry Points
 
@@ -29,11 +44,15 @@ This script handles:
 Common options:
 ```sh
 python scripts/init.py --check-only           # Check environment only
+python scripts/init.py --runtime-only         # Create runtime env and generated compose only
+python scripts/init.py --middleware-only      # Create runtime and start/check middleware only
+python scripts/init.py --db-only              # Create runtime and check database only
 python scripts/init.py --skip-middleware      # Skip middleware initialization
 python scripts/init.py --skip-db             # Skip database check
 python scripts/init.py --skip-build-dirs     # Skip build/ directory creation
 python scripts/init.py --pull                # Pull images before starting middleware
 python scripts/init.py --force-recreate      # Force recreate middleware containers
+python scripts/init.py --env-file build/runtime/env/local.env
 ```
 
 ### 2. Build and Package
@@ -139,9 +158,12 @@ Supported service aliases:
 
 ## Safety Notes
 
-- Deployment scripts require `.env` by default instead of silently falling back to
-  `.env.example`.
+- Deployment scripts use `build/runtime/env/local.env` by default. A root `.env` is
+  supported only when explicitly passed with `--env-file .env`.
 - Commands printed by the scripts redact password, token, secret, and key values.
+- Deleting `build/runtime/` resets local runtime state and removes local MySQL, Redis,
+  file-storage, runtime env, and generated Compose data. Ordinary init/start commands do
+  not delete runtime data.
 - Service startup waits include recent Docker Compose logs when a container exits,
   restarts repeatedly, or times out.
 - `scripts/deploy_services.py` checks middleware readiness before deploying app

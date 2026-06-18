@@ -22,7 +22,10 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="Optional service targets for the service phase: all, backend, api, im, frontend, ai.",
     )
-    parser.add_argument("--env-file", help="Path to the deployment env file. Defaults to .env.")
+    parser.add_argument(
+        "--env-file",
+        help="Path to the deployment env file. Defaults to build/runtime/env/local.env.",
+    )
     parser.add_argument(
         "--status-only",
         action="store_true",
