@@ -7,8 +7,8 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from deploy_system.legacy import legacy_init  # noqa: E402
+from deploy_system.cli import main  # noqa: E402
 
 
 if __name__ == "__main__":
-    legacy_init(sys.argv[1:])
+    main()
