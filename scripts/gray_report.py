@@ -272,6 +272,7 @@ def generate_final_report(
     smoke_path: Path | None,
     coverage_path: Path | None,
     manifest_path: Path | None,
+    frontend_build_path: Path | None,
     output_path: Path,
 ) -> int:
     """Generate final gray release report."""
@@ -324,6 +325,14 @@ def generate_final_report(
         except Exception:
             pass
 
+    frontend_build = {}
+    if frontend_build_path and frontend_build_path.exists():
+        try:
+            with open(frontend_build_path, "r", encoding="utf-8") as f:
+                frontend_build = json.load(f)
+        except Exception:
+            pass
+
     # Determine decision
     decision = determine_decision(
         build_info,
@@ -332,6 +341,7 @@ def generate_final_report(
         smoke_results,
         coverage_summary,
         manifest_summary,
+        frontend_build,
     )
 
     # Generate report
@@ -342,6 +352,7 @@ def generate_final_report(
         smoke_results,
         coverage_summary,
         manifest_summary,
+        frontend_build,
         decision,
     )
 
@@ -389,6 +400,7 @@ def determine_decision(
     smoke_results: dict,
     coverage_summary: dict,
     manifest_summary: dict,
+    frontend_build: dict,
 ) -> dict:
     """Determine GO/NO-GO/HOLD decision."""
     issues = []
@@ -498,6 +510,28 @@ def determine_decision(
                 if missing > 0:
                     issues.append(f"Manifest {category_name} has {missing} missing items")
 
+    # Check frontend build/test
+    if not frontend_build:
+        issues.append("Frontend build/test summary missing")
+    else:
+        frontend_status = frontend_build.get("status", "NOT RUN")
+        if frontend_status == "FAIL":
+            issues.append("Frontend build/test FAIL")
+        elif frontend_status == "NOT RUN":
+            issues.append("Frontend build/test NOT RUN")
+        elif frontend_status == "WARN":
+            warnings.append("Frontend build/test WARN")
+
+        # Check individual targets
+        targets = frontend_build.get("targets", {})
+        for target_name, target_data in targets.items():
+            if isinstance(target_data, dict):
+                target_status = target_data.get("status", "NOT RUN")
+                if target_status == "FAIL":
+                    issues.append(f"Frontend {target_name} FAIL")
+                elif target_status == "NOT RUN":
+                    issues.append(f"Frontend {target_name} NOT RUN")
+
     # Determine decision
     if issues:
         decision = "NO-GO"
@@ -524,6 +558,7 @@ def generate_report_lines(
     smoke_results: dict,
     coverage_summary: dict,
     manifest_summary: dict,
+    frontend_build: dict,
     decision: dict,
 ) -> list[str]:
     """Generate report lines."""
@@ -615,6 +650,23 @@ def generate_report_lines(
         for scenario in smoke_results.get("scenarios", []):
             critical = "Yes" if scenario.get("critical", False) else "No"
             lines.append(f"| {scenario.get('name', 'N/A')} | {scenario.get('status', 'NOT RUN')} | {critical} |")
+        lines.extend(["", "---", ""])
+
+    # Frontend Build/Test Results
+    if frontend_build:
+        lines.extend([
+            "## Frontend Build/Test Results",
+            "",
+            f"Overall Status: **{frontend_build.get('status', 'NOT RUN')}**",
+            "",
+            "| Target | Status | Steps |",
+            "| --- | --- | --- |",
+        ])
+        for target_name, target_data in frontend_build.get("targets", {}).items():
+            if isinstance(target_data, dict):
+                target_status = target_data.get("status", "NOT RUN")
+                steps_count = len(target_data.get("steps", []))
+                lines.append(f"| {target_name} | {target_status} | {steps_count} steps |")
         lines.extend(["", "---", ""])
 
     # Coverage Summary
@@ -741,6 +793,7 @@ def main() -> int:
     finalize_parser.add_argument("--smoke", help="Smoke test results JSON path")
     finalize_parser.add_argument("--coverage", help="Coverage summary JSON path")
     finalize_parser.add_argument("--manifest", help="Manifest summary JSON path")
+    finalize_parser.add_argument("--frontend-build", help="Frontend build/test results JSON path")
     finalize_parser.add_argument(
         "--out",
         default=str(REPORT_DIR / "gray-release-report.md"),
@@ -767,6 +820,7 @@ def main() -> int:
             Path(args.smoke) if args.smoke else None,
             Path(args.coverage) if args.coverage else None,
             Path(args.manifest) if args.manifest else None,
+            Path(args.frontend_build) if args.frontend_build else None,
             Path(args.out),
         )
 

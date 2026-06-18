@@ -390,7 +390,23 @@ def gray_signoff(
     else:
         results.append(skip_step("Gray Release gate", "docker not available", critical=True))
 
-    # Step 8: Smoke tests
+    # Step 8: Frontend build/test verification
+    results.append(
+        run_step(
+            "Frontend build/test verification",
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_frontend_check.py"),
+                "--env", env,
+                "--api-base", api_base,
+                "--ws-base", ws_base,
+            ],
+            cwd=ROOT,
+            timeout=3600,
+        )
+    )
+
+    # Step 9: Smoke tests
     results.append(
         run_step(
             "Gray smoke tests",
@@ -470,6 +486,7 @@ def main() -> int:
                 "--smoke", str(REPORT_DIR / "gray-smoke.json"),
                 "--coverage", str(REPORT_DIR / "coverage-summary.json"),
                 "--manifest", str(REPORT_DIR / "test-manifest-check.json"),
+                "--frontend-build", str(REPORT_DIR / "gray-frontend-build.json"),
                 "--out", str(REPORT_DIR / "gray-release-report.md"),
             ],
             cwd=str(ROOT),

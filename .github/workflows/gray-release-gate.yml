@@ -174,23 +174,17 @@ jobs:
 
       - name: Run frontend build verification
         if: ${{ inputs.run_frontend_build }}
-        continue-on-error: true
         run: |
-          cd flutter/apps/web
-          flutter pub get
-          flutter analyze
-          flutter test
-          flutter build web \
-            --dart-define=APP_ENV=${{ env.GRAY_ENV }} \
-            --dart-define=API_BASE_URL=${{ env.IM_API_BASE }} \
-            --dart-define=WS_BASE_URL=${{ env.IM_WS_BASE }}
-          echo '{"status":"PASS","reason":"Frontend build verification completed"}' > ../../../build/reports/gray-frontend-build.json
+          python scripts/gray_frontend_check.py \
+            --env "${{ env.GRAY_ENV }}" \
+            --api-base "${{ env.IM_API_BASE }}" \
+            --ws-base "${{ env.IM_WS_BASE }}"
 
       - name: Mark frontend build not run
         if: ${{ !inputs.run_frontend_build }}
         run: |
           mkdir -p build/reports
-          echo '{"status":"NOT RUN","reason":"run_frontend_build=false"}' > build/reports/gray-frontend-build.json
+          echo '{"status":"NOT RUN","reason":"run_frontend_build=false","targets":{}}' > build/reports/gray-frontend-build.json
 
       - name: Generate final report
         if: always()
@@ -202,6 +196,7 @@ jobs:
             --smoke build/reports/gray-smoke.json \
             --coverage build/reports/coverage-summary.json \
             --manifest build/reports/test-manifest-check.json \
+            --frontend-build build/reports/gray-frontend-build.json \
             --out build/reports/gray-release-report.md
 
       - name: Determine GO/NO-GO decision
