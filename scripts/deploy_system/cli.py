@@ -99,12 +99,81 @@ def _require_yes(args, message: str) -> None:
     raise SystemExit("Re-run with --yes to confirm.")
 
 
+def _clean_docker(paths) -> None:
+    """Clean Docker containers, volumes, and networks for the project."""
+    import subprocess
+
+    print("[CLEAN] Stopping and removing Docker containers...")
+
+    # First, try using docker compose if compose file exists
+    compose_file = paths.COMPOSE_DIR / "docker-compose.generated.yml"
+    if compose_file.exists():
+        try:
+            subprocess.run(
+                ["docker", "compose", "-f", str(compose_file), "down", "-v", "--remove-orphans"],
+                cwd=str(paths.PROJECT_ROOT),
+                capture_output=True,
+                check=False,
+            )
+            print("[CLEAN] Docker containers removed via compose")
+        except Exception as e:
+            print(f"[WARNING] Failed to clean Docker via compose: {e}")
+
+    # Also remove any containers with project name prefix
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "-q", "--filter", "name=sit-"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        container_ids = result.stdout.strip().split('\n')
+        container_ids = [cid for cid in container_ids if cid]  # Filter empty strings
+
+        if container_ids:
+            subprocess.run(
+                ["docker", "rm", "-f"] + container_ids,
+                capture_output=True,
+                check=False,
+            )
+            print(f"[CLEAN] Removed {len(container_ids)} Docker containers")
+    except Exception as e:
+        print(f"[WARNING] Failed to remove Docker containers: {e}")
+
+    # Prune Docker volumes
+    try:
+        subprocess.run(
+            ["docker", "volume", "prune", "-f"],
+            capture_output=True,
+            check=False,
+        )
+        print("[CLEAN] Docker volumes pruned")
+    except Exception as e:
+        print(f"[WARNING] Failed to prune Docker volumes: {e}")
+
+    # Prune Docker networks
+    try:
+        subprocess.run(
+            ["docker", "network", "prune", "-f"],
+            capture_output=True,
+            check=False,
+        )
+        print("[CLEAN] Docker networks pruned")
+    except Exception as e:
+        print(f"[WARNING] Failed to prune Docker networks: {e}")
+
+
 def _clean(target: str, *, yes: bool) -> None:
     from . import paths
+    import subprocess
 
     destructive = target in {"runtime", "all"}
     if destructive and not yes:
         raise SystemExit("This operation deletes runtime state. Re-run with --yes.")
+
+    # Clean Docker containers and volumes for runtime/all targets
+    if target in {"runtime", "all"}:
+        _clean_docker(paths)
 
     targets = []
     if target in {"runtime", "all"}:
