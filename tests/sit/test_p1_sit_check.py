@@ -7,12 +7,15 @@ from pathlib import Path
 
 import pytest
 
-# Add scripts directory to path for imports
+# Add tests/gates directory to path for imports
 import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-scripts_dir = str(PROJECT_ROOT / "scripts")
-if scripts_dir not in sys.path:
-    sys.path.insert(0, scripts_dir)
+gates_dir = str(PROJECT_ROOT / "tests" / "gates")
+common_dir = str(PROJECT_ROOT / "tests" / "common")
+if gates_dir not in sys.path:
+    sys.path.insert(0, gates_dir)
+if common_dir not in sys.path:
+    sys.path.insert(0, common_dir)
 
 # Mock gate_common if not available
 try:

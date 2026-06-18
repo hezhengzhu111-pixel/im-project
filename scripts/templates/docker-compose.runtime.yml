@@ -12,7 +12,7 @@ services:
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
-      - ${MYSQL_DATA_DIR:-./mysql}:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
       - ${SQL_INIT_FILE:-../../sql/mysql8/init_all.sql}:/docker-entrypoint-initdb.d/01-init_all.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
@@ -59,7 +59,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_DATA_DIR:-./redis}:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -86,7 +86,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_GROUP_HOT_DATA_DIR:-./redis-group-hot}:/data
+      - redis_group_hot_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -113,7 +113,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_GROUP_HOT_DATA_DIR_2:-./redis-group-hot-2}:/data
+      - redis_group_hot_data_2:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -140,7 +140,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_GROUP_HOT_DATA_DIR_3:-./redis-group-hot-3}:/data
+      - redis_group_hot_data_3:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -167,7 +167,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_GROUP_HOT_DATA_DIR_4:-./redis-group-hot-4}:/data
+      - redis_group_hot_data_4:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -194,7 +194,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_PRIVATE_HOT_DATA_DIR:-./redis-private-hot}:/data
+      - redis_private_hot_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -221,7 +221,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_PRIVATE_HOT_DATA_DIR_2:-./redis-private-hot-2}:/data
+      - redis_private_hot_data_2:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -248,7 +248,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_PRIVATE_HOT_DATA_DIR_3:-./redis-private-hot-3}:/data
+      - redis_private_hot_data_3:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -275,7 +275,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${REDIS_PRIVATE_HOT_DATA_DIR_4:-./redis-private-hot-4}:/data
+      - redis_private_hot_data_4:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -294,12 +294,12 @@ services:
         mkdir -p /data/im-files
         chown -R 10001:10001 /data/im-files
     volumes:
-      - ${FILES_DATA_DIR:-./files}:/data/im-files
+      - im_files:/data/im-files
     networks:
       - im-network
 
   im-server:
-    image: im-project/im-server:latest
+    image: im-project-sit/im-server:latest
     build:
       context: ../../rust
       dockerfile: apps/im-server/Dockerfile
@@ -338,7 +338,7 @@ services:
       - im-network
 
   im-api-server:
-    image: im-project/im-api-server:latest
+    image: im-project-sit/im-api-server:latest
     build:
       context: ../../rust
       dockerfile: apps/api-server/Dockerfile
@@ -416,7 +416,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${FILES_DATA_DIR:-./files}:/data/im-files
+      - im_files:/data/im-files
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s
@@ -427,7 +427,7 @@ services:
       - im-network
 
   im-frontend:
-    image: im-project/im-frontend:latest
+    image: im-project-sit/im-frontend:latest
     build:
       context: ../..
       dockerfile: flutter/apps/web/Dockerfile
@@ -447,7 +447,7 @@ services:
         soft: 200000
         hard: 200000
     volumes:
-      - ${FILES_DATA_DIR:-./files}:/data/im-files:ro
+      - im_files:/data/im-files:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
       interval: 30s
@@ -458,7 +458,7 @@ services:
       - im-network
 
   im-spring-ai:
-    image: im-project/im-spring-ai:latest
+    image: im-project-sit/im-spring-ai:latest
     build:
       context: ../../spring-ai
       args:

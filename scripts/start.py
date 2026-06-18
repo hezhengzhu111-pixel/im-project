@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -23,6 +25,87 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from runtime_paths import DEFAULT_RUNTIME_ENV_FILE, GENERATED_COMPOSE_FILE, PROJECT_ROOT, relative
+
+
+def _load_manifest() -> dict | None:
+    manifest_path = PROJECT_ROOT / "build" / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _image_exists_locally(image_name: str) -> bool:
+    result = subprocess.run(
+        ["docker", "image", "inspect", image_name],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return result.returncode == 0
+
+
+def load_images_from_manifest() -> None:
+    """Load Docker images from build/dist/images/*.tar if not present locally."""
+    manifest = _load_manifest()
+    if manifest is None:
+        print(
+            "[WARN] build/manifest.json 不存在，无法自动加载镜像。\n"
+            "  请先运行: python scripts/build.py --docker"
+        )
+        return
+
+    image_names: dict[str, str] = manifest.get("docker_image_names", {})
+    tar_paths: dict[str, str] = manifest.get("docker_image_tar_paths", {})
+
+    if not image_names:
+        print("[WARN] manifest.json 中未记录 Docker 镜像名，跳过镜像加载。")
+        return
+
+    for service, image_name in image_names.items():
+        if _image_exists_locally(image_name):
+            continue
+
+        tar_rel = tar_paths.get(service)
+        if not tar_rel:
+            print(
+                f"[WARN] 镜像 {image_name} 本地不存在，且 manifest 中无 tar 路径记录。\n"
+                f"  请运行: python scripts/build.py --docker"
+            )
+            continue
+
+        tar_path = PROJECT_ROOT / tar_rel
+        if not tar_path.is_file():
+            print(
+                f"[ERROR] 镜像 {image_name} 本地不存在，tar 文件也缺失: {relative(tar_path)}\n"
+                f"  请运行: python scripts/build.py --docker"
+            )
+            continue
+
+        print(f"[INFO] 正在加载镜像 {image_name} 从 {relative(tar_path)} ...")
+        load_result = subprocess.run(
+            ["docker", "load", "-i", str(tar_path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if load_result.returncode != 0:
+            stderr = (load_result.stderr or "").strip()
+            print(f"[ERROR] docker load 失败 ({image_name}): {stderr}")
+            continue
+
+        if not _image_exists_locally(image_name):
+            print(
+                f"[ERROR] docker load 完成但镜像 {image_name} 仍不可用。\n"
+                f"  请运行: python scripts/build.py --docker"
+            )
+            continue
+
+        print(f"[OK] 镜像 {image_name} 已加载。")
 
 
 def add_env_file_argument(parser: argparse.ArgumentParser) -> None:
@@ -143,26 +226,11 @@ def ensure_runtime_ready_hint() -> None:
         )
 
 
-def warn_if_build_artifacts_missing() -> None:
-    missing = []
-    if not (PROJECT_ROOT / "build" / "manifest.json").is_file():
-        missing.append("build/manifest.json")
-    images_dir = PROJECT_ROOT / "build" / "dist" / "images"
-    if not images_dir.is_dir() or not any(images_dir.iterdir()):
-        missing.append("build/dist/images")
-    if missing:
-        print(
-            "[WARN] 构建产物可能缺失："
-            + ", ".join(missing)
-            + "。如需重新生成，请手动运行 `python scripts/build.py`。"
-        )
-
-
 def cmd_start(args) -> None:
     """启动服务。"""
     print("🚀 启动服务...")
     ensure_runtime_ready_hint()
-    warn_if_build_artifacts_missing()
+    load_images_from_manifest()
 
     try:
         from deploy_services import main as services_main
@@ -225,6 +293,7 @@ def cmd_restart(args) -> None:
     """重启服务。"""
     print("[RESTART] 重启服务...")
     ensure_runtime_ready_hint()
+    load_images_from_manifest()
 
     try:
         from deploy_services import main as services_main

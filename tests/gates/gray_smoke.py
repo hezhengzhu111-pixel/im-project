@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
+
 from gate_common import ROOT, REPORT_DIR, sanitize
 
 try:

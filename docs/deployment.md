@@ -62,7 +62,7 @@ python tests/test.py coverage
 python tests/test.py sit
 ```
 
-`scripts/start.py` 使用现有镜像，不会触发构建。如需重新构建，请显式运行 `python scripts/build.py`。
+`scripts/start.py` 使用现有镜像，不会触发构建。启动前会自动检查 `build/manifest.json`，如果本地缺少镜像但 `build/dist/images/` 中存在对应 tar，会自动执行 `docker load`。如需重新构建，请显式运行 `python scripts/build.py`。
 
 ## 报告
 
@@ -85,4 +85,6 @@ python tests/test.py sit
 - 如果代码更改后服务启动失败，运行 `python scripts/build.py all`，然后 `python scripts/start.py restart`
 - 如果 Docker 命令失败，确认 Docker Desktop 或 Docker 守护进程正在运行，并且 `python scripts/init.py --check-only` 通过
 - 如果测试找不到报告，检查 `build/reports/` 而不是根目录的旧报告目录
+- 测试和 gate 脚本位于 `tests/` 目录下（不再位于 `scripts/`），CI 统一通过 `python tests/test.py` 调用
+- 测试运行在 `build/work/` 隔离副本中，不会污染 `rust/` 或 `flutter/` 源码目录
 - 如果调试需要底层脚本，优先通过 `python scripts/init.py`、`python scripts/start.py` 或 `python tests/test.py` 调用

@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
+
 from gate_common import REPORT_DIR
 
 try:

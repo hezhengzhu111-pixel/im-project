@@ -13,9 +13,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from gate_common import ROOT, REPORT_DIR, sanitize, tail_lines
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
 
-FLUTTER_ROOT = ROOT / "flutter"
+from gate_common import ROOT, REPORT_DIR, sanitize, tail_lines
+from workspace import ensure_work_workspace, setup_isolated_env
+
+# Use build/work isolated copy, never source directory directly.
+FLUTTER_WORK_DIR = ROOT / "build" / "work" / "flutter"
 PYTHON = sys.executable
 
 FRONTEND_TARGETS = [
@@ -25,7 +30,7 @@ FRONTEND_TARGETS = [
 ]
 
 
-def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600) -> dict:
+def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> dict:
     """Run a Flutter step and return result."""
     started = time.time()
     try:
@@ -37,6 +42,7 @@ def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600) -> dic
             timeout=timeout,
             encoding="utf-8",
             errors="replace",
+            env=env,
         )
         duration = time.time() - started
         status = "PASS" if proc.returncode == 0 else "FAIL"
@@ -78,8 +84,9 @@ def check_target(
     skip_web_build: bool = False,
 ) -> dict:
     """Check a single frontend target."""
-    target_dir = FLUTTER_ROOT / rel_path
+    target_dir = FLUTTER_WORK_DIR / rel_path
     steps = []
+    isolated_env = setup_isolated_env()
 
     if not target_dir.exists():
         return {
@@ -102,6 +109,7 @@ def check_target(
         ["flutter", "pub", "get"],
         target_dir,
         timeout=600,
+        env=isolated_env,
     ))
     if steps[-1]["status"] == "FAIL":
         return {"status": "FAIL", "steps": steps}
@@ -112,6 +120,7 @@ def check_target(
         ["flutter", "analyze"],
         target_dir,
         timeout=600,
+        env=isolated_env,
     ))
     if steps[-1]["status"] == "FAIL":
         return {"status": "FAIL", "steps": steps}
@@ -122,6 +131,7 @@ def check_target(
         ["flutter", "test"],
         target_dir,
         timeout=1200,
+        env=isolated_env,
     ))
     if steps[-1]["status"] == "FAIL":
         return {"status": "FAIL", "steps": steps}
@@ -139,6 +149,7 @@ def check_target(
             build_cmd,
             target_dir,
             timeout=1800,
+            env=isolated_env,
         ))
         if steps[-1]["status"] == "FAIL":
             return {"status": "FAIL", "steps": steps}
@@ -164,6 +175,7 @@ def run_frontend_check(
     skip_web_build: bool = False,
 ) -> dict:
     """Run frontend build and test verification for all targets."""
+    ensure_work_workspace()
     print(f"\n{'='*60}")
     print(f"Frontend Build/Test Verification")
     print(f"Environment: {env}")

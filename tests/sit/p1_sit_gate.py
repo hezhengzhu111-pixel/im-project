@@ -3,7 +3,7 @@
 
 This script orchestrates local or manual-CI SIT:
   - verifies Docker / Flutter / Rust prerequisites;
-  - optionally starts docker-compose.sit.yml;
+  - optionally starts runtime compose (build/runtime/compose/docker-compose.generated.yml);
   - waits for api-server health;
   - runs SQL migrations through the compose migrate service;
   - builds the Rust E2EE FFI;
@@ -33,9 +33,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
+
 from gate_common import sanitize
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
+RUNTIME_COMPOSE = ROOT / "build" / "runtime" / "compose" / "docker-compose.generated.yml"
 DEFAULT_ARTIFACT_ROOT = ROOT / "build" / "reports" / "test" / "p1-sit"
 
 P1_REQUIRED_SCRIPTS = [
@@ -287,7 +291,7 @@ def main() -> int:
             "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
         ),
     )
-    parser.add_argument("--compose-file", default=str(ROOT / "docker-compose.sit.yml"))
+    parser.add_argument("--compose-file", default=str(RUNTIME_COMPOSE))
     parser.add_argument("--artifact-dir", default=None)
     parser.add_argument("--skip-compose", action="store_true")
     parser.add_argument("--skip-p0-gate", action="store_true")
@@ -328,7 +332,7 @@ def main() -> int:
         results.append(
             run_command(
                 "compose up",
-                [*compose, "up", "-d", "--build", "mysql", "redis", "migrate", "api-server"],
+                [*compose, "up", "-d", "--build", "im-mysql", "im-redis", "im-db-migrate", "im-api-server"],
                 ROOT,
                 artifact_dir,
                 timeout=1800,
@@ -341,7 +345,7 @@ def main() -> int:
         results.append(
             run_command(
                 "run migrations",
-                [*compose, "run", "--rm", "migrate"],
+                [*compose, "run", "--rm", "im-db-migrate"],
                 ROOT,
                 artifact_dir,
                 timeout=300,
@@ -361,14 +365,11 @@ def main() -> int:
     if not args.skip_p0_gate:
         results.append(
             run_command(
-                "p0 gate",
+                "p0 gate (pr-fast)",
                 [
                     sys.executable,
-                    str(ROOT / "scripts" / "p0_gate.py"),
-                    "--base-url",
-                    args.base_url,
-                    "--db-url",
-                    args.db_url,
+                    str(Path(__file__).resolve().parents[1] / "test.py"),
+                    "pr-fast",
                 ],
                 ROOT,
                 artifact_dir,

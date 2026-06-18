@@ -40,10 +40,12 @@
 
 `python scripts/init.py` 在 `build/runtime/` 下准备运行时状态。
 
+运行时 Compose 模板位于 `scripts/templates/docker-compose.runtime.yml`，生成后输出到 `build/runtime/compose/docker-compose.generated.yml`。
+
 - 环境配置：`build/runtime/env/local.env`
 - 生成的 Compose：`build/runtime/compose/docker-compose.generated.yml`
 - MySQL 数据：`build/runtime/mysql`
-- Redis 数据：`build/runtime/redis`
+- Redis 数据：`build/runtime/redis/main`、`build/runtime/redis/group-hot-*`、`build/runtime/redis/private-hot-*`
 - 文件存储：`build/runtime/files`
 - 运行时日志：`build/runtime/logs`
 
@@ -56,4 +58,18 @@
 - `python scripts/start.py`
 - `python tests/test.py`
 
-`scripts/` 中的 helper 模块（如 `deploy_middleware.py`、`deploy_services.py`、`init_db.py`、`gate_common.py`、`runtime_paths.py` 和 `coverage/`）支持这些入口点，但不建议直接调用。
+`scripts/` 中的 helper 模块（如 `deploy_utils.py`、`deploy_services.py`、`deploy_middleware.py`、`init_db.py`、`runtime_paths.py`）支持 init/build/start 入口点，但不建议直接调用。
+
+`tests/` 目录下的辅助模块：
+- `tests/common/gate_common.py`：共享测试 gate helpers（StepResult、run_step 等）
+- `tests/common/workspace.py`：工作区同步逻辑（与 build.py 共享排除规则）
+- `tests/common/test_inventory.py`：测试清单生成
+- `tests/gates/`：gray gate、coverage gate、manifest check 等
+- `tests/sit/`：SIT 测试脚本
+- `tests/coverage/`：Rust/Flutter 覆盖率工具
+
+## 镜像名
+
+`build.py` 和 `start.py` 使用一致的 Docker 镜像名：`im-project-sit/{service}:latest`。
+runtime compose 模板使用同一组镜像名。
+`start.py start/restart` 会尝试从 `build/manifest.json` 加载 `build/dist/images/` 中的镜像 tar。

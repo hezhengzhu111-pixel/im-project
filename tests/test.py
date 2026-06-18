@@ -15,6 +15,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS_DIR / "common"))
 
 from gate_common import ROOT, StepResult, run_step, skip_step, write_gate_reports
+from workspace import ensure_work_workspace, setup_isolated_env
 
 
 PYTHON = sys.executable
@@ -42,28 +43,6 @@ RUST_PACKAGES = [
 ]
 
 
-def sync_source_to_work(source: Path, target: Path) -> None:
-    """Sync source directory to build/work for isolation."""
-    import shutil
-    if target.exists():
-        shutil.rmtree(target)
-    shutil.copytree(source, target, dirs_exist_ok=True)
-
-
-def ensure_work_workspace() -> None:
-    """Ensure build/work directories exist and are synced from source."""
-    RUST_WORK_DIR.parent.mkdir(parents=True, exist_ok=True)
-    FLUTTER_WORK_DIR.parent.mkdir(parents=True, exist_ok=True)
-
-    rust_source = ROOT / "rust"
-    flutter_source = ROOT / "flutter"
-
-    if rust_source.exists():
-        sync_source_to_work(rust_source, RUST_WORK_DIR)
-    if flutter_source.exists():
-        sync_source_to_work(flutter_source, FLUTTER_WORK_DIR)
-
-
 def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
     results: list[StepResult] = []
 
@@ -71,9 +50,7 @@ def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
     ensure_work_workspace()
 
     # Set environment for isolated builds
-    env = os.environ.copy()
-    env["CARGO_HOME"] = str(ROOT / "build" / "cache" / "cargo-home")
-    env["CARGO_TARGET_DIR"] = str(ROOT / "build" / "cache" / "rust-target")
+    env = setup_isolated_env()
 
     commands = [
         ("Rust fmt", ["cargo", "fmt", "--check"], 300),
@@ -110,8 +87,7 @@ def flutter_steps(*, coverage: bool = False, continue_on_error: bool = False) ->
     ensure_work_workspace()
 
     # Set environment for isolated builds
-    env = os.environ.copy()
-    env["PUB_CACHE"] = str(ROOT / "build" / "cache" / "pub-cache")
+    env = setup_isolated_env()
 
     for target, rel_path in FLUTTER_TARGETS:
         target_dir = FLUTTER_WORK_DIR / rel_path

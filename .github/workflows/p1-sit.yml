@@ -59,7 +59,7 @@ jobs:
           if [ "${{ inputs.skip_p0_gate }}" = "true" ]; then
             args+=(--skip-p0-gate)
           fi
-          python scripts/p1_sit_gate.py "${args[@]}"
+          python tests/sit/p1_sit_gate.py "${args[@]}"
 
       - name: Upload P1 SIT artifacts
         if: always()

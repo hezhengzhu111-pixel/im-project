@@ -8,10 +8,14 @@ import json
 import sys
 from pathlib import Path
 
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
+
 from gate_common import ROOT, run_step, write_gate_reports
 
 
 PYTHON = sys.executable
+TESTS_COVERAGE = TESTS_DIR / "coverage"
 OUT_DIR = ROOT / "build" / "reports" / "coverage"
 REPORT_DIR = ROOT / "build" / "reports" / "coverage"
 
@@ -60,7 +64,7 @@ def main() -> int:
         results.append(
             run_step(
                 "Rust coverage",
-                [PYTHON, str(ROOT / "scripts" / "coverage" / "rust_coverage.py")],
+                [PYTHON, str(TESTS_COVERAGE / "rust_coverage.py")],
                 cwd=ROOT,
                 timeout=3600,
             )
@@ -69,7 +73,7 @@ def main() -> int:
         results.append(
             run_step(
                 "Flutter coverage",
-                [PYTHON, str(ROOT / "scripts" / "coverage" / "flutter_coverage.py")],
+                [PYTHON, str(TESTS_COVERAGE / "flutter_coverage.py")],
                 cwd=ROOT,
                 timeout=7200,
             )

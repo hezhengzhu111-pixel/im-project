@@ -9,12 +9,22 @@ import shutil
 import sys
 from pathlib import Path
 
+TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TESTS_DIR / "common"))
+
 from gate_common import ROOT, REPORT_DIR, run_step, skip_step, write_gate_reports
+from workspace import ensure_work_workspace, setup_isolated_env
 
 
 PYTHON = sys.executable
-RUST_ROOT = ROOT / "rust"
-FLUTTER_ROOT = ROOT / "flutter"
+TESTS_GATES = TESTS_DIR / "gates"
+TESTS_SIT = TESTS_DIR / "sit"
+TESTS_COVERAGE = TESTS_DIR / "coverage"
+
+# All commands run in build/work isolated copies, never in source directories.
+RUST_WORK_DIR = ROOT / "build" / "work" / "rust"
+FLUTTER_WORK_DIR = ROOT / "build" / "work" / "flutter"
+
 RUST_PACKAGES = [
     ("api-server", "apps/api-server"),
     ("im-server", "apps/im-server"),
@@ -33,15 +43,59 @@ FLUTTER_TARGETS = [
     ("desktop", "apps/desktop"),
 ]
 
+# Runtime compose for dependency services (MySQL, Redis, etc.)
+RUNTIME_COMPOSE = ROOT / "build" / "runtime" / "compose" / "docker-compose.generated.yml"
 
-def rust_fast() -> list:
+
+def _ensure_runtime_compose() -> list:
+    """Ensure the generated runtime compose exists, or return a skip result."""
+    if RUNTIME_COMPOSE.is_file():
+        return []
+    if shutil.which("docker") is None:
+        return [
+            skip_step(
+                "Runtime compose",
+                "docker is not available; cannot generate runtime compose",
+                critical=True,
+            )
+        ]
+    result = run_step(
+        "Generate runtime compose",
+        [PYTHON, str(ROOT / "scripts" / "init.py"), "--runtime-only"],
+        cwd=ROOT,
+        timeout=120,
+    )
+    if result.status != "PASS":
+        return [result]
+    if not RUNTIME_COMPOSE.is_file():
+        return [
+            skip_step(
+                "Runtime compose",
+                f"runtime compose still missing after init: {RUNTIME_COMPOSE}",
+                critical=True,
+            )
+        ]
+    return [result]
+
+
+def _compose_base(env: dict[str, str] | None = None) -> list[str]:
+    """Build docker compose base command using generated runtime compose."""
+    return [
+        "docker", "compose",
+        "-f", str(RUNTIME_COMPOSE),
+    ]
+
+
+def rust_fast(env: dict[str, str] | None = None) -> list:
+    if env is None:
+        env = setup_isolated_env()
     results = [
-        run_step("Rust fmt", ["cargo", "fmt", "--check"], cwd=RUST_ROOT, timeout=300),
-        run_step("Rust check", ["cargo", "check", "--workspace"], cwd=RUST_ROOT, timeout=900),
-        run_step("Rust unit tests", ["cargo", "test", "--workspace"], cwd=RUST_ROOT, timeout=1200),
+        run_step("Rust fmt", ["cargo", "fmt", "--check"], cwd=RUST_WORK_DIR, timeout=300, env=env),
+        run_step("Rust check", ["cargo", "check", "--workspace"], cwd=RUST_WORK_DIR, timeout=900, env=env),
+        run_step("Rust unit tests", ["cargo", "test", "--workspace"], cwd=RUST_WORK_DIR, timeout=1200, env=env),
     ]
     for package, rel in RUST_PACKAGES:
-        package_path = RUST_ROOT / rel
+        package_path = RUST_WORK_DIR / rel
         if not package_path.exists():
             results.append(skip_step(f"Rust clippy {package}", f"missing package path {package_path}", critical=True))
             continue
@@ -49,25 +103,28 @@ def rust_fast() -> list:
             run_step(
                 f"Rust clippy {package}",
                 ["cargo", "clippy", "-p", package, "--all-targets", "--", "-D", "warnings"],
-                cwd=RUST_ROOT,
+                cwd=RUST_WORK_DIR,
                 timeout=900,
+                env=env,
             )
         )
     return results
 
 
-def flutter_fast() -> list:
+def flutter_fast(env: dict[str, str] | None = None) -> list:
+    if env is None:
+        env = setup_isolated_env()
     results = []
     for name, rel in FLUTTER_TARGETS:
-        target = FLUTTER_ROOT / rel
+        target = FLUTTER_WORK_DIR / rel
         if not target.exists():
             results.append(skip_step(f"Flutter {name}", f"missing target path {target}", critical=True))
             continue
         results.extend(
             [
-                run_step(f"Flutter pub get {name}", ["flutter", "pub", "get"], cwd=target, timeout=600),
-                run_step(f"Flutter analyze {name}", ["flutter", "analyze"], cwd=target, timeout=600),
-                run_step(f"Flutter test {name}", ["flutter", "test"], cwd=target, timeout=1200),
+                run_step(f"Flutter pub get {name}", ["flutter", "pub", "get"], cwd=target, timeout=600, env=env),
+                run_step(f"Flutter analyze {name}", ["flutter", "analyze"], cwd=target, timeout=600, env=env),
+                run_step(f"Flutter test {name}", ["flutter", "test"], cwd=target, timeout=1200, env=env),
             ]
         )
     return results
@@ -77,13 +134,13 @@ def manifest_fast() -> list:
     return [
         run_step(
             "Manifest completeness",
-            [PYTHON, str(ROOT / "scripts" / "check_test_manifest.py")],
+            [PYTHON, str(TESTS_GATES / "check_test_manifest.py")],
             cwd=ROOT,
             timeout=300,
         ),
         run_step(
             "Known failures policy",
-            [PYTHON, str(ROOT / "scripts" / "check_known_failures.py")],
+            [PYTHON, str(TESTS_GATES / "check_known_failures.py")],
             cwd=ROOT,
             timeout=120,
         ),
@@ -173,39 +230,52 @@ def dependency_steps(env: dict[str, str]) -> list:
                 critical=True,
             )
         ]
-    compose = ["docker", "compose", "-f", str(ROOT / "docker-compose.sit.yml")]
-    return [
+    init_results = _ensure_runtime_compose()
+    if any(r.status == "FAIL" for r in init_results):
+        return init_results
+    compose = _compose_base(env)
+    results = list(init_results)
+    results.append(
         run_step(
             "Main Full dependencies up",
-            [*compose, "up", "-d", "mysql", "redis"],
+            [*compose, "up", "-d", "im-mysql", "im-redis"],
             cwd=ROOT,
             timeout=600,
             env=env,
-        ),
+        )
+    )
+    results.append(
         run_step(
             "Main Full mysql bootstrap",
-            [PYTHON, str(ROOT / "scripts" / "sit_mysql_bootstrap.py")],
+            [PYTHON, str(TESTS_SIT / "sit_mysql_bootstrap.py")],
             cwd=ROOT,
             timeout=180,
             env=env,
-        ),
+        )
+    )
+    results.append(
         run_step(
             "Main Full migrations",
-            [*compose, "run", "--rm", "migrate"],
+            [*compose, "run", "--rm", "im-db-migrate"],
             cwd=ROOT,
             timeout=300,
             env=env,
-        ),
-    ]
+        )
+    )
+    return results
 
 
 def pr_fast() -> list:
-    return rust_fast() + flutter_fast() + manifest_fast()
+    ensure_work_workspace()
+    env = setup_isolated_env()
+    return rust_fast(env) + flutter_fast(env) + manifest_fast()
 
 
 def main_full() -> list:
-    results = pr_fast()
-    dep_env = main_full_dependency_env()
+    ensure_work_workspace()
+    env = setup_isolated_env()
+    results = rust_fast(env) + flutter_fast(env) + manifest_fast()
+    dep_env = {**env, **main_full_dependency_env()}
     results.extend(dependency_steps(dep_env))
     results.append(
         run_step(
@@ -221,7 +291,7 @@ def main_full() -> list:
                 "--",
                 "--test-threads=1",
             ],
-            cwd=RUST_ROOT,
+            cwd=RUST_WORK_DIR,
             timeout=1800,
             env=dep_env,
         )
@@ -229,7 +299,7 @@ def main_full() -> list:
     results.append(
         run_step(
             "Coverage gate",
-            [PYTHON, str(ROOT / "scripts" / "coverage_gate.py")],
+            [PYTHON, str(TESTS_GATES / "coverage_gate.py")],
             cwd=ROOT,
             timeout=7200,
         )
@@ -250,7 +320,7 @@ def gray_release(base_url: str, db_url: str) -> list:
             "P1 SIT gate",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "p1_sit_gate.py"),
+                str(TESTS_SIT / "p1_sit_gate.py"),
                 "--base-url",
                 gray_base_url,
                 "--db-url",
@@ -266,7 +336,7 @@ def gray_release(base_url: str, db_url: str) -> list:
             "Backend full API SIT",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "sit_backend_api.py"),
+                str(TESTS_SIT / "sit_backend_api.py"),
                 "--api-base",
                 gray_base_url,
                 "--internal-secret",
@@ -300,7 +370,7 @@ def gray_signoff(
             "Build info generation",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "gray_report.py"),
+                str(TESTS_GATES / "gray_report.py"),
                 "build-info",
                 "--env", env,
                 "--api-base", api_base,
@@ -319,7 +389,7 @@ def gray_signoff(
             "Environment pre-check",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "gray_env_check.py"),
+                str(TESTS_GATES / "gray_env_check.py"),
                 "--env", env,
                 "--api-base", api_base,
                 "--ws-base", ws_base,
@@ -335,7 +405,7 @@ def gray_signoff(
     results.append(
         run_step(
             "Manifest completeness",
-            [PYTHON, str(ROOT / "scripts" / "check_test_manifest.py")],
+            [PYTHON, str(TESTS_GATES / "check_test_manifest.py")],
             cwd=ROOT,
             timeout=300,
         )
@@ -345,7 +415,7 @@ def gray_signoff(
     results.append(
         run_step(
             "PR Fast gate",
-            [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", "pr-fast"],
+            [PYTHON, str(TESTS_GATES / "gray_gate.py"), "--mode", "pr-fast"],
             cwd=ROOT,
             timeout=1800,
         )
@@ -355,7 +425,7 @@ def gray_signoff(
     results.append(
         run_step(
             "Coverage gate",
-            [PYTHON, str(ROOT / "scripts" / "coverage_gate.py")],
+            [PYTHON, str(TESTS_GATES / "coverage_gate.py")],
             cwd=ROOT,
             timeout=7200,
         )
@@ -365,7 +435,7 @@ def gray_signoff(
     results.append(
         run_step(
             "Main Full gate",
-            [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", "main-full"],
+            [PYTHON, str(TESTS_GATES / "gray_gate.py"), "--mode", "main-full"],
             cwd=ROOT,
             timeout=7200,
         )
@@ -378,7 +448,7 @@ def gray_signoff(
                 "Gray Release gate",
                 [
                     PYTHON,
-                    str(ROOT / "scripts" / "gray_gate.py"),
+                    str(TESTS_GATES / "gray_gate.py"),
                     "--mode", "gray-release",
                     "--base-url", api_base,
                     "--db-url", db_url,
@@ -396,7 +466,7 @@ def gray_signoff(
             "Frontend build/test verification",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "gray_frontend_check.py"),
+                str(TESTS_GATES / "gray_frontend_check.py"),
                 "--env", env,
                 "--api-base", api_base,
                 "--ws-base", ws_base,
@@ -412,7 +482,7 @@ def gray_signoff(
             "Gray smoke tests",
             [
                 PYTHON,
-                str(ROOT / "scripts" / "gray_smoke.py"),
+                str(TESTS_GATES / "gray_smoke.py"),
                 "--env", env,
                 "--api-base", api_base,
                 "--ws-base", ws_base,
@@ -478,7 +548,7 @@ def main() -> int:
         finalize_result = subprocess.run(
             [
                 PYTHON,
-                str(ROOT / "scripts" / "gray_report.py"),
+                str(TESTS_GATES / "gray_report.py"),
                 "finalize",
                 "--build-info", str(REPORT_DIR / "gray-build-info.json"),
                 "--env-check", str(REPORT_DIR / "gray-env-check.json"),
