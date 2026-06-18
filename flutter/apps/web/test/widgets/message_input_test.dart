@@ -262,15 +262,22 @@ void main() {
     // P0 止血：语音发送入口已移除
     // -----------------------------------------------------------------------
 
-    testWidgets('mic 按钮已移除（P0 止血）', (tester) async {
+    testWidgets('mic button is visible but disabled with semantics',
+        (tester) async {
       await tester.pumpWidget(_buildSubject(
         mockFilePicker: mockFilePicker,
         mockAudioRecorder: mockAudioRecorder,
       ));
 
-      // Mic button should NOT exist
-      expect(find.byIcon(Icons.mic), findsNothing);
-      // Stop icon should NOT exist
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+      final micButton = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.mic),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(micButton.onPressed, isNull);
+      expect(find.bySemanticsLabel('Voice input'), findsOneWidget);
       expect(find.byIcon(Icons.stop), findsNothing);
     });
 

@@ -6,6 +6,7 @@
 ///
 /// Also verifies that the default providers DO throw UnimplementedError,
 /// confirming the architecture boundary is intact.
+library;
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -38,8 +39,7 @@ class _FakeStoragePort implements StoragePort {
   @override
   Future<String?> getString(String key) async => _store[key];
   @override
-  Future<void> setString(String key, String value) async =>
-      _store[key] = value;
+  Future<void> setString(String key, String value) async => _store[key] = value;
   @override
   Future<void> remove(String key) async => _store.remove(key);
   @override
@@ -143,7 +143,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> createInboundSession({
     required String sessionId,
@@ -152,7 +153,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     String? localOtkPairBase64,
     required String remoteIdentityKeyBase64,
     required String remoteHandshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> encryptMessage({
     required String stateBase64,
@@ -161,12 +163,14 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String recipientDeviceId,
     required String sessionId,
     String? handshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> decryptMessage({
     required String stateBase64,
     required Map<String, dynamic> envelope,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<String> exportSessionEnvelope({
     required String stateBase64,
@@ -175,7 +179,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
   @override
   Future<String> restoreSessionEnvelope({
     required String envelopeBase64,
@@ -184,7 +189,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
 }
 
 class _FakeAnalyticsPort implements AnalyticsPort {
@@ -234,8 +240,7 @@ void main() {
             .overrideWithValue(_FakeHttpClientPort()),
         core_flutter.wsClientProvider.overrideWithValue(_FakeWsClientPort()),
         core_flutter.e2eeAdapterProvider.overrideWithValue(_FakeE2eeBridge()),
-        core_flutter.analyticsProvider
-            .overrideWithValue(_FakeAnalyticsPort()),
+        core_flutter.analyticsProvider.overrideWithValue(_FakeAnalyticsPort()),
         core_flutter.errorReporterProvider
             .overrideWithValue(_FakeErrorReporterPort()),
         core_flutter.pushProvider.overrideWithValue(NoopPushPort()),
@@ -251,10 +256,8 @@ void main() {
         }
       }
 
-      final failures = results.entries
-          .where((e) => !e.value)
-          .map((e) => e.key)
-          .toList();
+      final failures =
+          results.entries.where((e) => !e.value).map((e) => e.key).toList();
 
       expect(failures, isEmpty,
           reason: 'Providers threw during read: $failures');

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
 
-/// P0 止血：文件下载尚未实现，下载按钮已禁用。
-/// 后续 P1/P2 实现完整文件下载链路后恢复交互。
+/// File download is not implemented yet, so the download button stays disabled.
 class FileBubble extends StatelessWidget {
   const FileBubble({required this.message, required this.isMe, super.key});
+
   final Message message;
   final bool isMe;
 
@@ -28,8 +28,11 @@ class FileBubble extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.insert_drive_file,
-              size: 36, color: Theme.of(context).colorScheme.primary),
+          Icon(
+            Icons.insert_drive_file,
+            size: 36,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(width: 12),
           Flexible(
             child: Column(
@@ -53,7 +56,7 @@ class FileBubble extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Tooltip(
-            message: '文件下载暂不支持',
+            message: 'File download is not supported yet',
             child: IconButton(
               icon: const Icon(Icons.download),
               onPressed: null,

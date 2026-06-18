@@ -118,7 +118,7 @@ void main() {
       // Tooltip should exist with unsupported message
       expect(find.byType(Tooltip), findsOneWidget);
       final tooltip = tester.widget<Tooltip>(find.byType(Tooltip));
-      expect(tooltip.message, contains('暂不支持'));
+      expect(tooltip.message, contains('not supported yet'));
     });
   });
 

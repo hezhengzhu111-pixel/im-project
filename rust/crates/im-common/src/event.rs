@@ -349,6 +349,59 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn message_type_maps_text_and_db_codes() {
+        let cases = [
+            ("TEXT", MessageType::Text, 1, "TEXT"),
+            ("image", MessageType::Image, 2, "IMAGE"),
+            (" file ", MessageType::File, 3, "FILE"),
+            ("VOICE", MessageType::Voice, 4, "VOICE"),
+            ("VIDEO", MessageType::Video, 5, "VIDEO"),
+            ("AI_REPLY", MessageType::AiReply, 6, "AI_REPLY"),
+            ("SYSTEM", MessageType::System, 7, "SYSTEM"),
+            ("unknown", MessageType::Text, 1, "TEXT"),
+        ];
+
+        for (raw, expected, code, label) in cases {
+            let message_type = MessageType::from_text(raw);
+            assert_eq!(message_type, expected);
+            assert_eq!(message_type.db_code(), code);
+            assert_eq!(message_type.as_str(), label);
+        }
+    }
+
+    #[test]
+    fn message_status_maps_text_and_db_codes() {
+        let cases = [
+            ("SENT", MessageStatus::Sent, 1, "SENT"),
+            ("delivered", MessageStatus::Delivered, 2, "DELIVERED"),
+            (" read ", MessageStatus::Read, 3, "READ"),
+            ("RECALLED", MessageStatus::Recalled, 4, "RECALLED"),
+            ("DELETED", MessageStatus::Deleted, 5, "DELETED"),
+            ("unknown", MessageStatus::Sent, 1, "SENT"),
+        ];
+
+        for (raw, expected, code, label) in cases {
+            let status = MessageStatus::from_text(raw);
+            assert_eq!(status, expected);
+            assert_eq!(status.db_code(), code);
+            assert_eq!(status.as_str(), label);
+        }
+    }
+
+    #[test]
+    fn im_event_new_sets_required_defaults() {
+        let event = ImEvent::new(ImEventType::MessageCreated, "p_1_2".to_string());
+        assert_eq!(event.event_type, ImEventType::MessageCreated);
+        assert_eq!(event.conversation_id, "p_1_2");
+        assert!(!event.event_id.is_empty());
+        assert!(!event.group);
+        assert!(event.message_id.is_none());
+        assert!(event.payload.is_none());
+        assert!(event.device_envelopes.is_none());
+        assert!(event.read_receipt.is_none());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

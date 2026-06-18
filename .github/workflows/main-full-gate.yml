@@ -1,0 +1,55 @@
+name: Main Full Gate
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: "3.29"
+
+jobs:
+  main-full:
+    name: Main Full Gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install coverage tools
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run Main Full Gate
+        run: python scripts/test.py main-full
+
+      - name: Upload gate and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-full-gate-reports
+          path: |
+            build/reports/
+            build/coverage/

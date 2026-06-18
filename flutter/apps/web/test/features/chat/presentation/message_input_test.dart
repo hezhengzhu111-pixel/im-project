@@ -209,10 +209,19 @@ void main() {
     // P0 止血：mic 按钮已移除
     // -----------------------------------------------------------------------
 
-    testWidgets('mic 按钮不存在', (tester) async {
+    testWidgets('mic button is visible but disabled with semantics',
+        (tester) async {
       await tester.pumpWidget(buildSubject());
 
-      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+      final micButton = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.mic),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(micButton.onPressed, isNull);
+      expect(find.bySemanticsLabel('Voice input'), findsOneWidget);
       expect(find.byIcon(Icons.stop), findsNothing);
     });
 

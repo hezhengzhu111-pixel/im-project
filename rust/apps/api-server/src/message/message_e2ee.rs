@@ -131,6 +131,11 @@ pub(crate) fn private_e2ee_envelopes_from_request(
                 "single e2eeEnvelope must target exactly one recipient device".to_string(),
             ));
         }
+        let recipient_device_id = device_ids.first().ok_or_else(|| {
+            AppError::BadRequest(
+                "single e2eeEnvelope must target exactly one recipient device".to_string(),
+            )
+        })?;
         let recipient_user_id = envelope
             .recipient_user_id
             .as_deref()
@@ -141,7 +146,7 @@ pub(crate) fn private_e2ee_envelopes_from_request(
             sender_user_id,
             receiver_user_id,
             recipient_user_id,
-            &device_ids[0],
+            recipient_device_id,
             envelope,
         )?;
     }

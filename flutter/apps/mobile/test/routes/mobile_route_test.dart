@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,47 +31,68 @@ class _FakeHttpClientPort implements HttpClientPort {
 
   @override
   Future<ApiResponse<T>> post<T>(String path,
-          {dynamic body, required T Function(Map<String, dynamic>) fromJson}) async =>
+          {dynamic body,
+          required T Function(Map<String, dynamic>) fromJson}) async =>
       ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
 
   @override
   Future<ApiResponse<T>> put<T>(String path,
-          {dynamic body, required T Function(Map<String, dynamic>) fromJson}) async =>
+          {dynamic body,
+          required T Function(Map<String, dynamic>) fromJson}) async =>
       ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
 
   @override
   Future<ApiResponse<T>> delete<T>(String path,
-          {dynamic body, Map<String, dynamic>? queryParameters, required T Function(Map<String, dynamic>) fromJson}) async =>
+          {dynamic body,
+          Map<String, dynamic>? queryParameters,
+          required T Function(Map<String, dynamic>) fromJson}) async =>
       ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
 }
 
 class _FakeWsClient implements WsClientPort {
-  @override Stream<WsEvent> get events => const Stream.empty();
-  @override Stream<WsConnectionState> get connectionState => const Stream.empty();
-  @override bool get isConnected => true;
-  @override String get wsBaseUrl => 'ws://localhost';
-  @override Future<void> connect(String url) async {}
-  @override Future<void> disconnect() async {}
-  @override Future<void> reconnect() async {}
-  @override void send(Map<String, dynamic> message) {}
+  @override
+  Stream<WsEvent> get events => const Stream.empty();
+  @override
+  Stream<WsConnectionState> get connectionState => const Stream.empty();
+  @override
+  bool get isConnected => true;
+  @override
+  String get wsBaseUrl => 'ws://localhost';
+  @override
+  Future<void> connect(String url) async {}
+  @override
+  Future<void> disconnect() async {}
+  @override
+  Future<void> reconnect() async {}
+  @override
+  void send(Map<String, dynamic> message) {}
 }
 
 class _FakeAnalyticsPort implements AnalyticsPort {
-  @override void trackEvent(String eventName, [Map<String, dynamic>? properties]) {}
-  @override void setUserId(String? userId) {}
-  @override void setUserProperties(Map<String, dynamic> properties) {}
+  @override
+  void trackEvent(String eventName, [Map<String, dynamic>? properties]) {}
+  @override
+  void setUserId(String? userId) {}
+  @override
+  void setUserProperties(Map<String, dynamic> properties) {}
 }
 
 class _FakeAuthRepository implements AuthRepository {
   @override
   Future<UserAuthResponse> login(LoginRequest request) async =>
-      UserAuthResponse(success: true, user: const User(id: 'u1', username: 'test'), token: 't');
+      UserAuthResponse(
+          success: true,
+          user: const User(id: 'u1', username: 'test'),
+          token: 't');
   @override
   Future<UserAuthResponse> register(RegisterRequest request) async =>
-      UserAuthResponse(success: true, user: const User(id: 'u1', username: 'test'), token: 't');
+      UserAuthResponse(
+          success: true,
+          user: const User(id: 'u1', username: 'test'),
+          token: 't');
   @override
-  Future<AuthResult> restoreSession() async =>
-      AuthSuccess(user: const User(id: 'u1', username: 'test'), permissions: []);
+  Future<AuthResult> restoreSession() async => AuthSuccess(
+      user: const User(id: 'u1', username: 'test'), permissions: []);
   @override
   Future<void> logout() async {}
 }
@@ -97,6 +120,31 @@ Widget _buildRouteApp(Widget page) {
 }
 
 void main() {
+  group('Mobile route inventory', () {
+    test('app_router.dart declares every main business route', () {
+      final routerSource =
+          File('lib/core/router/app_router.dart').readAsStringSync();
+      const expectedRoutes = [
+        '/login',
+        '/register',
+        '/chat',
+        '/contacts',
+        '/contacts/add',
+        '/groups',
+        '/groups/create',
+        '/moments',
+        '/moments/notifications',
+        '/settings',
+        '/settings/profile',
+        '/settings/ai',
+      ];
+      for (final route in expectedRoutes) {
+        expect(routerSource, contains("path: '$route'"), reason: route);
+      }
+      expect(routerSource, contains("path: '/:pathMatch(.*)*'"));
+    });
+  });
+
   group('Mobile route tests - business routes render real pages', () {
     testWidgets('/contacts/add renders AddFriendPage', (tester) async {
       await tester.pumpWidget(_buildRouteApp(const AddFriendPage()));
@@ -114,7 +162,8 @@ void main() {
       expect(find.text('Placeholder'), findsNothing);
     });
 
-    testWidgets('/moments/notifications renders MomentsNotificationsPage', (tester) async {
+    testWidgets('/moments/notifications renders MomentsNotificationsPage',
+        (tester) async {
       await tester.pumpWidget(_buildRouteApp(const MomentsNotificationsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(MomentsNotificationsPage), findsOneWidget);
@@ -122,7 +171,8 @@ void main() {
       expect(find.text('Placeholder'), findsNothing);
     });
 
-    testWidgets('/settings/profile renders ProfileSettingsPage', (tester) async {
+    testWidgets('/settings/profile renders ProfileSettingsPage',
+        (tester) async {
       await tester.pumpWidget(_buildRouteApp(const ProfileSettingsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileSettingsPage), findsOneWidget);

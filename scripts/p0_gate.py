@@ -103,16 +103,25 @@ def run_gate(base_url: str, db_url: Optional[str], skip_sit_db: bool = False) ->
         _step(f"{s} test --workspace", "cargo test --workspace", str(rust_root), timeout=600)))
 
     # cargo clippy on P0 crates (full workspace may have too many warnings)
-    p0_crates = ["api-server", "im-e2ee-ffi", "im-flutter-bridge", "im-common"]
-    for crate in p0_crates:
-        crate_path = rust_root / crate
-        if crate_path.exists():
-            results.append((f"{s} clippy {crate}",
-                _step(f"{s} clippy {crate}",
-                      f"cargo clippy -p {crate} --all-targets -- -D warnings",
-                      str(rust_root))))
-        else:
-            print(f"  [SKIP] Rust crate '{crate}' not found")
+    p0_crates = {
+        "api-server": "apps/api-server",
+        "im-server": "apps/im-server",
+        "im-common": "crates/im-common",
+        "im-e2ee-core": "crates/im-e2ee-core",
+        "im-e2ee-ffi": "crates/im-e2ee-ffi",
+        "im-flutter-bridge": "crates/im-flutter-bridge",
+        "im-e2ee-wasm": "crates/im-e2ee-wasm",
+    }
+    for crate, rel_path in p0_crates.items():
+        crate_path = rust_root / rel_path
+        if not crate_path.exists():
+            print(f"  [FAIL] Rust crate path missing for '{crate}': {crate_path}")
+            results.append((f"{s} clippy {crate}", False))
+            continue
+        results.append((f"{s} clippy {crate}",
+            _step(f"{s} clippy {crate}",
+                  f"cargo clippy -p {crate} --all-targets -- -D warnings",
+                  str(rust_root))))
 
     # ---- 2. Flutter analyze ----
     s = "2. Flutter analyze"

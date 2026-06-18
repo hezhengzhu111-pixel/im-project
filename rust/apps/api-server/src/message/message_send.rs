@@ -71,7 +71,11 @@ pub(crate) async fn send_private(
                 db,
             )
             .await?;
-            validate_recipient_devices_not_revoked(db, &[item.recipient_device_id.clone()]).await?;
+            validate_recipient_devices_not_revoked(
+                db,
+                std::slice::from_ref(&item.recipient_device_id),
+            )
+            .await?;
         }
     }
     let response_envelope = request.e2ee_envelope.clone().or_else(|| {

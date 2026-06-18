@@ -2,7 +2,7 @@
 #![cfg(feature = "integration-tests")]
 
 use api_server_rs::config::AppConfig;
-use axum::body::Body;
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use im_common::auth::Claims;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
@@ -40,6 +40,13 @@ fn authed_request(method: &str, uri: &str) -> Request<Body> {
         .header("Authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap()
+}
+
+async fn response_text(response: axum::response::Response<Body>) -> String {
+    let bytes = to_bytes(response.into_body(), 1_000_000)
+        .await
+        .expect("read response body");
+    String::from_utf8_lossy(&bytes).to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +168,120 @@ async fn test_route_moments_feed_exists() {
     assert!(
         response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
         "route /api/moments/feed should exist and reach the handler, got {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_route_e2ee_conversation_session_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request(
+            "GET",
+            "/api/e2ee/conversations/p_1_2/session",
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response_text(response).await;
+    assert!(
+        status != StatusCode::UNAUTHORIZED
+            && (status != StatusCode::NOT_FOUND || body.contains("e2ee session not found")),
+        "route /api/e2ee/conversations/:conversation_id/session should exist and reach the handler, got {status} with {body}",
+    );
+}
+
+#[tokio::test]
+async fn test_route_e2ee_conversation_rotate_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/e2ee/conversations/p_1_2/rotate",
+        ))
+        .await
+        .unwrap();
+    assert!(
+        response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
+        "route /api/e2ee/conversations/:conversation_id/rotate should exist and reach the handler, got {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_route_e2ee_remove_group_sender_key_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request(
+            "DELETE",
+            "/api/e2ee/groups/123/sender-keys/456",
+        ))
+        .await
+        .unwrap();
+    assert!(
+        response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
+        "route /api/e2ee/groups/:group_id/sender-keys/:user_id should exist and reach the handler, got {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_route_e2ee_devices_by_user_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request("GET", "/api/e2ee/devices/123"))
+        .await
+        .unwrap();
+    assert!(
+        response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
+        "route /api/e2ee/devices/:user_id should exist and reach the handler, got {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_route_e2ee_group_devices_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request("GET", "/api/e2ee/groups/123/devices"))
+        .await
+        .unwrap();
+    assert!(
+        response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
+        "route /api/e2ee/groups/:group_id/devices should exist and reach the handler, got {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_route_message_group_cursor_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request(
+            "GET",
+            "/api/message/group/123/cursor?size=20",
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response_text(response).await;
+    assert!(
+        status != StatusCode::UNAUTHORIZED
+            && (status != StatusCode::NOT_FOUND || body.contains("group not found")),
+        "route /api/message/group/:group_id/cursor should exist and reach the handler, got {status} with {body}",
+    );
+}
+
+#[tokio::test]
+async fn test_route_moments_media_exists() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(authed_request("POST", "/api/moments/123/media"))
+        .await
+        .unwrap();
+    assert!(
+        response.status() != StatusCode::NOT_FOUND && response.status() != StatusCode::UNAUTHORIZED,
+        "route /api/moments/:id/media should exist and reach the handler, got {}",
         response.status()
     );
 }

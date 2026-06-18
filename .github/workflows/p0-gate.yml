@@ -58,11 +58,24 @@ jobs:
 
       - name: cargo clippy (P0 crates)
         run: |
-          for crate in api-server im-e2ee-ffi im-flutter-bridge im-common; do
-            if [ -d "$crate" ]; then
-              echo "--- clippy $crate ---"
-              cargo clippy -p "$crate" --all-targets -- -D warnings
+          set -euo pipefail
+          declare -A crates=(
+            ["api-server"]="apps/api-server"
+            ["im-server"]="apps/im-server"
+            ["im-common"]="crates/im-common"
+            ["im-e2ee-core"]="crates/im-e2ee-core"
+            ["im-e2ee-ffi"]="crates/im-e2ee-ffi"
+            ["im-flutter-bridge"]="crates/im-flutter-bridge"
+            ["im-e2ee-wasm"]="crates/im-e2ee-wasm"
+          )
+          for crate in "${!crates[@]}"; do
+            path="${crates[$crate]}"
+            if [ ! -d "$path" ]; then
+              echo "::error::missing Rust crate path for $crate: $path"
+              exit 1
             fi
+            echo "--- clippy $crate ($path) ---"
+            cargo clippy -p "$crate" --all-targets -- -D warnings
           done
 
   # ==========================================================================

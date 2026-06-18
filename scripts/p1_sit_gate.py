@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
+
+from gate_common import sanitize
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ARTIFACT_ROOT = ROOT / "artifacts" / "p1-sit"
@@ -65,17 +68,22 @@ def run_command(
         log.write(f"# {name}\n")
         log.write(f"started={started}\n")
         log.write(f"cwd={cwd}\n")
-        log.write(f"cmd={json.dumps(cmd)}\n\n")
+        log.write(f"cmd={sanitize(json.dumps(cmd))}\n\n")
         log.flush()
         try:
             proc = subprocess.run(
                 cmd,
                 cwd=str(cwd),
-                stdout=log,
-                stderr=subprocess.STDOUT,
                 text=True,
+                capture_output=True,
                 timeout=timeout,
+                encoding="utf-8",
+                errors="replace",
             )
+            if proc.stdout:
+                log.write(sanitize(proc.stdout))
+            if proc.stderr:
+                log.write(sanitize(proc.stderr))
             status = "pass" if proc.returncode == 0 else "fail"
             if allow_failure and proc.returncode != 0:
                 status = "allowed-fail"
@@ -234,10 +242,13 @@ def check_required_scripts(artifact_dir: Path) -> list[StepResult]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run P1 staged SIT gate")
-    parser.add_argument("--base-url", default="http://localhost:8082")
+    parser.add_argument("--base-url", default=os.environ.get("IM_API_BASE", "http://localhost:8082"))
     parser.add_argument(
         "--db-url",
-        default="mysql://root:root123@127.0.0.1:3306/service_message_service_db",
+        default=os.environ.get(
+            "IM_DB_URL",
+            "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
+        ),
     )
     parser.add_argument("--compose-file", default=str(ROOT / "docker-compose.sit.yml"))
     parser.add_argument("--artifact-dir", default=None)

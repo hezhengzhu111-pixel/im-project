@@ -439,7 +439,7 @@ async fn test_e2ee_session_request_accept_reject_flow() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // User A requests encryption
     let (status, body) = post_json(
@@ -1082,7 +1082,7 @@ async fn test_e2ee_non_friends_cannot_request_encryption() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     let (status, body) = post_json(
         &app,
@@ -1126,7 +1126,7 @@ async fn test_e2ee_encrypted_rejects_overwrite_by_request() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1194,7 +1194,7 @@ async fn test_e2ee_pending_same_requester_idempotent() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests first time
     let (status, _) = post_json(
@@ -1256,7 +1256,7 @@ async fn test_e2ee_pending_requester_cannot_accept_own() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests
     let (status, _) = post_json(
@@ -1304,7 +1304,7 @@ async fn test_e2ee_encrypted_rejects_reject() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1369,7 +1369,7 @@ async fn test_e2ee_disable_encrypted_session() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1442,7 +1442,7 @@ async fn test_e2ee_non_participant_blocked_by_friendship_check() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests
     let (status, _) = post_json(
@@ -1553,7 +1553,7 @@ async fn test_e2ee_pending_other_requester_request_rejected() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1625,7 +1625,7 @@ async fn test_e2ee_accept_twice_returns_conflict() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1688,7 +1688,7 @@ async fn test_e2ee_reject_twice_returns_conflict() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1751,7 +1751,7 @@ async fn test_e2ee_disable_sets_disabled_fields() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // A requests → pending
     let (status, _) = post_json(
@@ -1834,7 +1834,7 @@ async fn test_e2ee_disable_no_existing_session_writes_disabled_at() {
         } else {
             (&user_b.user_id, &user_a.user_id)
         };
-    let session_id = format!("{id_a}_{id_b}");
+    let session_id = format!("p_{id_a}_{id_b}");
 
     // 直接调用 disable，无任何已有的 session 记录 → INSERT 路径
     let (status, _) = post_json(

@@ -77,7 +77,12 @@ async fn test_get_settings_default() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(response.status(), StatusCode::OK);
     let json = read_json(response).await;
     assert_eq!(json["code"], 200);
-    assert!(json["data"]["general"].is_object());
+    assert_eq!(json["data"]["privacy"]["readReceipt"], true);
+    assert_eq!(json["data"]["privacy"]["onlineStatus"], true);
+    assert_eq!(json["data"]["privacy"]["strangerAdd"], true);
+    assert_eq!(json["data"]["privacy"]["momentsVisible"], true);
+    assert_eq!(json["data"]["message"]["notification"], true);
+    assert_eq!(json["data"]["message"]["sound"], true);
     Ok(())
 }
 

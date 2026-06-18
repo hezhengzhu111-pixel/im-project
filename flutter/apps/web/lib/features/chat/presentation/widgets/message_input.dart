@@ -268,6 +268,16 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                     tooltip: 'Emoji',
                   ),
                 ),
+                Semantics(
+                  label: loc.a11yVoiceInput,
+                  button: true,
+                  enabled: false,
+                  child: _InputIconButton(
+                    icon: Icons.mic,
+                    onPressed: null,
+                    tooltip: loc.a11yVoiceInput,
+                  ),
+                ),
                 Expanded(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: 42),

@@ -1,0 +1,84 @@
+name: Gray Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Backend base URL for SIT
+        type: string
+        default: http://localhost:8082
+      db_url:
+        description: MySQL URL for plaintext scan
+        type: string
+        default: mysql://root:root123@127.0.0.1:3306/service_message_service_db
+      run_sit:
+        description: Run P0/P1 SIT
+        type: boolean
+        default: true
+      upload_artifacts:
+        description: Upload reports and SIT artifacts
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: "3.29"
+  IM_API_BASE: ${{ inputs.base_url }}
+
+jobs:
+  gray-release:
+    name: Gray Release Gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install coverage tools
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Install Python SIT deps
+        run: pip install requests pymysql
+
+      - name: Run Gray Release Gate
+        if: ${{ inputs.run_sit }}
+        env:
+          IM_DB_URL: ${{ inputs.db_url }}
+        run: python scripts/test.py gray-release
+
+      - name: Mark SIT not run
+        if: ${{ !inputs.run_sit }}
+        run: |
+          mkdir -p build/reports
+          echo "# Gray Release Gate" > build/reports/gray-gate-report.md
+          echo "NOT RUN: run_sit=false" >> build/reports/gray-gate-report.md
+          exit 1
+
+      - name: Upload gray release artifacts
+        if: ${{ always() && inputs.upload_artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gray-release-gate-artifacts
+          path: |
+            build/reports/
+            build/coverage/
+            artifacts/p1-sit/

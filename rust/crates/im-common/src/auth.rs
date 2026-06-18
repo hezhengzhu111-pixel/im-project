@@ -123,11 +123,11 @@ mod tests {
     use super::*;
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 
-    fn sign_token(secret: &str) -> String {
+    fn sign_token_with_type(secret: &str, typ: &str) -> String {
         let claims = Claims {
             user_id: 1,
             username: "test".to_string(),
-            typ: "access".to_string(),
+            typ: typ.to_string(),
             jti: Some("jti1".to_string()),
             sub: Some("test".to_string()),
             iat: Some(1_000_000),
@@ -139,6 +139,28 @@ mod tests {
             &EncodingKey::from_secret(secret.as_bytes()),
         )
         .expect("encode should succeed")
+    }
+
+    fn sign_token(secret: &str) -> String {
+        sign_token_with_type(secret, "access")
+    }
+
+    #[test]
+    fn parse_bearer_accepts_raw_quoted_and_bearer_values() {
+        assert_eq!(
+            parse_bearer(Some("raw-token")),
+            Some("raw-token".to_string())
+        );
+        assert_eq!(
+            parse_bearer(Some("\" Bearer quoted-token \"")),
+            Some("quoted-token".to_string())
+        );
+        assert_eq!(
+            parse_bearer(Some("Bearer bearer-token")),
+            Some("bearer-token".to_string())
+        );
+        assert_eq!(parse_bearer(Some("   ")), None);
+        assert_eq!(parse_bearer(None), None);
     }
 
     #[test]
@@ -172,6 +194,43 @@ mod tests {
         let identity = validate_access_token(&token, secret).expect("should succeed");
         assert_eq!(identity.user_id, 1);
         assert_eq!(identity.username, "test");
+    }
+
+    #[test]
+    fn non_access_token_is_rejected() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = sign_token_with_type(secret, "refresh");
+        let result = validate_access_token(&token, secret);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not access"));
+    }
+
+    #[test]
+    fn sign_gateway_headers_contains_required_headers() {
+        let headers = sign_gateway_headers(7, "alice", "gateway-secret").expect("sign headers");
+        let lookup = |name: &str| {
+            headers
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(lookup("X-User-Id"), Some("7"));
+        assert_eq!(lookup("X-Username"), Some("alice"));
+        assert_eq!(lookup("X-Auth-User"), Some("bnVsbA"));
+        assert_eq!(lookup("X-Auth-Perms"), Some("bnVsbA"));
+        assert_eq!(lookup("X-Auth-Data"), Some("bnVsbA"));
+        assert!(lookup("X-Auth-Ts").is_some());
+        assert!(lookup("X-Auth-Nonce").is_some());
+        assert!(lookup("X-Auth-Sign").is_some());
+    }
+
+    #[test]
+    fn hmac_base64_and_constant_time_helpers_work() {
+        let signature = hmac_sha256_base64_url("secret", b"payload").expect("hmac");
+        assert!(!signature.is_empty());
+        assert_eq!(base64_url("null"), "bnVsbA");
+        assert!(constant_time_eq("same", "same"));
+        assert!(!constant_time_eq("same", "different"));
     }
 
     #[test]

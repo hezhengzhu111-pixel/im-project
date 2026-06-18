@@ -253,12 +253,10 @@ async fn test_e2ee_group_enable_admin_to_nonmember_returns_403() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
+    let message = body["message"].as_str().unwrap_or("");
     assert!(
-        body["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("not a group member"),
-        "error message should mention 'not a group member': {body}"
+        message.contains("not a group member") || message.contains("not members of group"),
+        "error message should mention group membership failure: {body}"
     );
 
     // 验证加密状态未被启用（验证校验在写入之前执行）
@@ -319,6 +317,21 @@ async fn test_e2ee_group_push_sender_key_to_member_succeeds() {
 
     // 为 owner 注册设备
     let device_id = register_device(&app, &owner.token).await;
+
+    let (status, body) = post_json(
+        &app,
+        &format!("/api/e2ee/groups/{group_id}/enable"),
+        Some(&owner.token),
+        &json!({
+            "senderKeys": [{
+                "recipientId": owner.user_id,
+                "deviceId": &device_id,
+                "encryptedSenderKey": "b3duZXJfa2V5"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "enable encryption failed: {body}");
 
     let (status, body) = post_json(
         &app,
