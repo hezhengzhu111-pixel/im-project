@@ -74,6 +74,7 @@ RUNTIME_VOLUME_SOURCES = {
     "redis_group_hot_data_4": RUNTIME_REDIS_DIR / "group-hot-4",
     "im_files": RUNTIME_FILES_DIR,
     "sql_init_file": PROJECT_ROOT / "sql" / "mysql8" / "init_all.sql",
+    "sql_migration_file": PROJECT_ROOT / "sql" / "mysql8" / "migrations",
 }
 
 
@@ -168,9 +169,23 @@ def rewrite_compose_for_runtime(compose: dict, template_dir: Path) -> dict:
     if not isinstance(services, dict):
         fatal("Runtime compose template does not define services.")
 
-    for service in services.values():
+    # Remove im-db-migrate service as we now manage migrations via imctl.py
+    services.pop("im-db-migrate", None)
+
+    # Remove dependencies on im-db-migrate from other services
+    for service_name, service in services.items():
         if not isinstance(service, dict):
             continue
+        depends_on = service.get("depends_on")
+        if isinstance(depends_on, list):
+            service["depends_on"] = [dep for dep in depends_on if dep != "im-db-migrate"]
+            if not service["depends_on"]:
+                del service["depends_on"]
+        elif isinstance(depends_on, dict):
+            depends_on.pop("im-db-migrate", None)
+            if not depends_on:
+                del service["depends_on"]
+
         rewrite_build_context(service, template_dir)
         volumes = service.get("volumes")
         if isinstance(volumes, list):

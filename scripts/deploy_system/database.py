@@ -63,8 +63,16 @@ def calculate_checksum(file_path: Path) -> str:
 
 def ensure_schema_migrations_table(config: DeploymentConfig) -> None:
     """Create schema_migrations table if it doesn't exist."""
+    # Get first declared database name to use
+    declared = declared_database_names(config.sql_init_file)
+    if not declared:
+        fatal("No databases declared in init SQL file")
+
+    db_name = declared[0]
+
+    # Create table in the first database
     create_table_sql = f"""
-    CREATE TABLE IF NOT EXISTS {SCHEMA_MIGRATIONS_TABLE} (
+    CREATE TABLE IF NOT EXISTS {db_name}.{SCHEMA_MIGRATIONS_TABLE} (
         version VARCHAR(128) PRIMARY KEY,
         checksum VARCHAR(64) NOT NULL,
         applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -77,9 +85,16 @@ def applied_migrations(config: DeploymentConfig) -> dict[str, str]:
     """Get all applied migrations with their checksums."""
     ensure_schema_migrations_table(config)
 
+    # Get database name
+    declared = declared_database_names(config.sql_init_file)
+    db_name = declared[0] if declared else None
+
+    if not db_name:
+        return {}
+
     result = mysql_exec(
         config,
-        sql=f"SELECT version, checksum FROM {SCHEMA_MIGRATIONS_TABLE};",
+        sql=f"SELECT version, checksum FROM {db_name}.{SCHEMA_MIGRATIONS_TABLE};",
         capture_output=True,
     )
 
@@ -98,9 +113,15 @@ def applied_migrations(config: DeploymentConfig) -> dict[str, str]:
 
 def mark_migration_applied(config: DeploymentConfig, version: str, checksum: str) -> None:
     """Mark a migration as applied."""
+    declared = declared_database_names(config.sql_init_file)
+    db_name = declared[0] if declared else None
+
+    if not db_name:
+        fatal("Cannot mark migration: no database available")
+
     mysql_exec(
         config,
-        sql=f"INSERT INTO {SCHEMA_MIGRATIONS_TABLE} (version, checksum) VALUES ('{version}', '{checksum}');",
+        sql=f"INSERT INTO {db_name}.{SCHEMA_MIGRATIONS_TABLE} (version, checksum) VALUES ('{version}', '{checksum}');",
     )
 
 
@@ -290,7 +311,13 @@ def reset_database(
 
     # Clear migration tracking and re-apply all migrations
     ensure_schema_migrations_table(config)
-    mysql_exec(config, sql=f"TRUNCATE TABLE {SCHEMA_MIGRATIONS_TABLE};")
+
+    # Get database name
+    declared = declared_database_names(config.sql_init_file)
+    db_name = declared[0] if declared else None
+    if db_name:
+        mysql_exec(config, sql=f"TRUNCATE TABLE {db_name}.{SCHEMA_MIGRATIONS_TABLE};")
+
     apply_pending_migrations(config)
 
     print("[DB] reset complete")

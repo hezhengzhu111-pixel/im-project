@@ -77,12 +77,14 @@ def build_parser() -> argparse.ArgumentParser:
     db_sub = db.add_subparsers(dest="db_command")
     db_sub.add_parser("check", help="检查数据库状态")
     db_sub.add_parser("migrate", help="执行数据库迁移")
-    db_sub.add_parser("reset", help="重置数据库（清空后重新初始化）")
+    db_reset = db_sub.add_parser("reset", help="重置数据库（清空后重新初始化）")
+    db_reset.add_argument("--yes", action="store_true", help="自动确认危险操作")
 
     # clean command - 清理
     clean = sub.add_parser("clean", help="清理构建产物或运行时文件")
     clean.add_argument("target", choices=["runtime", "work", "dist", "logs", "cache", "all", "source-pollution"],
                        help="清理目标")
+    clean.add_argument("--yes", action="store_true", help="自动确认危险操作")
 
     # doctor command - 环境检查
     sub.add_parser("doctor", help="检查环境和依赖")
@@ -106,15 +108,15 @@ def _clean(target: str, *, yes: bool) -> None:
 
     targets = []
     if target in {"runtime", "all"}:
-        targets.append(paths.runtime)
+        targets.append(paths.RUNTIME_DIR)
     if target in {"work", "all"}:
-        targets.append(paths.work)
+        targets.append(paths.WORK_DIR)
     if target in {"dist", "all"}:
-        targets.append(paths.dist)
+        targets.append(paths.DIST_DIR)
     if target in {"logs", "all"}:
-        targets.append(paths.logs)
+        targets.append(paths.LOGS_DIR)
     if target in {"cache", "all"}:
-        targets.append(paths.cache)
+        targets.append(paths.CACHE_DIR)
     if target == "source-pollution":
         from .source_guard import clean_source_pollution
         clean_source_pollution(paths.PROJECT_ROOT)
