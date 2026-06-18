@@ -44,8 +44,6 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
-.flutter-plugins-dependencies
-.flutter-plugins
 *.iml
 
 # ===========================================
@@ -102,15 +100,9 @@ init.md
 .git.backup/
 
 # ===========================================
-# 生成文件
+# 编译和缓存（IDE 和前端工具生成）
 # ===========================================
-*.g.dart
-*.freezed.dart
-*.mocks.dart
-*.config.dart
 *.tsbuildinfo
-.cache
 .parcel-cache
 .eslintcache
 .stylelintcache
-/docs/superpowers/
