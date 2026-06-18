@@ -48,7 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # up command - 完整部署
-    sub.add_parser("up", help="完整部署：准备环境、启动中间件、初始化数据库、启动服务")
+    up = sub.add_parser("up", help="完整部署：准备环境、启动中间件、初始化数据库、启动服务")
+    up.add_argument("--dry-run", action="store_true", help="仅显示将要执行的操作，不实际执行")
 
     # build command - 构建
     build = sub.add_parser("build", help="增量构建所有组件")

@@ -4,11 +4,9 @@ profile: sit
 # 服务配置
 services:
   default:
-    - mysql8
-    - redis
-    - im-gateway
-    - im-service
-    - im-web
+    - im-server
+    - im-api-server
+    - im-frontend
 
   include_ai: true
 

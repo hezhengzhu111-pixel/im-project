@@ -4,11 +4,9 @@ profile: prod
 # 服务配置
 services:
   default:
-    - mysql8
-    - redis
-    - im-gateway
-    - im-service
-    - im-web
+    - im-server
+    - im-api-server
+    - im-frontend
     - im-spring-ai
 
   include_ai: true
