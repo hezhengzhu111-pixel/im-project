@@ -11,8 +11,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(TESTS_DIR / "common"))
 
 from gate_common import ROOT, StepResult, run_step, skip_step, write_gate_reports
 
@@ -20,8 +20,9 @@ from gate_common import ROOT, StepResult, run_step, skip_step, write_gate_report
 PYTHON = sys.executable
 TEST_REPORT_DIR = ROOT / "build" / "reports" / "test"
 
-RUST_ROOT = ROOT / "rust"
-FLUTTER_ROOT = ROOT / "flutter"
+# Use build/work isolated workspaces instead of source directories
+RUST_WORK_DIR = ROOT / "build" / "work" / "rust"
+FLUTTER_WORK_DIR = ROOT / "build" / "work" / "flutter"
 FLUTTER_TARGETS = [
     ("core", "packages/core"),
     ("core_flutter", "packages/core_flutter"),
@@ -41,19 +42,50 @@ RUST_PACKAGES = [
 ]
 
 
+def sync_source_to_work(source: Path, target: Path) -> None:
+    """Sync source directory to build/work for isolation."""
+    import shutil
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
+def ensure_work_workspace() -> None:
+    """Ensure build/work directories exist and are synced from source."""
+    RUST_WORK_DIR.parent.mkdir(parents=True, exist_ok=True)
+    FLUTTER_WORK_DIR.parent.mkdir(parents=True, exist_ok=True)
+
+    rust_source = ROOT / "rust"
+    flutter_source = ROOT / "flutter"
+
+    if rust_source.exists():
+        sync_source_to_work(rust_source, RUST_WORK_DIR)
+    if flutter_source.exists():
+        sync_source_to_work(flutter_source, FLUTTER_WORK_DIR)
+
+
 def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
     results: list[StepResult] = []
+
+    # Ensure we have isolated workspace
+    ensure_work_workspace()
+
+    # Set environment for isolated builds
+    env = os.environ.copy()
+    env["CARGO_HOME"] = str(ROOT / "build" / "cache" / "cargo-home")
+    env["CARGO_TARGET_DIR"] = str(ROOT / "build" / "cache" / "rust-target")
+
     commands = [
         ("Rust fmt", ["cargo", "fmt", "--check"], 300),
         ("Rust check", ["cargo", "check", "--workspace"], 900),
         ("Rust unit tests", ["cargo", "test", "--workspace"], 1200),
     ]
     for name, cmd, timeout in commands:
-        results.append(run_step(name, cmd, cwd=RUST_ROOT, timeout=timeout))
+        results.append(run_step(name, cmd, cwd=RUST_WORK_DIR, timeout=timeout, env=env))
         if results[-1].status == "FAIL" and not continue_on_error:
             return results
     for package, rel_path in RUST_PACKAGES:
-        package_path = RUST_ROOT / rel_path
+        package_path = RUST_WORK_DIR / rel_path
         if not package_path.exists():
             results.append(skip_step(f"Rust clippy {package}", f"missing package path {package_path}", critical=True))
         else:
@@ -61,8 +93,9 @@ def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
                 run_step(
                     f"Rust clippy {package}",
                     ["cargo", "clippy", "-p", package, "--all-targets", "--", "-D", "warnings"],
-                    cwd=RUST_ROOT,
+                    cwd=RUST_WORK_DIR,
                     timeout=900,
+                    env=env,
                 )
             )
         if results[-1].status == "FAIL" and not continue_on_error:
@@ -72,21 +105,29 @@ def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
 
 def flutter_steps(*, coverage: bool = False, continue_on_error: bool = False) -> list[StepResult]:
     results: list[StepResult] = []
+
+    # Ensure we have isolated workspace
+    ensure_work_workspace()
+
+    # Set environment for isolated builds
+    env = os.environ.copy()
+    env["PUB_CACHE"] = str(ROOT / "build" / "cache" / "pub-cache")
+
     for target, rel_path in FLUTTER_TARGETS:
-        target_dir = FLUTTER_ROOT / rel_path
+        target_dir = FLUTTER_WORK_DIR / rel_path
         if not target_dir.exists():
             results.append(skip_step(f"Flutter target {target}", f"missing target path {target_dir}", critical=True))
             if not continue_on_error:
                 return results
             continue
-        results.append(run_step(f"Flutter pub get {target}", ["flutter", "pub", "get"], cwd=target_dir, timeout=600))
+        results.append(run_step(f"Flutter pub get {target}", ["flutter", "pub", "get"], cwd=target_dir, timeout=600, env=env))
         if results[-1].status == "FAIL" and not continue_on_error:
             return results
-        results.append(run_step(f"Flutter analyze {target}", ["flutter", "analyze"], cwd=target_dir, timeout=600))
+        results.append(run_step(f"Flutter analyze {target}", ["flutter", "analyze"], cwd=target_dir, timeout=600, env=env))
         if results[-1].status == "FAIL" and not continue_on_error:
             return results
         test_cmd = ["flutter", "test", "--coverage"] if coverage else ["flutter", "test"]
-        results.append(run_step(f"Flutter test {target}", test_cmd, cwd=target_dir, timeout=1200))
+        results.append(run_step(f"Flutter test {target}", test_cmd, cwd=target_dir, timeout=1200, env=env))
         if results[-1].status == "FAIL" and not continue_on_error:
             return results
     return results
@@ -97,7 +138,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
         return [
             run_step(
                 f"Gray gate {args.command}",
-                [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", args.command],
+                [PYTHON, str(TESTS_DIR / "gates" / "gray_gate.py"), "--mode", args.command],
                 cwd=ROOT,
                 timeout=7200,
             )
@@ -108,7 +149,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
                 f"Gray gate {args.command}",
                 [
                     PYTHON,
-                    str(ROOT / "scripts" / "gray_gate.py"),
+                    str(TESTS_DIR / "gates" / "gray_gate.py"),
                     "--mode", "gray-release",
                     "--base-url", args.api_base,
                     "--db-url", args.db_url,
@@ -120,7 +161,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
     if args.command == "gray-signoff":
         cmd = [
             PYTHON,
-            str(ROOT / "scripts" / "gray_gate.py"),
+            str(TESTS_DIR / "gates" / "gray_gate.py"),
             "--mode", "gray-signoff",
             "--env", args.env,
             "--base-url", args.api_base,
@@ -147,7 +188,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
         return [
             run_step(
                 "Coverage gate",
-                [PYTHON, str(ROOT / "scripts" / "coverage_gate.py")],
+                [PYTHON, str(TESTS_DIR / "gates" / "coverage_gate.py")],
                 cwd=ROOT,
                 timeout=7200,
             )
@@ -156,7 +197,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
         return [
             run_step(
                 "Manifest gate",
-                [PYTHON, str(ROOT / "scripts" / "check_test_manifest.py")],
+                [PYTHON, str(TESTS_DIR / "gates" / "check_test_manifest.py")],
                 cwd=ROOT,
                 timeout=300,
             )
@@ -165,7 +206,7 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
         return [
             run_step(
                 "P1 SIT gate",
-                [PYTHON, str(ROOT / "scripts" / "p1_sit_gate.py")],
+                [PYTHON, str(TESTS_DIR / "sit" / "p1_sit_gate.py")],
                 cwd=ROOT,
                 timeout=7200,
             )

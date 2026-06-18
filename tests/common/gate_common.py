@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 REPORT_DIR = ROOT / "build" / "reports"
 GATE_REPORT_DIR = REPORT_DIR / "gates"
 

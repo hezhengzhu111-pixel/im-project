@@ -16,7 +16,7 @@ RUNTIME_LOGS_DIR = RUNTIME_DIR / "logs"
 
 GENERATED_COMPOSE_FILE = RUNTIME_COMPOSE_DIR / "docker-compose.generated.yml"
 DEFAULT_RUNTIME_ENV_FILE = RUNTIME_ENV_DIR / "local.env"
-SOURCE_COMPOSE_TEMPLATE = PROJECT_ROOT / "deploy" / "sit" / "docker-compose.yml"
+SOURCE_COMPOSE_TEMPLATE = PROJECT_ROOT / "scripts" / "templates" / "docker-compose.runtime.yml"
 ENV_TEMPLATE_FILE = PROJECT_ROOT / ".env.example"
 
 

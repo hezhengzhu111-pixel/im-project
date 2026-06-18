@@ -95,6 +95,8 @@ def check_environment() -> bool:
     """检查必要的环境依赖。"""
     print("[CHECK] 检查环境依赖...")
 
+    all_ok = True
+
     # 检查 Docker
     from deploy_utils import run_command
     try:
@@ -103,10 +105,10 @@ def check_environment() -> bool:
             print(f"  [OK] Docker: {result.stdout.strip()}")
         else:
             print("  [FAIL] Docker 未安装或未启动")
-            return False
+            all_ok = False
     except FileNotFoundError:
         print("  [FAIL] Docker 命令未找到")
-        return False
+        all_ok = False
 
     # 检查 Docker Compose
     try:
@@ -120,13 +122,90 @@ def check_environment() -> bool:
                 print(f"  [OK] Docker Compose (legacy): {result.stdout.strip()}")
             else:
                 print("  [FAIL] Docker Compose 未安装")
-                return False
+                all_ok = False
     except FileNotFoundError:
         print("  [FAIL] Docker Compose 命令未找到")
-        return False
+        all_ok = False
 
-    print("  [OK] 环境检查通过")
-    return True
+    # 检查 Rust 工具链
+    try:
+        result = run_command(["cargo", "--version"], check=False, capture_output=True)
+        if result.returncode == 0:
+            print(f"  [OK] Cargo: {result.stdout.strip()}")
+        else:
+            print("  [WARN] Cargo 未安装（Rust 构建将失败）")
+    except FileNotFoundError:
+        print("  [WARN] Cargo 命令未找到（Rust 构建将失败）")
+
+    # 检查 Flutter
+    try:
+        result = run_command(["flutter", "--version"], check=False, capture_output=True)
+        if result.returncode == 0:
+            # Flutter 输出多行，只取第一行
+            version_line = result.stdout.strip().split("\n")[0] if result.stdout else "unknown"
+            print(f"  [OK] Flutter: {version_line}")
+        else:
+            print("  [WARN] Flutter 未安装（Flutter 构建将失败）")
+    except FileNotFoundError:
+        print("  [WARN] Flutter 命令未找到（Flutter 构建将失败）")
+
+    # 检查 Java
+    try:
+        result = run_command(["java", "--version"], check=False, capture_output=True)
+        if result.returncode == 0:
+            version_line = result.stdout.strip().split("\n")[0] if result.stdout else "unknown"
+            print(f"  [OK] Java: {version_line}")
+        else:
+            # 尝试旧版本 -version
+            result = run_command(["java", "-version"], check=False, capture_output=True)
+            if result.returncode == 0:
+                version_line = result.stderr.strip().split("\n")[0] if result.stderr else "unknown"
+                print(f"  [OK] Java: {version_line}")
+            else:
+                print("  [WARN] Java 未安装（Spring AI 构建将失败）")
+    except FileNotFoundError:
+        print("  [WARN] Java 命令未找到（Spring AI 构建将失败）")
+
+    # 检查 Maven 或 mvnw
+    spring_ai_dir = Path(__file__).resolve().parents[1] / "spring-ai"
+    mvnw_path = spring_ai_dir / "mvnw"
+    if mvnw_path.exists():
+        try:
+            result = run_command([str(mvnw_path), "--version"], check=False, capture_output=True, cwd=spring_ai_dir)
+            if result.returncode == 0:
+                version_line = result.stdout.strip().split("\n")[0] if result.stdout else "unknown"
+                print(f"  [OK] Maven (mvnw): {version_line}")
+            else:
+                print("  [WARN] mvnw 执行失败")
+        except Exception:
+            print("  [WARN] mvnw 无法执行")
+    else:
+        try:
+            result = run_command(["mvn", "--version"], check=False, capture_output=True)
+            if result.returncode == 0:
+                version_line = result.stdout.strip().split("\n")[0] if result.stdout else "unknown"
+                print(f"  [OK] Maven: {version_line}")
+            else:
+                print("  [WARN] Maven 未安装（Spring AI 构建将失败）")
+        except FileNotFoundError:
+            print("  [WARN] Maven 命令未找到（Spring AI 构建将失败）")
+
+    # 检查 wasm-pack
+    try:
+        result = run_command(["wasm-pack", "--version"], check=False, capture_output=True)
+        if result.returncode == 0:
+            print(f"  [OK] wasm-pack: {result.stdout.strip()}")
+        else:
+            print("  [WARN] wasm-pack 未安装（E2EE WASM 构建将失败）")
+    except FileNotFoundError:
+        print("  [WARN] wasm-pack 命令未找到（E2EE WASM 构建将失败）")
+
+    if all_ok:
+        print("  [OK] 核心环境检查通过")
+    else:
+        print("  [FAIL] 核心环境检查失败")
+
+    return all_ok
 
 
 def init_build_directories(env_file: str | None = None) -> bool:

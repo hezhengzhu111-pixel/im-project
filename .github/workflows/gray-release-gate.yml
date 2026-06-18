@@ -106,7 +106,7 @@ jobs:
 
       - name: Generate build info
         run: |
-          python scripts/gray_report.py build-info \
+          python tests/gates/gray_report.py build-info \
             --env "${{ env.GRAY_ENV }}" \
             --api-base "${{ env.IM_API_BASE }}" \
             --ws-base "${{ env.IM_WS_BASE }}" \
@@ -116,7 +116,7 @@ jobs:
       - name: Run environment pre-check
         if: ${{ inputs.run_env_check }}
         run: |
-          python scripts/gray_env_check.py \
+          python tests/gates/gray_env_check.py \
             --env "${{ env.GRAY_ENV }}" \
             --api-base "${{ env.IM_API_BASE }}" \
             --ws-base "${{ env.IM_WS_BASE }}" \
@@ -162,7 +162,7 @@ jobs:
       - name: Run smoke tests
         if: ${{ inputs.run_smoke }}
         run: |
-          python scripts/gray_smoke.py \
+          python tests/gates/gray_smoke.py \
             --env "${{ env.GRAY_ENV }}" \
             --api-base "${{ env.IM_API_BASE }}" \
             --ws-base "${{ env.IM_WS_BASE }}" \
@@ -178,7 +178,7 @@ jobs:
       - name: Run frontend build verification
         if: ${{ inputs.run_frontend_build }}
         run: |
-          python scripts/gray_frontend_check.py \
+          python tests/gates/gray_frontend_check.py \
             --env "${{ env.GRAY_ENV }}" \
             --api-base "${{ env.IM_API_BASE }}" \
             --ws-base "${{ env.IM_WS_BASE }}"
@@ -192,7 +192,7 @@ jobs:
       - name: Generate final report
         if: always()
         run: |
-          python scripts/gray_report.py finalize \
+          python tests/gates/gray_report.py finalize \
             --build-info build/reports/gray-build-info.json \
             --env-check build/reports/gray-env-check.json \
             --gate-summary build/reports/gray-gate-report.json \

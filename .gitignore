@@ -57,10 +57,6 @@ out.js.map
 # 测试覆盖率
 # ===========================================
 coverage/
-!scripts/coverage/
-!scripts/coverage/**
-scripts/coverage/__pycache__/
-scripts/coverage/**/*.pyc
 .nyc_output
 
 # ===========================================
