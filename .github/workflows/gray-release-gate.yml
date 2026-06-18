@@ -102,7 +102,7 @@ jobs:
           pip install -r scripts/requirements.txt 2>/dev/null || true
 
       - name: Check lifecycle prerequisites
-        run: python scripts/init.py --check-only
+        run: python scripts/imctl.py doctor
 
       - name: Generate build info
         run: |

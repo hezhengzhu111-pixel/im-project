@@ -3,201 +3,72 @@
 部署系统已收敛为一个统一入口：
 
 ```sh
-python scripts/imctl.py <command>
+python scripts/imctl.py <command> [options]
 ```
 
-旧入口仍然保留兼容：
+## 常用命令
+
+| 命令 | 说明 |
+|---|---|
+| `python scripts/imctl.py up` | 完整部署：启动服务、数据库、执行迁移 |
+| `python scripts/imctl.py build` | 增量构建所有组件 |
+| `python scripts/imctl.py down` | 停止所有服务 |
+| `python scripts/imctl.py restart` | 重启服务 |
+| `python scripts/imctl.py status` | 查看服务状态 |
+| `python scripts/imctl.py logs <service>` | 查看服务日志 |
+| `python scripts/imctl.py db reset --yes` | 重置数据库 |
+| `python scripts/imctl.py db check` | 检查数据库状态 |
+| `python scripts/imctl.py clean all` | 清理所有构建产物 |
+
+## 配置文件系统
+
+所有部署行为都通过配置文件控制，而不是命令行参数。
+
+配置文件位于：`deploy/profiles/`
+
+| Profile | 说明 |
+|---|---|
+| `local` | 本地开发环境（默认） |
+| `sit` | SIT 测试环境 |
+| `prod` | 生产环境 |
+
+切换配置文件：
 
 ```sh
-python scripts/init.py
-python scripts/start.py start
-python scripts/deploy_middleware.py
-python scripts/deploy_services.py
-python scripts/init_db.py check
+python scripts/imctl.py --profile sit up
+python scripts/imctl.py --profile prod build
 ```
 
-这些旧脚本现在只是 `imctl.py` 的适配层，新的部署逻辑位于 `scripts/deploy_system/`。
+## 允许的命令行参数
 
-## 一键流程
+只保留以下少量必要参数：
 
-本地或 SIT 环境常用命令：
+| 参数 | 说明 |
+|---|---|
+| `--profile` | 选择部署配置（local/sit/prod） |
+| `--yes` | 自动确认危险操作 |
+| `--verbose` | 输出详细信息 |
+| `--dry-run` | 显示将要执行的操作，不实际执行 |
+| `--env-file` | 指定环境文件 |
+
+其他所有行为（如跳过数据库、跳过中间件、强制重建等）都应该在 profile 配置文件中设置，不作为命令行参数。
+
+## 部署流程
+
+### 本地开发环境
+
+首次启动：
 
 ```sh
 python scripts/imctl.py up
 ```
 
-该命令会按顺序完成：
-
-1. 生成 `build/runtime/env/local.env` 和 `build/runtime/compose/docker-compose.generated.yml`
-2. 启动并等待 MySQL、Redis、文件初始化容器
-3. 对 MySQL 执行幂等数据库初始化
-4. 执行迁移 SQL
-5. 启动应用服务
-6. 并发等待应用服务就绪
-
-默认应用服务包括：
-
-- `im-server`
-- `im-api-server`
-- `im-frontend`
-
-如需启动 AI 服务：
-
-```sh
-python scripts/imctl.py up --include-ai
-```
-
-或：
-
-```sh
-python scripts/imctl.py up all --include-ai
-```
-
-## 数据库
-
-数据库初始化不再只是检查 SQL 文件。新流程会连接 MySQL，并检查 `sql/mysql8/init_all.sql` 中声明的数据库是否存在、是否已有业务表。
-
-幂等初始化：
-
-```sh
-python scripts/imctl.py db ensure
-```
-
-行为：
-
-- MySQL 不存在时先启动 `im-mysql`
-- 缺库时导入 `sql/mysql8/init_all.sql`
-- 已有库但没有业务表时导入 `sql/mysql8/init_all.sql`
-- 默认继续执行 `sql/mysql8/e2ee_migration.sql`
-
-仅检查：
-
-```sh
-python scripts/imctl.py db check
-```
-
-仅迁移：
-
-```sh
-python scripts/imctl.py db migrate
-```
-
-强制重置：
-
-```sh
-python scripts/imctl.py db reset --yes
-```
-
-## 中间件
-
-```sh
-python scripts/imctl.py middleware up
-python scripts/imctl.py middleware status
-python scripts/imctl.py middleware down
-```
-
-中间件就绪等待已经改为并发等待。`im-files-init` 这类一次性容器会等待退出码为 0，MySQL/Redis 等长驻服务会等待健康状态或运行状态。
-
-## 构建
-
-默认构建为增量构建，不再默认清空 `build/work`、`build/dist`、`build/logs`：
-
-```sh
-python scripts/imctl.py build
-```
-
-需要清理时显式指定：
-
-```sh
-python scripts/imctl.py build --clean
-```
-
-构建 Docker 镜像：
-
-```sh
-python scripts/imctl.py build --docker
-```
-
-构建并额外导出离线镜像 tar：
-
-```sh
-python scripts/imctl.py build --docker --package-images
-```
-
-构建阶段会并行执行相互独立的 Rust 后端和 Spring AI 构建；Docker 镜像构建使用 Compose 的 parallel build。镜像 tar 不再默认生成，避免本地部署时浪费大量 IO。
-
-## 服务管理
-
-```sh
-python scripts/imctl.py status
-python scripts/imctl.py logs api
-python scripts/imctl.py restart api
-python scripts/imctl.py down
-```
-
-服务别名：
-
-| 别名 | 实际服务 |
-|---|---|
-| `api`, `gateway` | `im-api-server` |
-| `im`, `chat` | `im-server` |
-| `web`, `frontend`, `front` | `im-frontend` |
-| `ai`, `spring-ai` | `im-spring-ai` |
-
-服务组：
-
-| 组 | 服务 |
-|---|---|
-| `default` | `im-server`, `im-api-server`, `im-frontend` |
-| `backend`, `core` | `im-server`, `im-api-server` |
-| `all` | 默认服务 + `im-spring-ai` |
-
-## Runtime 文件
-
-默认运行时文件位于 `build/runtime/`：
-
-- 环境配置文件：`build/runtime/env/local.env`
-- 生成的 Compose 文件：`build/runtime/compose/docker-compose.generated.yml`
-- MySQL 数据：`build/runtime/mysql`
-- Redis 数据：`build/runtime/redis`
-- 文件存储：`build/runtime/files`
-- 运行时日志：`build/runtime/logs`
-
-只生成 runtime 文件：
-
-```sh
-python scripts/imctl.py runtime ensure
-```
-
-清理 runtime：
-
-```sh
-python scripts/imctl.py clean runtime --yes
-```
-
-## 兼容旧命令
-
-旧命令映射如下：
-
-| 旧命令 | 新命令 |
-|---|---|
-| `python scripts/init.py` | `python scripts/imctl.py init` |
-| `python scripts/init.py --runtime-only` | `python scripts/imctl.py runtime ensure` |
-| `python scripts/init.py --middleware-only` | `python scripts/imctl.py middleware up` |
-| `python scripts/init.py --db-only` | `python scripts/imctl.py db ensure` |
-| `python scripts/init_db.py check` | `python scripts/imctl.py db check` |
-| `python scripts/init_db.py full --yes` | `python scripts/imctl.py db reset --yes` |
-| `python scripts/start.py start` | `python scripts/imctl.py up` |
-| `python scripts/start.py status` | `python scripts/imctl.py status` |
-| `python scripts/start.py stop` | `python scripts/imctl.py down` |
-
-## 推荐工作流
-
-首次启动：
-
-```sh
-python scripts/imctl.py up --build
-```
+该命令会自动完成：
+1. 准备 runtime 环境文件
+2. 启动中间件（MySQL、Redis 等）
+3. 初始化数据库并执行迁移
+4. 启动应用服务
+5. 等待服务就绪
 
 日常启动：
 
@@ -205,16 +76,167 @@ python scripts/imctl.py up --build
 python scripts/imctl.py up
 ```
 
-代码变更后重新构建并启动：
+### 测试环境
 
 ```sh
-python scripts/imctl.py build --docker
-python scripts/imctl.py up
+python scripts/imctl.py --profile sit up
 ```
 
-数据库重装或 runtime MySQL 被清空后：
+### 生产环境
 
 ```sh
-python scripts/imctl.py db ensure
-python scripts/imctl.py up
+python scripts/imctl.py --profile prod build
+python scripts/imctl.py --profile prod up
+```
+
+## 数据库管理
+
+### 检查数据库状态
+
+```sh
+python scripts/imctl.py db check
+```
+
+### 重置数据库
+
+```sh
+python scripts/imctl.py db reset --yes
+```
+
+### 执行迁移
+
+```sh
+python scripts/imctl.py db migrate
+```
+
+## 构建
+
+### 增量构建
+
+```sh
+python scripts/imctl.py build
+```
+
+### 清理后构建
+
+```sh
+python scripts/imctl.py build --clean
+```
+
+### 预览构建
+
+```sh
+python scripts/imctl.py build --dry-run
+```
+
+## 清理
+
+### 清理所有构建产物
+
+```sh
+python scripts/imctl.py clean all --yes
+```
+
+### 清理特定目录
+
+```sh
+python scripts/imctl.py clean runtime --yes
+python scripts/imctl.py clean cache
+python scripts/imctl.py clean logs
+```
+
+### 清理源码污染
+
+```sh
+python scripts/imctl.py clean source-pollution
+```
+
+## 环境检查
+
+```sh
+python scripts/imctl.py doctor
+```
+
+## 目录结构说明
+
+所有编译产物、中间文件、缓存、运行时文件都在 `build/` 目录下：
+
+```
+build/
+├── cache/          # Rust、Dart、Maven 缓存
+├── dist/           # 编译产物
+├── logs/           # 运行时日志
+├── reports/        # 构建报告
+├── runtime/        # 运行时配置和数据
+│   ├── compose/    # 生成的 Docker Compose 文件
+│   ├── env/        # 环境配置文件
+│   ├── mysql/      # MySQL 数据
+│   ├── redis/      # Redis 数据
+│   └── files/      # 文件存储
+└── work/           # 构建工作目录
+```
+
+源码目录绝不应该出现 `target/`、`.dart_tool/`、`node_modules/` 等编译产物。
+
+## Profile 配置文件
+
+配置文件位于 `deploy/profiles/` 目录下，格式为 YAML：
+
+```yaml
+# 本地开发环境配置
+profile: local
+
+# 服务配置
+services:
+  default:
+    - mysql8
+    - redis
+    - im-gateway
+    - im-service
+    - im-web
+
+  include_ai: false
+
+# 构建配置
+build:
+  docker: false
+  pull: false
+  parallel: true
+  profile: debug
+
+# 数据库配置
+database:
+  auto_init: true
+  auto_migrate: true
+
+# 健康检查
+health:
+  timeout: 180
+  wait: true
+```
+
+## 常见问题
+
+### 数据库重装后需要重新初始化
+
+如果 runtime MySQL 数据目录被清空，只需运行：
+
+```sh
+python scripts/imctl.py db reset --yes
+```
+
+### 源码目录出现编译产物
+
+检查并清理：
+
+```sh
+python scripts/imctl.py clean source-pollution
+```
+
+### 查看服务日志
+
+```sh
+python scripts/imctl.py logs im-service
+python scripts/imctl.py logs im-gateway --tail 200
+python scripts/imctl.py logs im-service -f  # 实时跟踪
 ```

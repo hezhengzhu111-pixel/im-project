@@ -11,6 +11,7 @@ from .builder import BuildOptions, build_all
 from .core import ensure_runtime, load_runtime
 from .database import check_database, ensure_database, migrate_database, reset_database
 from .middleware import down_middleware, middleware_status, up_middleware
+from .profile import get_available_profiles, load_profile
 from .services import (
     down_services,
     normalize_services,
@@ -22,89 +23,67 @@ from .services import (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Unified deployment controller for IM Project.")
+    parser = argparse.ArgumentParser(
+        description="Unified deployment controller for IM Project.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+常用命令:
+  python scripts/imctl.py up           完整部署（启动服务、数据库、迁移）
+  python scripts/imctl.py build        构建所有组件
+  python scripts/imctl.py down         停止所有服务
+  python scripts/imctl.py restart      重启服务
+  python scripts/imctl.py status       查看服务状态
+  python scripts/imctl.py logs         查看服务日志
+  python scripts/imctl.py db reset     重置数据库
+  python scripts/imctl.py clean        清理构建产物
+        """
+    )
+    parser.add_argument("--profile", choices=get_available_profiles(), default="local",
+                        help="部署配置文件（默认: local）")
     parser.add_argument("--env-file", help=f"Runtime env file. Defaults to {relative(DEFAULT_RUNTIME_ENV_FILE)}.")
+    parser.add_argument("--yes", action="store_true", help="自动确认危险操作")
+    parser.add_argument("--verbose", action="store_true", help="输出详细信息")
+    parser.add_argument("--dry-run", action="store_true", help="仅显示将要执行的操作，不实际执行")
+
     sub = parser.add_subparsers(dest="command")
 
-    up = sub.add_parser("up", help="Prepare runtime, middleware, database, and application services.")
-    up.add_argument("services", nargs="*", help="Service names or groups: default, all, backend, api, im, web, ai.")
-    up.add_argument("--include-ai", action="store_true", help="Include im-spring-ai when no explicit target is given.")
-    up.add_argument("--build", action="store_true", help="Build Docker images through docker compose before starting.")
-    up.add_argument("--pull", action="store_true", help="Pull images before starting.")
-    up.add_argument("--force-recreate", action="store_true", help="Force container recreation.")
-    up.add_argument("--with-deps", action="store_true", help="Let Compose start dependencies automatically.")
-    up.add_argument("--skip-middleware", action="store_true", help="Skip middleware readiness and startup.")
-    up.add_argument("--skip-db", action="store_true", help="Skip database bootstrap.")
-    up.add_argument("--skip-migrations", action="store_true", help="Skip SQL migrations.")
-    up.add_argument("--no-wait", action="store_true", help="Do not wait for service readiness.")
-    up.add_argument("--timeout", type=int, default=240, help="Readiness timeout in seconds.")
+    # up command - 完整部署
+    sub.add_parser("up", help="完整部署：准备环境、启动中间件、初始化数据库、启动服务")
 
-    init = sub.add_parser("init", help="Prepare runtime, middleware, and database.")
-    init.add_argument("--pull", action="store_true")
-    init.add_argument("--force-recreate", action="store_true")
-    init.add_argument("--skip-middleware", action="store_true")
-    init.add_argument("--skip-db", action="store_true")
-    init.add_argument("--timeout", type=int, default=180)
+    # build command - 构建
+    build = sub.add_parser("build", help="增量构建所有组件")
+    build.add_argument("--clean", action="store_true", help="构建前清理工作目录")
 
-    runtime = sub.add_parser("runtime", help="Manage generated runtime files.")
-    runtime_sub = runtime.add_subparsers(dest="runtime_command")
-    runtime_sub.add_parser("ensure", help="Create build/runtime env and compose files.")
+    # down command - 停止服务
+    sub.add_parser("down", help="停止所有应用服务")
 
-    middleware = sub.add_parser("middleware", help="Manage MySQL, Redis, and local file initialization.")
-    middleware_sub = middleware.add_subparsers(dest="middleware_command")
-    mw_up = middleware_sub.add_parser("up")
-    mw_up.add_argument("--pull", action="store_true")
-    mw_up.add_argument("--force-recreate", action="store_true")
-    mw_up.add_argument("--no-wait", action="store_true")
-    mw_up.add_argument("--timeout", type=int, default=180)
-    middleware_sub.add_parser("status")
-    middleware_sub.add_parser("down")
+    # restart command - 重启服务
+    restart = sub.add_parser("restart", help="重启应用服务")
+    restart.add_argument("services", nargs="*", help="指定要重启的服务（默认全部）")
 
-    db = sub.add_parser("db", help="Manage MySQL schema initialization and migrations.")
+    # status command - 查看状态
+    sub.add_parser("status", help="查看服务状态")
+
+    # logs command - 查看日志
+    logs = sub.add_parser("logs", help="查看服务日志")
+    logs.add_argument("service", help="服务名称")
+    logs.add_argument("--tail", type=int, default=100, help="显示最后N行日志")
+    logs.add_argument("-f", "--follow", action="store_true", help="实时跟踪日志")
+
+    # db command - 数据库管理
+    db = sub.add_parser("db", help="数据库管理")
     db_sub = db.add_subparsers(dest="db_command")
-    db_ensure = db_sub.add_parser("ensure")
-    db_ensure.add_argument("--skip-migrations", action="store_true")
-    db_ensure.add_argument("--timeout", type=int, default=180)
-    db_reset = db_sub.add_parser("reset")
-    db_reset.add_argument("--yes", action="store_true")
-    db_reset.add_argument("--timeout", type=int, default=180)
-    db_migrate = db_sub.add_parser("migrate")
-    db_migrate.add_argument("--timeout", type=int, default=180)
-    db_check = db_sub.add_parser("check")
-    db_check.add_argument("--timeout", type=int, default=180)
+    db_sub.add_parser("check", help="检查数据库状态")
+    db_sub.add_parser("migrate", help="执行数据库迁移")
+    db_sub.add_parser("reset", help="重置数据库（清空后重新初始化）")
 
-    build = sub.add_parser("build", help="Incrementally build artifacts and optional Docker images.")
-    build.add_argument("--profile", choices=["release", "debug"], default="release")
-    build.add_argument("--clean", action="store_true", help="Clean work/dist/logs before building.")
-    build.add_argument("--skip-rust", action="store_true")
-    build.add_argument("--skip-web", action="store_true")
-    build.add_argument("--skip-spring-ai", action="store_true")
-    build.add_argument("--docker", action="store_true", help="Build Docker images with Compose parallel build.")
-    build.add_argument("--package-images", action="store_true", help="Save built Docker images as tar files.")
-    build.add_argument("--no-parallel", action="store_true", help="Disable parallel build stages.")
+    # clean command - 清理
+    clean = sub.add_parser("clean", help="清理构建产物或运行时文件")
+    clean.add_argument("target", choices=["runtime", "work", "dist", "logs", "cache", "all", "source-pollution"],
+                       help="清理目标")
 
-    down = sub.add_parser("down", help="Stop application services.")
-    down.add_argument("services", nargs="*")
-
-    restart = sub.add_parser("restart", help="Restart application services.")
-    restart.add_argument("services", nargs="*")
-    restart.add_argument("--include-ai", action="store_true")
-    restart.add_argument("--no-wait", action="store_true")
-    restart.add_argument("--timeout", type=int, default=240)
-
-    status = sub.add_parser("status", help="Show compose service status.")
-    status.add_argument("services", nargs="*")
-
-    logs = sub.add_parser("logs", help="Show service logs.")
-    logs.add_argument("service")
-    logs.add_argument("--tail", type=int, default=100)
-    logs.add_argument("-f", "--follow", action="store_true")
-
-    clean = sub.add_parser("clean", help="Clean generated runtime/build state.")
-    clean.add_argument("target", choices=["runtime", "work", "dist", "logs", "cache", "all"])
-    clean.add_argument("--yes", action="store_true")
-
-    sub.add_parser("doctor", help="Check Docker and generate runtime files.")
+    # doctor command - 环境检查
+    sub.add_parser("doctor", help="检查环境和依赖")
 
     return parser
 
@@ -117,22 +96,28 @@ def _require_yes(args, message: str) -> None:
 
 
 def _clean(target: str, *, yes: bool) -> None:
-    import build as legacy_build
+    from . import paths
 
     destructive = target in {"runtime", "all"}
     if destructive and not yes:
         raise SystemExit("This operation deletes runtime state. Re-run with --yes.")
+
     targets = []
     if target in {"runtime", "all"}:
-        targets.append(RUNTIME_DIR)
+        targets.append(paths.runtime)
     if target in {"work", "all"}:
-        targets.append(legacy_build.WORK_DIR)
+        targets.append(paths.work)
     if target in {"dist", "all"}:
-        targets.append(legacy_build.DIST_DIR)
+        targets.append(paths.dist)
     if target in {"logs", "all"}:
-        targets.append(legacy_build.LOGS_DIR)
+        targets.append(paths.logs)
     if target in {"cache", "all"}:
-        targets.append(legacy_build.CACHE_DIR)
+        targets.append(paths.cache)
+    if target == "source-pollution":
+        from .source_guard import clean_source_pollution
+        clean_source_pollution(paths.project_root)
+        return
+
     for path in targets:
         if path.exists():
             shutil.rmtree(path)
@@ -171,13 +156,14 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         raise SystemExit(1)
 
-    env_file = args.env_file
+    # Load profile
+    profile = load_profile(args.profile)
 
-    if args.command == "runtime":
-        if args.runtime_command in {None, "ensure"}:
-            prepare_runtime_files(env_file=env_file)
-            print("[RUNTIME] ready")
-            return
+    # Override profile settings with CLI flags
+    if args.verbose:
+        profile.verbose = True
+
+    env_file = args.env_file
 
     if args.command == "doctor":
         runtime = ensure_runtime(env_file)
@@ -192,96 +178,102 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "build":
         runtime = ensure_runtime(env_file)
         options = BuildOptions(
-            profile=args.profile,
+            profile=profile.build_profile,
             clean=args.clean,
-            skip_rust=args.skip_rust,
-            skip_web=args.skip_web,
-            skip_spring_ai=args.skip_spring_ai,
-            docker=args.docker,
-            package_images=args.package_images,
-            parallel=not args.no_parallel,
+            skip_rust=False,
+            skip_web=False,
+            skip_spring_ai=not profile.include_ai,
+            docker=profile.docker_build,
+            package_images=False,
+            parallel=profile.parallel_build,
         )
+
+        if args.dry_run:
+            print("[DRY-RUN] Would build with options:")
+            print(f"  Profile: {options.profile}")
+            print(f"  Docker: {options.docker}")
+            print(f"  Include AI: {profile.include_ai}")
+            return
+
         build_all(runtime.config, options)
         return
 
     runtime = ensure_runtime(env_file)
     config = runtime.config
 
-    if args.command == "init":
-        if not args.skip_middleware:
-            up_middleware(
-                config,
-                pull=args.pull,
-                force_recreate=args.force_recreate,
-                timeout_seconds=args.timeout,
-            )
-        if not args.skip_db:
-            ensure_database(config, migrate=True, timeout_seconds=args.timeout)
-        print("[INIT] complete")
-        return
-
-    if args.command == "middleware":
-        if args.middleware_command in {None, "status"}:
-            middleware_status(config)
-        elif args.middleware_command == "up":
-            up_middleware(
-                config,
-                pull=args.pull,
-                force_recreate=args.force_recreate,
-                no_wait=args.no_wait,
-                timeout_seconds=args.timeout,
-            )
-        elif args.middleware_command == "down":
-            down_middleware(config)
-        return
-
-    if args.command == "db":
-        if args.db_command in {None, "check"}:
-            check_database(config, timeout_seconds=args.timeout)
-        elif args.db_command == "ensure":
-            ensure_database(config, migrate=not args.skip_migrations, timeout_seconds=args.timeout)
-        elif args.db_command == "reset":
-            reset_database(config, assume_yes=args.yes, timeout_seconds=args.timeout)
-        elif args.db_command == "migrate":
-            migrate_database(config, timeout_seconds=args.timeout)
-        return
-
     if args.command == "up":
-        services = normalize_services(args.services, include_ai=args.include_ai)
+        services = normalize_services(profile.default_services, include_ai=profile.include_ai)
+
+        if args.dry_run:
+            print("[DRY-RUN] Would deploy with profile:", profile.profile)
+            print(f"  Services: {services}")
+            print(f"  Include AI: {profile.include_ai}")
+            print(f"  Auto DB init: {profile.auto_init_db}")
+            print(f"  Auto migrate: {profile.auto_migrate}")
+            print(f"  Health timeout: {profile.health_timeout}s")
+            return
+
+        # Step 1: Start middleware
+        up_middleware(
+            config,
+            pull=profile.docker_pull,
+            force_recreate=False,
+            timeout_seconds=profile.health_timeout,
+        )
+
+        # Step 2: Initialize and migrate database
+        if profile.auto_init_db:
+            ensure_database(
+                config,
+                migrate=profile.auto_migrate,
+                timeout_seconds=profile.health_timeout,
+            )
+
+        # Step 3: Start application services
         up_services(
             config,
             services,
-            build=args.build,
-            pull=args.pull,
-            force_recreate=args.force_recreate,
-            no_deps=not args.with_deps,
-            include_ai=args.include_ai,
-            skip_middleware=args.skip_middleware,
-            skip_db=args.skip_db,
-            skip_migrations=args.skip_migrations,
-            no_wait=args.no_wait,
-            timeout_seconds=args.timeout,
+            build=profile.docker_build,
+            pull=profile.docker_pull,
+            force_recreate=False,
+            no_deps=False,
+            include_ai=profile.include_ai,
+            skip_middleware=True,  # Already started
+            skip_db=True,  # Already initialized
+            skip_migrations=True,  # Already migrated
+            no_wait=not profile.wait_for_ready,
+            timeout_seconds=profile.health_timeout,
         )
+
+        print(f"[UP] Deployment complete with profile: {profile.profile}")
         return
 
     if args.command == "down":
-        services = normalize_services(args.services, include_ai=True) if args.services else None
-        down_services(config, services)
+        down_services(config, None)
         return
 
     if args.command == "restart":
-        services = normalize_services(args.services, include_ai=args.include_ai)
-        restart_app_services(config, services, no_wait=args.no_wait, timeout_seconds=args.timeout)
+        services = normalize_services(args.services if args.services else profile.default_services, include_ai=profile.include_ai)
+        restart_app_services(config, services, no_wait=False, timeout_seconds=profile.health_timeout)
         return
 
     if args.command == "status":
-        services = normalize_services(args.services, include_ai=True) if args.services else None
-        status_services(config, services)
+        status_services(config, None)
         return
 
     if args.command == "logs":
         service = normalize_services([args.service], include_ai=True)[0]
         service_logs(config, service, tail=args.tail, follow=args.follow)
+        return
+
+    if args.command == "db":
+        if args.db_command in {None, "check"}:
+            check_database(config, timeout_seconds=profile.health_timeout)
+        elif args.db_command == "reset":
+            _require_yes(args, "Database reset will delete all data. Re-run with --yes to confirm.")
+            reset_database(config, assume_yes=args.yes, timeout_seconds=profile.health_timeout)
+        elif args.db_command == "migrate":
+            migrate_database(config, timeout_seconds=profile.health_timeout)
         return
 
     parser.print_help()

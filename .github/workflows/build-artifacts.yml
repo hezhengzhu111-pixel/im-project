@@ -46,7 +46,7 @@ jobs:
           python-version: '3.12'
 
       - name: Check lifecycle prerequisites
-        run: python scripts/init.py --check-only
+        run: python scripts/imctl.py doctor
 
       - name: Build all artifacts
         run: python scripts/build.py all

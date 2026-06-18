@@ -1,0 +1,40 @@
+# 生产环境配置
+profile: prod
+
+# 服务配置
+services:
+  default:
+    - mysql8
+    - redis
+    - im-gateway
+    - im-service
+    - im-web
+    - im-spring-ai
+
+  include_ai: true
+
+# 构建配置
+build:
+  docker: true
+  pull: true
+  parallel: true
+  profile: release
+
+# 数据库配置
+database:
+  auto_init: true
+  auto_migrate: true
+
+# 健康检查
+health:
+  timeout: 300
+  wait: true
+
+# 日志配置
+logging:
+  verbose: false
+  debug: false
+
+# 报告配置
+reports:
+  generate: true

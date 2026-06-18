@@ -1,0 +1,39 @@
+# 本地开发环境配置
+profile: local
+
+# 服务配置
+services:
+  default:
+    - mysql8
+    - redis
+    - im-gateway
+    - im-service
+    - im-web
+
+  include_ai: false
+
+# 构建配置
+build:
+  docker: false
+  pull: false
+  parallel: true
+  profile: debug
+
+# 数据库配置
+database:
+  auto_init: true
+  auto_migrate: true
+
+# 健康检查
+health:
+  timeout: 180
+  wait: true
+
+# 日志配置
+logging:
+  verbose: false
+  debug: false
+
+# 报告配置
+reports:
+  generate: false

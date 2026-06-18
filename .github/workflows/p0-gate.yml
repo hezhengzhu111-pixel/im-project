@@ -56,7 +56,7 @@ jobs:
           python-version: '3.12'
 
       - name: Check lifecycle prerequisites
-        run: python scripts/init.py --check-only
+        run: python scripts/imctl.py doctor
 
       - name: Run PR Fast gate
         run: python tests/test.py pr-fast

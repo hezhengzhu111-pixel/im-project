@@ -38,7 +38,7 @@
 
 ## 运行时
 
-`python scripts/init.py` 在 `build/runtime/` 下准备运行时状态。
+`python scripts/imctl.py up` 自动完成运行时准备、中间件启动、数据库初始化和应用启动。
 
 运行时 Compose 模板位于 `scripts/templates/docker-compose.runtime.yml`，生成后输出到 `build/runtime/compose/docker-compose.generated.yml`。
 
@@ -53,12 +53,20 @@
 
 使用以下命令作为公共生命周期接口：
 
-- `python scripts/init.py`
-- `python scripts/build.py`
-- `python scripts/start.py`
-- `python tests/test.py`
+- `python scripts/imctl.py up` - 完整部署
+- `python scripts/imctl.py build` - 构建
+- `python scripts/imctl.py down` - 停止服务
+- `python tests/test.py` - 运行测试
 
-`scripts/` 中的 helper 模块（如 `deploy_utils.py`、`deploy_services.py`、`deploy_middleware.py`、`init_db.py`、`runtime_paths.py`）支持 init/build/start 入口点，但不建议直接调用。
+`scripts/deploy_system/` 中的模块提供核心功能：
+- `cli.py`：命令行接口
+- `core.py`：运行时管理
+- `builder.py`：构建系统
+- `database.py`：数据库管理
+- `middleware.py`：中间件管理
+- `services.py`：服务管理
+- `profile.py`：配置文件管理
+- `paths.py`：路径定义
 
 `tests/` 目录下的辅助模块：
 - `tests/common/gate_common.py`：共享测试 gate helpers（StepResult、run_step 等）
