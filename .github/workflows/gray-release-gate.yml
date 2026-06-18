@@ -141,7 +141,7 @@ jobs:
         if: ${{ inputs.run_sit }}
         run: |
           python scripts/test.py gray-release \
-            --base-url "${{ env.IM_API_BASE }}" \
+            --api-base "${{ env.IM_API_BASE }}" \
             --db-url "${{ env.IM_DB_URL }}"
 
       - name: Mark SIT not run
