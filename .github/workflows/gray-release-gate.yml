@@ -3,27 +3,67 @@ name: Gray Release Gate
 on:
   workflow_dispatch:
     inputs:
-      base_url:
-        description: Backend base URL for SIT
+      environment_name:
+        description: Gray environment name (e.g., local-gray, staging, personal-gray)
+        type: string
+        default: local-gray
+        required: true
+      api_base_url:
+        description: Backend API base URL
         type: string
         default: http://localhost:8082
+        required: true
+      web_base_url:
+        description: Web application base URL
+        type: string
+        default: ""
+      ws_base_url:
+        description: WebSocket base URL
+        type: string
+        default: ""
       db_url:
-        description: MySQL URL for plaintext scan
+        description: MySQL URL for plaintext scan (will be sanitized in logs)
         type: string
         default: mysql://root:root123@127.0.0.1:3306/service_message_service_db
+        required: true
+      redis_url:
+        description: Redis URL
+        type: string
+        default: ""
       run_sit:
         description: Run P0/P1 SIT
         type: boolean
         default: true
-      upload_artifacts:
-        description: Upload reports and SIT artifacts
+      run_env_check:
+        description: Run environment pre-check
         type: boolean
         default: true
+      run_smoke:
+        description: Run smoke tests
+        type: boolean
+        default: true
+      run_frontend_build:
+        description: Run frontend build verification
+        type: boolean
+        default: true
+      upload_artifacts:
+        description: Upload reports and artifacts
+        type: boolean
+        default: true
+      operator:
+        description: Operator name
+        type: string
+        default: ${{ github.actor }}
 
 env:
   CARGO_TERM_COLOR: always
   FLUTTER_VERSION: "3.29"
-  IM_API_BASE: ${{ inputs.base_url }}
+  IM_API_BASE: ${{ inputs.api_base_url }}
+  IM_WS_BASE: ${{ inputs.ws_base_url }}
+  IM_DB_URL: ${{ inputs.db_url }}
+  REDIS_URL: ${{ inputs.redis_url }}
+  GRAY_ENV: ${{ inputs.environment_name }}
+  OPERATOR: ${{ inputs.operator }}
 
 jobs:
   gray-release:
@@ -56,14 +96,53 @@ jobs:
       - name: Install coverage tools
         run: cargo install cargo-llvm-cov --locked
 
-      - name: Install Python SIT deps
-        run: pip install requests pymysql
+      - name: Install Python dependencies
+        run: |
+          pip install requests pymysql redis
+          pip install -r scripts/requirements.txt 2>/dev/null || true
 
-      - name: Run Gray Release Gate
+      - name: Generate build info
+        run: |
+          python scripts/gray_report.py build-info \
+            --env "${{ env.GRAY_ENV }}" \
+            --api-base "${{ env.IM_API_BASE }}" \
+            --ws-base "${{ env.IM_WS_BASE }}" \
+            --db-url "${{ env.IM_DB_URL }}" \
+            --operator "${{ env.OPERATOR }}"
+
+      - name: Run environment pre-check
+        if: ${{ inputs.run_env_check }}
+        run: |
+          python scripts/gray_env_check.py \
+            --env "${{ env.GRAY_ENV }}" \
+            --api-base "${{ env.IM_API_BASE }}" \
+            --ws-base "${{ env.IM_WS_BASE }}" \
+            --db-url "${{ env.IM_DB_URL }}" \
+            --redis-url "${{ env.REDIS_URL }}"
+
+      - name: Mark env check not run
+        if: ${{ !inputs.run_env_check }}
+        run: |
+          mkdir -p build/reports
+          echo '{"status":"NOT RUN","reason":"run_env_check=false"}' > build/reports/gray-env-check.json
+
+      - name: Run manifest and PR Fast gate
+        run: |
+          python scripts/test.py manifest
+          python scripts/test.py pr-fast
+
+      - name: Run coverage gate
+        run: python scripts/test.py coverage
+
+      - name: Run Main Full gate
+        run: python scripts/test.py main-full
+
+      - name: Run Gray Release gate
         if: ${{ inputs.run_sit }}
-        env:
-          IM_DB_URL: ${{ inputs.db_url }}
-        run: python scripts/test.py gray-release
+        run: |
+          python scripts/test.py gray-release \
+            --base-url "${{ env.IM_API_BASE }}" \
+            --db-url "${{ env.IM_DB_URL }}"
 
       - name: Mark SIT not run
         if: ${{ !inputs.run_sit }}
@@ -71,14 +150,105 @@ jobs:
           mkdir -p build/reports
           echo "# Gray Release Gate" > build/reports/gray-gate-report.md
           echo "NOT RUN: run_sit=false" >> build/reports/gray-gate-report.md
+          echo '{"status":"NOT RUN","reason":"run_sit=false"}' > build/reports/gray-gate-report.json
+          echo "::error::Gray Release SIT was not run (run_sit=false). This must FAIL."
           exit 1
+
+      - name: Run smoke tests
+        if: ${{ inputs.run_smoke }}
+        run: |
+          python scripts/gray_smoke.py \
+            --env "${{ env.GRAY_ENV }}" \
+            --api-base "${{ env.IM_API_BASE }}" \
+            --ws-base "${{ env.IM_WS_BASE }}" \
+            --db-url "${{ env.IM_DB_URL }}" \
+            --prefix "gray_${{ github.run_id }}_$(date +%s)"
+
+      - name: Mark smoke not run
+        if: ${{ !inputs.run_smoke }}
+        run: |
+          mkdir -p build/reports
+          echo '{"overall_status":"NOT RUN","reason":"run_smoke=false"}' > build/reports/gray-smoke.json
+
+      - name: Run frontend build verification
+        if: ${{ inputs.run_frontend_build }}
+        run: |
+          cd flutter
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build web \
+            --dart-define=APP_ENV=${{ env.GRAY_ENV }} \
+            --dart-define=API_BASE_URL=${{ env.IM_API_BASE }} \
+            --dart-define=WS_BASE_URL=${{ env.IM_WS_BASE }}
+          echo "Frontend build verification completed" > ../build/reports/gray-frontend-build.json
+
+      - name: Mark frontend build not run
+        if: ${{ !inputs.run_frontend_build }}
+        run: |
+          mkdir -p build/reports
+          echo '{"status":"NOT RUN","reason":"run_frontend_build=false"}' > build/reports/gray-frontend-build.json
+
+      - name: Generate final report
+        run: |
+          python scripts/gray_report.py finalize \
+            --build-info build/reports/gray-build-info.json \
+            --env-check build/reports/gray-env-check.json \
+            --gate-summary build/reports/gray-gate-report.json \
+            --smoke build/reports/gray-smoke.json \
+            --coverage build/reports/coverage-summary.json \
+            --manifest build/reports/test-manifest-check.json \
+            --out build/reports/gray-release-report.md
+
+      - name: Determine GO/NO-GO decision
+        id: decision
+        run: |
+          if [ -f build/reports/gray-release-report.md ]; then
+            if grep -q "### GO" build/reports/gray-release-report.md; then
+              echo "decision=GO" >> $GITHUB_OUTPUT
+              echo "## ✅ GO" >> $GITHUB_STEP_SUMMARY
+            elif grep -q "### NO-GO" build/reports/gray-release-report.md; then
+              echo "decision=NO-GO" >> $GITHUB_OUTPUT
+              echo "## ❌ NO-GO" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            else
+              echo "decision=HOLD" >> $GITHUB_OUTPUT
+              echo "## ⚠️ HOLD" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "decision=UNKNOWN" >> $GITHUB_OUTPUT
+            echo "## ❓ UNKNOWN" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Generate workflow summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<'EOF'
+          ## Gray Release Gate Results
+
+          | Item | Status |
+          | --- | --- |
+          | Environment | ${{ inputs.environment_name }} |
+          | API Base | ${{ inputs.api_base_url }} |
+          | Operator | ${{ inputs.operator }} |
+          | Commit | ${{ github.sha }} |
+          EOF
+
+          if [ -f build/reports/gray-release-report.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Full Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat build/reports/gray-release-report.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload gray release artifacts
         if: ${{ always() && inputs.upload_artifacts }}
         uses: actions/upload-artifact@v4
         with:
-          name: gray-release-gate-artifacts
+          name: gray-release-gate-artifacts-${{ github.run_id }}
           path: |
             build/reports/
             build/coverage/
             artifacts/p1-sit/
+          retention-days: 30

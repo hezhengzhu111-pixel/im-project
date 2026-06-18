@@ -282,9 +282,158 @@ def gray_release(base_url: str, db_url: str) -> list:
     return results
 
 
+def gray_signoff(
+    env: str,
+    api_base: str,
+    ws_base: str,
+    db_url: str,
+    redis_url: str,
+    operator: str,
+    continue_on_error: bool = False,
+) -> list:
+    """Run full gray release signoff process."""
+    results = []
+
+    # Step 1: Generate build info
+    results.append(
+        run_step(
+            "Build info generation",
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_report.py"),
+                "build-info",
+                "--env", env,
+                "--api-base", api_base,
+                "--ws-base", ws_base,
+                "--db-url", db_url,
+                "--operator", operator,
+            ],
+            cwd=ROOT,
+            timeout=120,
+        )
+    )
+
+    # Step 2: Environment check
+    results.append(
+        run_step(
+            "Environment pre-check",
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_env_check.py"),
+                "--env", env,
+                "--api-base", api_base,
+                "--ws-base", ws_base,
+                "--db-url", db_url,
+                "--redis-url", redis_url,
+            ],
+            cwd=ROOT,
+            timeout=300,
+        )
+    )
+
+    # Step 3: Manifest check
+    results.append(
+        run_step(
+            "Manifest completeness",
+            [PYTHON, str(ROOT / "scripts" / "check_test_manifest.py")],
+            cwd=ROOT,
+            timeout=300,
+        )
+    )
+
+    # Step 4: PR Fast gate
+    results.append(
+        run_step(
+            "PR Fast gate",
+            [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", "pr-fast"],
+            cwd=ROOT,
+            timeout=1800,
+        )
+    )
+
+    # Step 5: Coverage gate
+    results.append(
+        run_step(
+            "Coverage gate",
+            [PYTHON, str(ROOT / "scripts" / "coverage_gate.py")],
+            cwd=ROOT,
+            timeout=7200,
+        )
+    )
+
+    # Step 6: Main Full gate
+    results.append(
+        run_step(
+            "Main Full gate",
+            [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", "main-full"],
+            cwd=ROOT,
+            timeout=7200,
+        )
+    )
+
+    # Step 7: Gray Release gate (if environment supports it)
+    if shutil.which("docker") is not None:
+        results.append(
+            run_step(
+                "Gray Release gate",
+                [
+                    PYTHON,
+                    str(ROOT / "scripts" / "gray_gate.py"),
+                    "--mode", "gray-release",
+                    "--base-url", api_base,
+                    "--db-url", db_url,
+                ],
+                cwd=ROOT,
+                timeout=7200,
+            )
+        )
+    else:
+        results.append(skip_step("Gray Release gate", "docker not available", critical=True))
+
+    # Step 8: Smoke tests
+    results.append(
+        run_step(
+            "Gray smoke tests",
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_smoke.py"),
+                "--env", env,
+                "--api-base", api_base,
+                "--ws-base", ws_base,
+                "--db-url", db_url,
+            ],
+            cwd=ROOT,
+            timeout=600,
+        )
+    )
+
+    # Step 9: Generate final report
+    results.append(
+        run_step(
+            "Generate final report",
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_report.py"),
+                "finalize",
+                "--build-info", str(REPORT_DIR / "gray-build-info.json"),
+                "--env-check", str(REPORT_DIR / "gray-env-check.json"),
+                "--gate-summary", str(REPORT_DIR / "gray-gate-report.json"),
+                "--smoke", str(REPORT_DIR / "gray-smoke.json"),
+                "--coverage", str(REPORT_DIR / "coverage-summary.json"),
+                "--manifest", str(REPORT_DIR / "test-manifest-check.json"),
+                "--out", str(REPORT_DIR / "gray-release-report.md"),
+            ],
+            cwd=ROOT,
+            timeout=120,
+        )
+    )
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=["pr-fast", "main-full", "gray-release"], required=True)
+    parser.add_argument("--mode", choices=["pr-fast", "main-full", "gray-release", "gray-signoff"], required=True)
     parser.add_argument("--write-report", default=str(ROOT / "build" / "reports" / "gray-gate-report.md"))
     parser.add_argument("--base-url", default=os.environ.get("IM_API_BASE", "http://localhost:8082"))
     parser.add_argument(
@@ -294,13 +443,33 @@ def main() -> int:
             "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
         ),
     )
+    parser.add_argument("--env", default="local-gray", help="Gray environment name")
+    parser.add_argument("--ws-base", default=os.environ.get("IM_WS_BASE", ""), help="WebSocket base URL")
+    parser.add_argument("--redis-url", default=os.environ.get("REDIS_URL", ""), help="Redis URL")
+    parser.add_argument("--operator", default=os.environ.get("USER", "unknown"), help="Operator name")
+    parser.add_argument("--continue-on-error", action="store_true", help="Continue on error")
     args = parser.parse_args()
+
     if args.mode == "pr-fast":
         results = pr_fast()
     elif args.mode == "main-full":
         results = main_full()
-    else:
+    elif args.mode == "gray-release":
         results = gray_release(args.base_url, args.db_url)
+    elif args.mode == "gray-signoff":
+        results = gray_signoff(
+            env=args.env,
+            api_base=args.base_url,
+            ws_base=args.ws_base,
+            db_url=args.db_url,
+            redis_url=args.redis_url,
+            operator=args.operator,
+            continue_on_error=args.continue_on_error,
+        )
+    else:
+        parser.print_help()
+        return 1
+
     report_md = Path(args.write_report)
     report_base = report_md.with_suffix("")
     return write_gate_reports("gray-gate-report", args.mode, results, report_base=report_base)

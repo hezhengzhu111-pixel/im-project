@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -96,6 +97,26 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
                 timeout=7200,
             )
         ]
+    if args.command == "gray-signoff":
+        return [
+            run_step(
+                "Gray signoff gate",
+                [
+                    PYTHON,
+                    str(ROOT / "scripts" / "gray_gate.py"),
+                    "--mode", "gray-signoff",
+                    "--env", args.env,
+                    "--base-url", args.api_base,
+                    "--ws-base", args.ws_base,
+                    "--db-url", args.db_url,
+                    "--redis-url", args.redis_url,
+                    "--operator", args.operator,
+                    "--continue-on-error" if args.continue_on_error else "",
+                ],
+                cwd=ROOT,
+                timeout=7200,
+            )
+        ]
     if args.command == "rust":
         return rust_steps(continue_on_error=args.continue_on_error)
     if args.command == "flutter":
@@ -134,7 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["pr-fast", "main-full", "gray-release", "rust", "flutter", "coverage", "manifest", "sit"],
+        choices=["pr-fast", "main-full", "gray-release", "gray-signoff", "rust", "flutter", "coverage", "manifest", "sit"],
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable summary.")
     parser.add_argument(
@@ -142,6 +163,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Diagnostic mode only; formal gates fail fast.",
     )
+    # Gray signoff specific args
+    parser.add_argument("--env", default="local-gray", help="Gray environment name")
+    parser.add_argument("--api-base", default=os.environ.get("IM_API_BASE", "http://localhost:8082"), help="API base URL")
+    parser.add_argument("--ws-base", default=os.environ.get("IM_WS_BASE", ""), help="WebSocket base URL")
+    parser.add_argument("--db-url", default=os.environ.get("IM_DB_URL", ""), help="Database URL")
+    parser.add_argument("--redis-url", default=os.environ.get("REDIS_URL", ""), help="Redis URL")
+    parser.add_argument("--operator", default=os.environ.get("USER", "unknown"), help="Operator name")
     return parser.parse_args()
 
 
