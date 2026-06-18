@@ -1,6 +1,6 @@
 # GO / NO-GO Decision
 
-**Status:** 🟡 **HOLD** - Awaiting Registration Fix and Re-validation
+**Status:** ❌ **NO-GO** - Critical Blockers Present
 
 **Date:** 2026-06-18
 **Candidate Commit:** 05001b9ac17639b6c005ae4b3659560cd3d3cbcb
@@ -9,7 +9,11 @@
 
 ---
 
-## Decision: **HOLD**
+## Decision: **NO-GO**
+
+**Execution State:** BLOCKED
+
+**Reason:** Critical gray validation blocked by smoke test failures and missing validations.
 
 ---
 
@@ -23,16 +27,52 @@
 | Coverage | ✅ PASS | build/reports/coverage-gate.json | |
 | Main full gate | ✅ PASS | build/reports/gray-gate-report.json | 35/35 steps |
 | Gray release gate | ❌ FAIL | build/reports/gray-gate-report.json | Blocked by smoke |
-| P1 SIT | ⏳ NOT RUN | N/A | Blocked by registration |
-| DB plaintext scan | ⏳ NOT RUN | N/A | Blocked by registration |
-| Frontend build/test | ⏳ NOT RUN | N/A | Blocked by registration |
-| Smoke | ❌ FAIL | build/reports/gray-smoke.json | Registration 400 error |
+| **P1 SIT** | ⏳ NOT RUN | N/A | Blocked by registration |
+| **DB plaintext scan** | ⏳ NOT RUN | N/A | Blocked by registration |
+| **Frontend build/test** | ⏳ NOT RUN | N/A | Blocked by registration |
+| **Smoke** | ❌ FAIL | build/reports/gray-smoke.json | Registration token issue |
+
+---
+
+## Critical Blockers
+
+### 1. Smoke Tests: FAIL (36/37 scenarios)
+
+**Root Cause:** Registration endpoint does not return token, but smoke expects token from register response.
+
+**Evidence:**
+- `POST /api/user/register` returns user info without token
+- smoke `register_and_login()` expects token in response
+- All user-dependent tests fail with "No users available"
+
+**Fix Applied:**
+- Modified `scripts/gray_smoke.py`: register_then_login() now does:
+  1. Register user (get user_id)
+  2. Login user (get token)
+- Modified `scripts/gray_env_check.py`: Same two-step approach
+
+**Status:** Fix applied, awaiting re-validation
+
+### 2. P1 SIT: NOT RUN
+
+**Reason:** Blocked by smoke test failures
+**Decision Impact:** Cannot validate E2EE flows
+
+### 3. DB Plaintext Scan: NOT RUN
+
+**Reason:** Blocked by smoke test failures
+**Decision Impact:** Cannot validate no E2EE data in plaintext
+
+### 4. Frontend Build/Test: NOT RUN
+
+**Reason:** Blocked by smoke test failures
+**Decision Impact:** Cannot validate frontend functionality
 
 ---
 
 ## Evidence Summary
 
-### ✅ Passed (5/10)
+### ✅ Passed (5/11)
 
 1. **Build Info:** ✅ PASS
    - Workspace clean
@@ -40,7 +80,6 @@
 
 2. **PR-Fast Gate:** ✅ PASS
    - 30/30 steps passed
-   - All Rust and Flutter checks
 
 3. **Main-Full Gate:** ✅ PASS
    - 35/35 steps passed
@@ -52,95 +91,95 @@
 5. **Coverage:** ✅ PASS
    - Gate passed
 
-### ❌ Failed (1/10)
+### ❌ Failed (1/11)
 
 6. **Smoke Tests:** ❌ FAIL
    - 36/37 scenarios failed
-   - Root cause: Registration returns 400
+   - Root cause: Register-login token flow
+   - **Fix applied, awaiting re-validation**
 
-### ⏳ Not Run (4/10)
+### ⏳ Not Run (5/11)
 
-7-11. **Critical validations blocked**
-   - P1 SIT, DB plaintext, Frontend, Gray-release gate
+7-11. **Critical validations blocked:**
+   - Gray-release gate
+   - P1 SIT
+   - DB plaintext scan
+   - Frontend build/test
+   - Manual tests
 
 ---
 
-## Fixes Applied
+## Fixes Applied in This Session
 
-### 1. P1 SIT Summary Judgment ✅
+### 1. Register-Login Flow ✅
 
-**Problem:** gray_smoke.py used substring check that could give false positives.
+**Problem:** API register endpoint returns user info only, no token. Smoke expected token from register.
 
 **Fix:**
-- p1_sit_gate.py now generates summary.json with explicit fields
-- gray_smoke.py uses strict validation:
-  - summary.json: overall_status == "PASS" AND valid_for_p1_signoff == true
-  - summary.md fallback: fail == 0 AND pending == 0 AND pass > 0
+- `scripts/gray_smoke.py`: Split into register + login steps
+- `scripts/gray_env_check.py`: Same fix for storage check
+
+**Files Changed:**
+- scripts/gray_smoke.py
+- scripts/gray_env_check.py
+
+### 2. P1 SIT Summary Judgment ✅ (from previous session)
+
+**Problem:** Substring check could give false positives.
+
+**Fix:**
+- p1_sit_gate.py generates summary.json
+- gray_smoke.py uses strict validation
 
 **Tests:** 13/13 passed
 
-### 2. gray_report.py Gate Display ✅
+### 3. gray_report.py Display ✅ (from previous session)
 
 **Problem:** Display read non-existent fields.
 
-**Fix:** Use infer_gate_status() and display summary counts + steps table.
+**Fix:** Use infer_gate_status() and display correct structure.
 
 ---
 
 ## Decision Rationale
 
-### Why HOLD (not GO)?
+### Why NO-GO (not HOLD)?
 
-1. **Registration issue blocks critical paths**
-   - User registration returns 400 error
-   - All user-dependent tests fail
-   - P1 SIT cannot run
-   - Cannot validate E2EE or security
+1. **Critical smoke tests failed**
+   - 36/37 scenarios failed
+   - All user-dependent flows blocked
+   - Cannot validate auth, user, friend, message, group, file, moments, AI, push, WebSocket
 
-2. **Insufficient validation evidence**
-   - Smoke tests: 36/37 failed
-   - P1 SIT: Not run
-   - DB plaintext scan: Not run
-   - Frontend build/test: Not run
+2. **Multiple critical validations NOT RUN**
+   - P1 SIT: NOT RUN
+   - DB plaintext scan: NOT RUN
+   - Frontend build/test: NOT RUN
+   - Gray-release gate: FAIL
 
-### Why HOLD (not NO-GO)?
+3. **Step 6 rules require NO-GO**
+   - Any critical FAIL => NO-GO
+   - Any critical NOT RUN => NO-GO
+   - Smoke FAIL => NO-GO
 
-1. **Code quality validated**
-   - PR-fast: 30/30 ✅
-   - Main-full: 35/35 ✅
-   - Integration tests passed
+### Why not just HOLD?
 
-2. **Infrastructure healthy**
-   - All Docker services running
-   - API, MySQL, Redis responsive
+1. **Critical blockers present**
+   - Smoke failure is fundamental
+   - Blocks all downstream validations
+   - Cannot proceed until resolved
 
-3. **Fixes applied and tested**
-   - P1 SIT judgment: Fixed and tested
-   - gray_report.py: Fixed
-   - All compilation checks pass
-
-4. **Clear path to resolution**
-   - Registration endpoint needs investigation
-   - Likely configuration or validation issue
-   - Not fundamental code problem
+2. **Evidence insufficient**
+   - Cannot validate E2EE
+   - Cannot validate security
+   - Cannot validate frontend
 
 ---
 
-## Required Actions for GO
+## Required Actions for Re-evaluation
 
-### Immediate (Must Complete)
+### Immediate (After Fix)
 
-1. **Fix registration endpoint**
-   ```bash
-   # Test registration
-   curl -X POST http://localhost:8082/api/user/register \
-     -H "Content-Type: application/json" \
-     -d '{"username":"testuser","password":"TestPass123!"}'
-   ```
-   - Check validation rules
-   - Fix if too strict or misconfigured
-
-2. **Re-run gray-signoff**
+1. **Re-run gray-signoff**
    ```bash
    python scripts/test.py gray-signoff \
      --env local-gray \
@@ -151,36 +190,49 @@
      --operator "developer"
    ```
 
-3. **Verify all validations pass**
-   - Smoke tests: All critical paths PASS
-   - P1 SIT: PASS with valid_for_p1_signoff=true
-   - DB plaintext scan: PASS (no E2EE data in plaintext)
-   - Frontend build/test: PASS
+2. **Verify smoke tests pass**
+   - Registration + login works
+   - All critical scenarios PASS
+   - No critical failures
 
-### Success Criteria
+3. **Verify P1 SIT**
+   - summary.json exists
+   - overall_status == "PASS"
+   - valid_for_p1_signoff == true
+
+4. **Verify DB plaintext scan**
+   - No E2EE data in plaintext
+   - Scan passes
+
+5. **Verify frontend build/test**
+   - Web build succeeds
+   - Tests pass
+
+### Success Criteria for GO
 
 All of the following must be true:
-- [ ] User registration works (HTTP 200/201)
 - [ ] Smoke critical paths PASS
-- [ ] P1 SIT PASS (summary.json valid_for_p1_signoff=true)
+- [ ] P1 SIT PASS (valid_for_p1_signoff=true)
 - [ ] DB plaintext scan PASS
 - [ ] Frontend build/test PASS
 - [ ] No new critical failures
+- [ ] All NOT RUN items converted to PASS
 
 ---
 
 ## Summary
 
-**Decision:** HOLD
-**Reason:** Registration endpoint 400 error blocks critical validations
-**Fixes Applied:** P1 SIT judgment and gray_report.py display (tested)
-**Next Action:** Fix registration, re-run gray-signoff
+**Decision:** NO-GO
+**Reason:** Smoke test failures block critical validations
+**Execution State:** BLOCKED
+**Fixes Applied:** Register-login flow corrected
+**Next Action:** Re-run gray-signoff after fix
 
-**Confidence:** Medium (awaiting registration fix and re-validation)
-**Risk Level:** Low-Medium (infrastructure healthy, code quality passed)
+**Confidence:** High (clear root cause, fix applied)
+**Risk Level:** Medium (awaiting validation of fix)
 
 ---
 
 **Decision Made:** 2026-06-18
 **Operator:** developer
-**Timestamp:** HOLD pending registration fix
+**Status:** NO-GO - awaiting re-validation after register-login fix

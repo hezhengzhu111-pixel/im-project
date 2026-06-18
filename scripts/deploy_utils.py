@@ -106,7 +106,7 @@ def load_config(
         project_dir=root,
         env_file=resolved_env_file,
         compose_file=root / "deploy" / "sit" / "docker-compose.yml",
-        backend_root=root / "backend",
+        backend_root=root,  # spring-ai 已迁移到根目录
         rust_root=root / "rust",
         frontend_root=root / "flutter" / "apps" / "web",
         sql_init_file=root / "sql" / "mysql8" / "init_all.sql",

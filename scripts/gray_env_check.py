@@ -315,13 +315,27 @@ def check_storage(api_base: str, timeout: int = 30) -> dict:
         # Register and login
         import uuid
         test_user = f"gray_storage_test_{uuid.uuid4().hex[:8]}"
+        test_password = "TestPassword123!"
+
+        # Step 1: Register
         resp = requests.post(
             f"{api_base}/api/user/register",
-            json={"username": test_user, "password": "TestPassword123!"},
+            json={"username": test_user, "password": test_password},
             timeout=timeout,
         )
         if resp.status_code not in (200, 201):
             result["error"] = f"Cannot register: {resp.status_code}"
+            result["status"] = "FAIL"
+            return result
+
+        # Step 2: Login to get token
+        resp = requests.post(
+            f"{api_base}/api/user/login",
+            json={"username": test_user, "password": test_password},
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            result["error"] = f"Cannot login after register: {resp.status_code}"
             result["status"] = "FAIL"
             return result
 

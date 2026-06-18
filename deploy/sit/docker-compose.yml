@@ -460,7 +460,7 @@ services:
   im-spring-ai:
     image: im-project-sit/im-spring-ai:latest
     build:
-      context: ../../backend/spring-ai
+      context: ../../spring-ai
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     restart: unless-stopped

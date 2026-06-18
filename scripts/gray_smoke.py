@@ -156,7 +156,7 @@ class GraySmokeTest:
     def register_and_login(self, username: str, password: str = "TestPassword123!") -> dict:
         """Register and login a user."""
         try:
-            # Register
+            # Step 1: Register
             resp = requests.post(
                 f"{self.api_base}/api/user/register",
                 json={"username": username, "password": password},
@@ -166,11 +166,25 @@ class GraySmokeTest:
                 return {"success": False, "error": f"Register failed: {resp.status_code}"}
 
             data = extract_data(resp.json())
-            token = data.get("token") or data.get("accessToken")
             user_id = data.get("userId") or data.get("id")
 
+            if not user_id:
+                return {"success": False, "error": "No user_id received from register"}
+
+            # Step 2: Login to get token
+            resp = requests.post(
+                f"{self.api_base}/api/user/login",
+                json={"username": username, "password": password},
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Login failed after register: {resp.status_code}"}
+
+            data = extract_data(resp.json())
+            token = data.get("token") or data.get("accessToken")
+
             if not token:
-                return {"success": False, "error": "No token received"}
+                return {"success": False, "error": "No token received from login"}
 
             return {
                 "success": True,

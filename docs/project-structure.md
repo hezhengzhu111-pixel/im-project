@@ -211,19 +211,22 @@ build/
 
 本阶段（Batch 1）仅建立规则和契约。后续批次将进行实际迁移：
 
-### Batch 2: 迁移 scripts/ 和构建脚本
+### Batch 2: 迁移 scripts/ 和构建脚本 ✅ 已完成
 
 **目标：**
-- 将 `deploy.py`、`1_deploy_middleware.py`、`2_init_db.py`、`3_deploy_services.py` 移至 `scripts/`
-- 重构 `scripts/build.py` 以使用 `build/work/` 隔离构建
-- 更新所有脚本中的路径引用
-- 验证所有脚本功能完整
+- ✅ 将 `backend/spring-ai/` 迁移至根目录 `spring-ai/`
+- ✅ 删除根目录兼容脚本（`deploy.py`、`1_deploy_middleware.py`、`2_init_db.py`、`3_deploy_services.py`）
+- ✅ 创建三个主要生命周期入口（`scripts/init.py`、`scripts/build.py`、`scripts/start.py`）
+- ✅ 更新所有 `backend/spring-ai` 路径引用
 
-**改动范围：**
-- 移动脚本到 `scripts/`
-- 更新脚本中的构建目录引用
-- 添加构建隔离逻辑（清理 work/ 目录）
-- 不改动业务逻辑
+**实际改动：**
+- ✅ 迁移 `backend/spring-ai/` → `spring-ai/`
+- ✅ 删除 `backend/` 目录（已为空）
+- ✅ 移动 `backend/API.md` → `docs/backend-api.md`
+- ✅ 更新 `deploy/sit/docker-compose.yml` 中的构建上下文路径
+- ✅ 删除根目录 4 个 wrapper 脚本
+- ✅ 创建 `scripts/init.py`（环境检查、中间件初始化、数据库检查）
+- ✅ 创建 `scripts/start.py`（服务启动、停止、重启、状态、日志）
 
 ### Batch 3: 迁移 runtime/ 和中间件配置
 
@@ -345,6 +348,205 @@ export BUILD_REPORTS_DIR=build/reports
 
 ---
 
+## 8. 当前项目状态 (Batch 2 完成后)
+
+### 目录结构
+
+当前项目已完成 Batch 1 和 Batch 2 的迁移，根目录结构如下：
+
+```
+.
+├── flutter/          # Flutter 前端源码（只读）✅
+├── rust/             # Rust 后端源码（只读）✅
+├── spring-ai/        # Spring AI 服务源码（只读）✅ 已从 backend/ 迁移
+├── sql/              # 数据库迁移脚本（只读）✅
+├── scripts/          # 构建、部署和运维脚本 ✅
+│   ├── init.py       # 项目初始化入口 ✅ NEW
+│   ├── build.py      # 编译和打包入口 ✅
+│   └── start.py      # 服务启动入口 ✅ NEW
+├── tests/            # 集成测试和端到端测试
+├── docs/             # 项目文档
+├── build/            # 唯一可写工作区 ✅
+├── .github/          # GitHub Actions 配置
+├── .gitignore        # Git 忽略规则
+└── .gitattributes    # Git 属性配置
+```
+
+**已完成的迁移：**
+- ✅ `backend/spring-ai/` → `spring-ai/`
+- ✅ `backend/` 已删除（迁移后为空）
+- ✅ 根目录 wrapper 脚本已删除：
+  - `deploy.py`
+  - `1_deploy_middleware.py`
+  - `2_init_db.py`
+  - `3_deploy_services.py`
+- ✅ 三个主要生命周期入口已创建
+
+### 生命周期入口脚本
+
+现在项目有三个主要的生命周期入口脚本，所有操作都应通过这些脚本进行：
+
+#### 1. scripts/init.py - 项目初始化
+
+**职责：**
+- 环境检查（Docker、Docker Compose、必要工具）
+- build/ 标准目录结构初始化
+- 中间件准备（MySQL、Redis 等）
+- 数据库初始化或检查
+
+**不负责：**
+- 编译业务代码（由 build.py 负责）
+- 启动完整业务项目（由 start.py 负责）
+
+**常用命令：**
+```bash
+# 检查环境（仅检查，不执行操作）
+python scripts/init.py --check-only
+
+# 完整初始化（推荐首次使用）
+python scripts/init.py
+
+# 初始化但跳过中间件
+python scripts/init.py --skip-middleware
+
+# 初始化但跳过数据库检查
+python scripts/init.py --skip-db
+
+# 强制重建中间件容器
+python scripts/init.py --force-recreate
+```
+
+#### 2. scripts/build.py - 编译和打包
+
+**职责：**
+- 编译 Flutter Web 应用
+- 编译 Rust 后端服务
+- 构建 Docker 镜像
+- 生成构建 manifest
+
+**不负责：**
+- 环境初始化（由 init.py 负责）
+- 启动服务（由 start.py 负责）
+
+**常用命令：**
+```bash
+# 构建所有组件
+python scripts/build.py all
+
+# 仅构建 Rust 服务
+python scripts/build.py rust
+
+# 仅构建 Flutter Web
+python scripts/build.py web
+
+# 构建 Docker 镜像
+python scripts/build.py docker-images
+
+# 清理构建目录
+python scripts/build.py clean
+```
+
+#### 3. scripts/start.py - 服务管理
+
+**职责：**
+- 启动所有服务或指定服务
+- 查看服务状态
+- 停止服务
+- 重启服务
+- 查看服务日志
+
+**不负责：**
+- 编译业务代码（由 build.py 负责）
+- 环境初始化（由 init.py 负责）
+
+**常用命令：**
+```bash
+# 启动所有服务
+python scripts/start.py start
+
+# 启动指定服务
+python scripts/start.py start im-server im-api-server
+
+# 查看服务状态
+python scripts/start.py status
+
+# 停止所有服务
+python scripts/start.py stop
+
+# 重启所有服务
+python scripts/start.py restart
+
+# 查看服务日志
+python scripts/start.py logs im-server
+
+# 实时跟踪日志
+python scripts/start.py logs im-server --follow
+```
+
+### 推荐工作流程
+
+#### 首次设置
+```bash
+# 1. 初始化环境和基础设施
+python scripts/init.py
+
+# 2. 构建项目
+python scripts/build.py all
+
+# 3. 启动服务
+python scripts/start.py start
+```
+
+#### 日常开发
+```bash
+# 查看服务状态
+python scripts/start.py status
+
+# 重启特定服务（修改代码后）
+python scripts/start.py restart im-server
+
+# 查看日志调试
+python scripts/start.py logs im-server --follow
+
+# 停止所有服务
+python scripts/start.py stop
+```
+
+#### 重新构建
+```bash
+# 清理并重新构建
+python scripts/build.py clean
+python scripts/build.py all
+
+# 重启服务
+python scripts/start.py restart
+```
+
+### 已删除的旧入口
+
+以下根目录 wrapper 脚本已删除，其功能已整合到新的生命周期入口：
+
+| 旧脚本 | 新入口 | 说明 |
+|-------|-------|------|
+| `deploy.py` | `scripts/deploy.py` | 底层部署工具（不建议直接调用） |
+| `1_deploy_middleware.py` | `scripts/init.py` | 中间件初始化已整合到 init.py |
+| `2_init_db.py` | `scripts/init.py` | 数据库检查已整合到 init.py |
+| `3_deploy_services.py` | `scripts/start.py` | 服务启动已整合到 start.py |
+
+**注意：** `scripts/deploy.py`、`scripts/deploy_middleware.py`、`scripts/init_db.py`、`scripts/deploy_services.py` 仍然存在并可用，但建议通过新的入口脚本调用。
+
+### 迁移进度
+
+- ✅ **Batch 1:** 建立规则和 build/ 契约（已完成）
+- ✅ **Batch 2:** 迁移 spring-ai 和 scripts 入口（已完成）
+- ⏳ **Batch 3:** 迁移 runtime/ 和中间件配置（待完成）
+- ⏳ **Batch 4:** 迁移 tests/ 和测试配置（待完成）
+- ⏳ **Batch 5:** 迁移 docs/ 和文档结构（待完成）
+- ⏳ **Batch 6:** 更新 CI/CD 和 GitHub Actions（待完成）
+- ⏳ **Batch 7:** 清理和验证（待完成）
+
+---
+
 **最后更新：** 2026-06-18
 **维护者：** IM Developer
-**版本：** 1.0 (Batch 1 - Phase 0 + Phase 1)
+**版本：** 2.0 (Batch 2 - Phase 2 + Phase 3)
