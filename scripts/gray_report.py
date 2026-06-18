@@ -351,6 +351,37 @@ def generate_final_report(
     print(f"\nFinal report generated: {output_path}")
     return 0 if decision["decision"] == "GO" else 1
 
+def infer_gate_status(gate_summary: dict) -> str:
+    """Infer gate status from gate summary structure."""
+    if not gate_summary:
+        return "NOT RUN"
+
+    summary = gate_summary.get("summary", {})
+    if not summary:
+        return "NOT RUN"
+
+    fail_count = summary.get("fail", 0)
+    skip_count = summary.get("skip", 0)
+    pass_count = summary.get("pass", 0)
+
+    if fail_count > 0:
+        return "FAIL"
+    if skip_count > 0:
+        # Check if any skipped steps are critical
+        steps = gate_summary.get("steps", [])
+        critical_skips = [
+            s for s in steps
+            if s.get("status") == "SKIP" and s.get("critical", False)
+        ]
+        if critical_skips:
+            return "FAIL"
+        return "WARN"
+    if pass_count > 0 and fail_count == 0 and skip_count == 0:
+        return "PASS"
+
+    return "NOT RUN"
+
+
 def determine_decision(
     build_info: dict,
     env_check: dict,
@@ -373,24 +404,46 @@ def determine_decision(
         issues.append("Environment check FAIL")
     elif env_status == "NOT RUN":
         issues.append("Environment check NOT RUN")
+    elif env_status == "WARN":
+        warnings.append("Environment check WARN")
 
     # Check gates
-    gate_status = gate_summary.get("overall_status", "NOT RUN")
+    gate_status = infer_gate_status(gate_summary)
     if gate_status == "FAIL":
         issues.append("Gate check FAIL")
     elif gate_status == "NOT RUN":
         issues.append("Gate check NOT RUN")
+    elif gate_status == "WARN":
+        warnings.append("Gate check WARN (some steps skipped)")
 
     # Check smoke tests
     smoke_status = smoke_results.get("overall_status", "NOT RUN")
+    smoke_summary = smoke_results.get("summary", {})
     critical_smoke_failures = [
         s for s in smoke_results.get("scenarios", [])
         if s.get("status") == "FAIL" and s.get("critical", False)
     ]
-    if smoke_status == "FAIL" and critical_smoke_failures:
-        issues.append(f"Critical smoke test failures: {len(critical_smoke_failures)}")
+    critical_not_run = [
+        s for s in smoke_results.get("scenarios", [])
+        if s.get("status") == "NOT RUN" and s.get("critical", False)
+    ]
+
+    if smoke_status == "FAIL":
+        if critical_smoke_failures:
+            issues.append(f"Critical smoke test failures: {len(critical_smoke_failures)}")
+        else:
+            warnings.append("Smoke tests FAIL (non-critical)")
     elif smoke_status == "NOT RUN":
         issues.append("Smoke tests NOT RUN")
+    elif smoke_status == "WARN":
+        if critical_not_run:
+            issues.append(f"Critical smoke tests NOT RUN: {len(critical_not_run)}")
+        elif smoke_summary.get("critical_failures", 0) > 0:
+            issues.append(f"Critical smoke failures: {smoke_summary['critical_failures']}")
+        elif smoke_summary.get("not_run", 0) > 0:
+            warnings.append(f"Smoke tests partially NOT RUN: {smoke_summary['not_run']} scenarios")
+        else:
+            warnings.append("Smoke tests WARN")
 
     # Check coverage - compatible with real JSON structure
     if not coverage_summary:

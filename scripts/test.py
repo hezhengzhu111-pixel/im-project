@@ -88,11 +88,26 @@ def flutter_steps(*, coverage: bool = False, continue_on_error: bool = False) ->
 
 
 def dispatch(args: argparse.Namespace) -> list[StepResult]:
-    if args.command in {"pr-fast", "main-full", "gray-release"}:
+    if args.command in {"pr-fast", "main-full"}:
         return [
             run_step(
                 f"Gray gate {args.command}",
                 [PYTHON, str(ROOT / "scripts" / "gray_gate.py"), "--mode", args.command],
+                cwd=ROOT,
+                timeout=7200,
+            )
+        ]
+    if args.command == "gray-release":
+        return [
+            run_step(
+                f"Gray gate {args.command}",
+                [
+                    PYTHON,
+                    str(ROOT / "scripts" / "gray_gate.py"),
+                    "--mode", "gray-release",
+                    "--base-url", args.api_base,
+                    "--db-url", args.db_url,
+                ],
                 cwd=ROOT,
                 timeout=7200,
             )
@@ -167,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     )
     # Gray signoff specific args
     parser.add_argument("--env", default="local-gray", help="Gray environment name")
-    parser.add_argument("--api-base", default=os.environ.get("IM_API_BASE", "http://localhost:8082"), help="API base URL")
+    parser.add_argument("--api-base", "--base-url", default=os.environ.get("IM_API_BASE", "http://localhost:8082"), help="API base URL")
     parser.add_argument("--ws-base", default=os.environ.get("IM_WS_BASE", ""), help="WebSocket base URL")
     parser.add_argument("--db-url", default=os.environ.get("IM_DB_URL", ""), help="Database URL")
     parser.add_argument("--redis-url", default=os.environ.get("REDIS_URL", ""), help="Redis URL")

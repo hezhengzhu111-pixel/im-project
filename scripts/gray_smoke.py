@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from gate_common import REPORT_DIR, sanitize
+from gate_common import ROOT, REPORT_DIR, sanitize
 
 try:
     import requests
@@ -494,10 +494,20 @@ class GraySmokeTest:
 
     def test_e2ee_private_smoke(self) -> dict:
         """Test E2EE private smoke - MUST depend on P1 SIT report."""
-        # Check if P1 SIT report exists and passed
-        p1_sit_report = Path(REPORT_DIR).parent / "artifacts" / "p1-sit"
-        if not p1_sit_report.exists():
-            return {"success": False, "error": "P1 SIT report not found - E2EE smoke cannot proceed"}
+        # Check multiple possible P1 SIT report locations
+        possible_paths = [
+            ROOT / "artifacts" / "p1-sit",
+            ROOT / "build" / "artifacts" / "p1-sit",
+        ]
+
+        p1_sit_report = None
+        for path in possible_paths:
+            if path.exists():
+                p1_sit_report = path
+                break
+
+        if not p1_sit_report:
+            return {"success": False, "error": f"P1 SIT report not found in {possible_paths} - E2EE smoke cannot proceed"}
 
         # Look for latest P1 SIT summary
         latest_summary = None
@@ -508,21 +518,31 @@ class GraySmokeTest:
                 break
 
         if not latest_summary:
-            return {"success": False, "error": "No P1 SIT summary found"}
+            return {"success": False, "error": f"No P1 SIT summary found in {p1_sit_report}"}
 
         # Check if P1 SIT passed
         content = latest_summary.read_text(encoding="utf-8")
         if "PASS" not in content:
-            return {"success": False, "error": "P1 SIT did not pass - E2EE smoke cannot proceed"}
+            return {"success": False, "error": f"P1 SIT did not pass ({latest_summary}) - E2EE smoke cannot proceed"}
 
         return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
 
     def test_e2ee_group_smoke(self) -> dict:
         """Test E2EE group smoke - MUST depend on P1 SIT report."""
-        # Check if P1 SIT report exists and passed
-        p1_sit_report = Path(REPORT_DIR).parent / "artifacts" / "p1-sit"
-        if not p1_sit_report.exists():
-            return {"success": False, "error": "P1 SIT report not found - Group E2EE smoke cannot proceed"}
+        # Check multiple possible P1 SIT report locations
+        possible_paths = [
+            ROOT / "artifacts" / "p1-sit",
+            ROOT / "build" / "artifacts" / "p1-sit",
+        ]
+
+        p1_sit_report = None
+        for path in possible_paths:
+            if path.exists():
+                p1_sit_report = path
+                break
+
+        if not p1_sit_report:
+            return {"success": False, "error": f"P1 SIT report not found in {possible_paths} - Group E2EE smoke cannot proceed"}
 
         # Look for latest P1 SIT summary
         latest_summary = None
@@ -533,12 +553,12 @@ class GraySmokeTest:
                 break
 
         if not latest_summary:
-            return {"success": False, "error": "No P1 SIT summary found"}
+            return {"success": False, "error": f"No P1 SIT summary found in {p1_sit_report}"}
 
         # Check if P1 SIT passed (including group E2EE)
         content = latest_summary.read_text(encoding="utf-8")
         if "PASS" not in content:
-            return {"success": False, "error": "P1 SIT did not pass - Group E2EE smoke cannot proceed"}
+            return {"success": False, "error": f"P1 SIT did not pass ({latest_summary}) - Group E2EE smoke cannot proceed"}
 
         return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
 

@@ -28,10 +28,26 @@ def test_test_py_no_empty_args():
     # Check for proper conditional append
     if 'if args.continue_on_error:' in content and 'cmd.append("--continue-on-error")' in content:
         print("  PASS: Proper conditional append found")
-        return True
+    else:
+        print("  FAIL: Could not verify fix")
+        return False
 
-    print("  FAIL: Could not verify fix")
-    return False
+    # Check gray-release passes --base-url and --db-url
+    if 'args.command == "gray-release"' in content:
+        if '--base-url", args.api_base' in content and '--db-url", args.db_url' in content:
+            print("  PASS: gray-release passes --base-url and --db-url")
+        else:
+            print("  FAIL: gray-release doesn't pass parameters")
+            return False
+
+    # Check --base-url is alias for --api-base
+    if '"--api-base", "--base-url"' in content:
+        print("  PASS: --base-url is alias for --api-base")
+    else:
+        print("  FAIL: --base-url alias not found")
+        return False
+
+    return True
 
 
 def test_gray_gate_final_report_timing():
@@ -57,6 +73,43 @@ def test_gray_gate_final_report_timing():
 
     print("  FAIL: Could not verify fix")
     return False
+
+
+def test_infer_gate_status():
+    """Test infer_gate_status function."""
+    print("\n==> Test: infer_gate_status")
+
+    from gray_report import infer_gate_status
+
+    # Test empty summary
+    assert infer_gate_status({}) == "NOT RUN"
+    assert infer_gate_status(None) == "NOT RUN"
+
+    # Test PASS
+    assert infer_gate_status({"summary": {"pass": 10, "fail": 0, "skip": 0}}) == "PASS"
+
+    # Test FAIL
+    assert infer_gate_status({"summary": {"pass": 5, "fail": 2, "skip": 0}}) == "FAIL"
+
+    # Test WARN (non-critical skip)
+    assert infer_gate_status({
+        "summary": {"pass": 5, "fail": 0, "skip": 2},
+        "steps": [
+            {"name": "step1", "status": "SKIP", "critical": False},
+            {"name": "step2", "status": "SKIP", "critical": False},
+        ]
+    }) == "WARN"
+
+    # Test FAIL (critical skip)
+    assert infer_gate_status({
+        "summary": {"pass": 5, "fail": 0, "skip": 1},
+        "steps": [
+            {"name": "step1", "status": "SKIP", "critical": True},
+        ]
+    }) == "FAIL"
+
+    print("  PASS: infer_gate_status works correctly")
+    return True
 
 
 def test_commit_mismatch_fail():
@@ -194,6 +247,70 @@ def test_manifest_errors_no_go():
     return False
 
 
+def test_warn_holds_decision():
+    """Test that WARN results in HOLD, not GO."""
+    print("\n==> Test: WARN results in HOLD")
+
+    from gray_report import determine_decision
+
+    # Simulate env WARN with all other checks PASS
+    result = determine_decision(
+        build_info={},
+        env_check={"status": "WARN"},
+        gate_summary={"summary": {"pass": 10, "fail": 0, "skip": 0}},
+        smoke_results={"overall_status": "PASS", "summary": {"critical_failures": 0, "not_run": 0}},
+        coverage_summary={
+            "rust": {"overall": {"gate_passed": True, "passed": True}},
+            "flutter": {"overall": {"gate_passed": True, "passed": True}}
+        },
+        manifest_summary={
+            "categories": {
+                "backend_routes": {"covered": 122, "missing": 0},
+                "frontend_endpoints": {"covered": 112, "missing": 0},
+            }
+        },
+    )
+
+    if result["decision"] == "HOLD":
+        if any("Environment check WARN" in w for w in result["warnings"]):
+            print("  PASS: WARN results in HOLD")
+            return True
+
+    print(f"  FAIL: Expected HOLD, got {result['decision']}, issues: {result['issues']}, warnings: {result['warnings']}")
+    return False
+
+
+def test_critical_not_run_no_go():
+    """Test that critical NOT RUN results in NO-GO."""
+    print("\n==> Test: Critical NOT RUN results in NO-GO")
+
+    from gray_report import determine_decision
+
+    # Simulate critical smoke NOT RUN
+    result = determine_decision(
+        build_info={},
+        env_check={"status": "PASS"},
+        gate_summary={"summary": {"pass": 10, "fail": 0, "skip": 0}},
+        smoke_results={
+            "overall_status": "WARN",
+            "summary": {"critical_failures": 0, "not_run": 1},
+            "scenarios": [
+                {"name": "E1. Private E2EE smoke", "status": "NOT RUN", "critical": True},
+            ]
+        },
+        coverage_summary={"rust": {"overall": {"gate_passed": True}}, "flutter": {"overall": {"gate_passed": True}}},
+        manifest_summary={},
+    )
+
+    if result["decision"] == "NO-GO":
+        if any("Critical smoke tests NOT RUN" in issue for issue in result["issues"]):
+            print("  PASS: Critical NOT RUN results in NO-GO")
+            return True
+
+    print(f"  FAIL: Expected NO-GO, got {result['decision']}")
+    return False
+
+
 def test_gray_smoke_no_old_paths():
     """Test that gray_smoke.py doesn't contain old API paths."""
     print("\n==> Test: gray_smoke.py no old paths")
@@ -277,7 +394,13 @@ def test_e2ee_no_fake_envelope():
         print(f"  FAIL: Found fake envelope patterns: {found_fake}")
         return False
 
-    print("  PASS: No fake envelope patterns found")
+    # Check that P1 SIT path is searched in multiple locations
+    if 'ROOT / "artifacts" / "p1-sit"' in content and 'ROOT / "build" / "artifacts" / "p1-sit"' in content:
+        print("  PASS: No fake envelope patterns, P1 SIT path search correct")
+    else:
+        print("  FAIL: P1 SIT path search not correct")
+        return False
+
     return True
 
 
@@ -291,8 +414,11 @@ def run_all_tests():
         test_test_py_no_empty_args,
         test_gray_gate_final_report_timing,
         test_commit_mismatch_fail,
+        test_infer_gate_status,
         test_coverage_summary_missing_gate_passed,
         test_manifest_errors_no_go,
+        test_warn_holds_decision,
+        test_critical_not_run_no_go,
         test_gray_smoke_no_old_paths,
         test_gray_env_check_no_old_paths,
         test_e2ee_no_fake_envelope,
