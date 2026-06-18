@@ -394,14 +394,48 @@ def test_e2ee_no_fake_envelope():
         print(f"  FAIL: Found fake envelope patterns: {found_fake}")
         return False
 
+    # Check ROOT is imported
+    if "from gate_common import ROOT" not in content:
+        print("  FAIL: ROOT not imported")
+        return False
+
     # Check that P1 SIT path is searched in multiple locations
     if 'ROOT / "artifacts" / "p1-sit"' in content and 'ROOT / "build" / "artifacts" / "p1-sit"' in content:
-        print("  PASS: No fake envelope patterns, P1 SIT path search correct")
+        print("  PASS: No fake envelope patterns, ROOT imported, P1 SIT path search correct")
     else:
         print("  FAIL: P1 SIT path search not correct")
         return False
 
     return True
+
+
+def test_e2ee_smoke_no_p1_sit():
+    """Test that E2EE smoke returns FAIL when P1 SIT report not found."""
+    print("\n==> Test: E2EE smoke behavior when P1 SIT missing")
+
+    # Import GraySmokeTest to test directly
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from gray_smoke import GraySmokeTest
+
+    # Create test instance with non-existent paths
+    test = GraySmokeTest(
+        env="test",
+        api_base="http://localhost:8082",
+        ws_base="",
+        db_url="",
+        prefix="test",
+    )
+
+    # Test E2EE private smoke - should fail when P1 SIT not found
+    result = test.test_e2ee_private_smoke()
+
+    if result.get("success") == False:
+        if "P1 SIT report not found" in result.get("error", ""):
+            print("  PASS: E2EE smoke correctly fails when P1 SIT not found")
+            return True
+
+    print(f"  FAIL: Expected failure, got: {result}")
+    return False
 
 
 def run_all_tests():

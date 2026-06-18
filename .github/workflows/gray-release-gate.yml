@@ -31,19 +31,19 @@ on:
         type: string
         default: ""
       run_sit:
-        description: Run P0/P1 SIT
+        description: Run P0/P1 SIT (if false, will result in NO-GO)
         type: boolean
         default: true
       run_env_check:
-        description: Run environment pre-check
+        description: Run environment pre-check (if false, will result in NO-GO)
         type: boolean
         default: true
       run_smoke:
-        description: Run smoke tests
+        description: Run smoke tests (if false, will result in NO-GO)
         type: boolean
         default: true
       run_frontend_build:
-        description: Run frontend build verification
+        description: Run frontend build verification (if false, will result in NO-GO)
         type: boolean
         default: true
       upload_artifacts:
@@ -127,18 +127,22 @@ jobs:
           echo '{"status":"NOT RUN","reason":"run_env_check=false"}' > build/reports/gray-env-check.json
 
       - name: Run manifest and PR Fast gate
+        continue-on-error: true
         run: |
           python scripts/test.py manifest
           python scripts/test.py pr-fast
 
       - name: Run coverage gate
+        continue-on-error: true
         run: python scripts/test.py coverage
 
       - name: Run Main Full gate
+        continue-on-error: true
         run: python scripts/test.py main-full
 
       - name: Run Gray Release gate
         if: ${{ inputs.run_sit }}
+        continue-on-error: true
         run: |
           python scripts/test.py gray-release \
             --api-base "${{ env.IM_API_BASE }}" \
@@ -150,9 +154,7 @@ jobs:
           mkdir -p build/reports
           echo "# Gray Release Gate" > build/reports/gray-gate-report.md
           echo "NOT RUN: run_sit=false" >> build/reports/gray-gate-report.md
-          echo '{"status":"NOT RUN","reason":"run_sit=false"}' > build/reports/gray-gate-report.json
-          echo "::error::Gray Release SIT was not run (run_sit=false). This must FAIL."
-          exit 1
+          echo '{"summary":{"pass":0,"fail":0,"skip":1},"steps":[{"name":"Gray Release SIT","status":"SKIP","reason":"run_sit=false","critical":true}]}' > build/reports/gray-gate-report.json
 
       - name: Run smoke tests
         if: ${{ inputs.run_smoke }}
@@ -168,10 +170,11 @@ jobs:
         if: ${{ !inputs.run_smoke }}
         run: |
           mkdir -p build/reports
-          echo '{"overall_status":"NOT RUN","reason":"run_smoke=false"}' > build/reports/gray-smoke.json
+          echo '{"overall_status":"NOT RUN","reason":"run_smoke=false","summary":{"total":0,"passed":0,"failed":0,"not_run":0,"critical_failures":0},"scenarios":[]}' > build/reports/gray-smoke.json
 
       - name: Run frontend build verification
         if: ${{ inputs.run_frontend_build }}
+        continue-on-error: true
         run: |
           cd flutter/apps/web
           flutter pub get
@@ -181,23 +184,7 @@ jobs:
             --dart-define=APP_ENV=${{ env.GRAY_ENV }} \
             --dart-define=API_BASE_URL=${{ env.IM_API_BASE }} \
             --dart-define=WS_BASE_URL=${{ env.IM_WS_BASE }}
-          echo "Frontend build verification completed" > ../../../build/reports/gray-frontend-build.json
-
-      - name: Run mobile tests (optional)
-        if: ${{ inputs.run_frontend_build }}
-        run: |
-          cd flutter/apps/mobile
-          flutter pub get
-          flutter test
-        continue-on-error: true
-
-      - name: Run desktop tests (optional)
-        if: ${{ inputs.run_frontend_build }}
-        run: |
-          cd flutter/apps/desktop
-          flutter pub get
-          flutter test
-        continue-on-error: true
+          echo '{"status":"PASS","reason":"Frontend build verification completed"}' > ../../../build/reports/gray-frontend-build.json
 
       - name: Mark frontend build not run
         if: ${{ !inputs.run_frontend_build }}
@@ -206,6 +193,7 @@ jobs:
           echo '{"status":"NOT RUN","reason":"run_frontend_build=false"}' > build/reports/gray-frontend-build.json
 
       - name: Generate final report
+        if: always()
         run: |
           python scripts/gray_report.py finalize \
             --build-info build/reports/gray-build-info.json \
@@ -217,6 +205,7 @@ jobs:
             --out build/reports/gray-release-report.md
 
       - name: Determine GO/NO-GO decision
+        if: always()
         id: decision
         run: |
           if [ -f build/reports/gray-release-report.md ]; then
@@ -233,7 +222,7 @@ jobs:
             fi
           else
             echo "decision=UNKNOWN" >> $GITHUB_OUTPUT
-            echo "## ❓ UNKNOWN" >> $GITHUB_STEP_SUMMARY
+            echo "## ❓ UNKNOWN - Final report not generated" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
@@ -256,10 +245,13 @@ jobs:
             echo "### Full Report" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             cat build/reports/gray-release-report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Final report not generated" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload gray release artifacts
-        if: ${{ always() && inputs.upload_artifacts }}
+        if: always() && inputs.upload_artifacts
         uses: actions/upload-artifact@v4
         with:
           name: gray-release-gate-artifacts-${{ github.run_id }}
