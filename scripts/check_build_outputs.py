@@ -18,12 +18,12 @@ def main() -> None:
     manifest = load_manifest(manifest_path, missing)
 
     required = [
-        backend_artifact("api-server"),
-        backend_artifact("im-server"),
+        rust_binary_artifact("api-server"),
+        rust_binary_artifact("im-server"),
         DIST_DIR / "frontend" / "web" / "index.html",
         DIST_DIR / "frontend" / "web" / "pkg" / "im_rust_bridge.js",
         DIST_DIR / "frontend" / "web" / "pkg" / "im_rust_bridge_bg.wasm",
-        bridge_artifact(),
+        rust_bridge_artifact(),
     ]
     required.extend(flutter_main_js_files())
 
@@ -31,7 +31,7 @@ def main() -> None:
         if not path.is_file():
             missing.append(relative(path))
 
-    docker_images = manifest.get("docker_images", {}) if isinstance(manifest, dict) else {}
+    docker_images = manifest.get("docker_image_tar_paths", {}) if isinstance(manifest, dict) else {}
     if docker_images:
         for rel_path in docker_images.values():
             path = PROJECT_ROOT / rel_path
@@ -79,12 +79,12 @@ def flutter_main_js_files() -> list[Path]:
     return [main_dart_js]
 
 
-def backend_artifact(name: str) -> Path:
+def rust_binary_artifact(name: str) -> Path:
     suffix = ".exe" if platform.system() == "Windows" else ""
-    return DIST_DIR / "backend" / name / f"{name}{suffix}"
+    return DIST_DIR / "rust" / name / f"{name}{suffix}"
 
 
-def bridge_artifact() -> Path:
+def rust_bridge_artifact() -> Path:
     system = platform.system()
     if system == "Windows":
         filename = "im_rust_bridge.dll"
@@ -92,7 +92,7 @@ def bridge_artifact() -> Path:
         filename = "libim_rust_bridge.dylib"
     else:
         filename = "libim_rust_bridge.so"
-    return DIST_DIR / "rust_bridge" / filename
+    return DIST_DIR / "rust" / "rust-bridge" / filename
 
 
 def print_size(path: Path) -> None:

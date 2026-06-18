@@ -16,9 +16,13 @@ python scripts/build.py all
 
 ```sh
 python scripts/build.py clean
+python scripts/build.py clean-work
+python scripts/build.py clean-dist
+python scripts/build.py clean-cache
 python scripts/build.py rust
 python scripts/build.py bridge
 python scripts/build.py web
+python scripts/build.py spring-ai
 python scripts/build.py manifest
 python scripts/build.py docker-images
 ```
@@ -36,12 +40,20 @@ python scripts/build.py rust --profile debug
 
 ## Output Layout
 
-- `build/dist/backend/api-server`
-- `build/dist/backend/im-server`
+- `build/dist/rust/api-server`
+- `build/dist/rust/im-server`
+- `build/dist/rust/rust-bridge`
 - `build/dist/frontend/web`
-- `build/dist/rust_bridge`
-- `build/dist/docker`
+- `build/dist/spring-ai`
+- `build/dist/images`
+- `build/work/flutter`
+- `build/work/rust`
+- `build/work/spring-ai`
+- `build/work/sql`
+- `build/cache/cargo-home`
 - `build/cache/rust-target`
+- `build/cache/pub-cache`
+- `build/cache/maven-repo`
 - `build/manifest.json`
 
 `build/` is ignored by git and must not be committed.
@@ -51,7 +63,8 @@ python scripts/build.py rust --profile debug
 - `scripts/build.py` collects local and CI build artifacts.
 - `scripts/deploy_services.py` deploys services through Docker Compose.
 - `docs/deployment.md` documents the full deployment workflow and the root compatibility entry points.
-- `rust/apps/*/Dockerfile` and `flutter/apps/web/Dockerfile` continue to build Docker images.
+- `rust/apps/*/Dockerfile`, `flutter/apps/web/Dockerfile`, and `spring-ai/Dockerfile` continue to build Docker images.
+- `scripts/build.py docker-images` builds from synchronized `build/work` contexts and saves image tar files under `build/dist/images`.
 - `scripts/build.py` does not replace `scripts/deploy_services.py`.
 - `scripts/deploy_services.py` does not collect `build/dist` artifacts.
 - `python scripts/build.py docker-images` is optional and is not part of the default `all` command because it depends on Docker and is slower than local artifact collection.

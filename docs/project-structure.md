@@ -200,9 +200,13 @@ build/
     "spring-ai": { "version": "2.0.0", "commit": "ghi789" }
   },
   "artifacts": {
-    "rust": ["build/dist/rust/gateway.exe"],
-    "flutter": ["build/dist/flutter/app.wasm"],
-    "spring-ai": ["build/dist/spring-ai/ai-service.jar"]
+    "rust": [
+      "build/dist/rust/api-server/api-server.exe",
+      "build/dist/rust/im-server/im-server.exe",
+      "build/dist/rust/rust-bridge/im_rust_bridge.dll"
+    ],
+    "flutter": ["build/dist/frontend/web/index.html"],
+    "spring-ai": ["build/dist/spring-ai/spring-ai-im-0.1.0.jar"]
   }
 }
 ```
