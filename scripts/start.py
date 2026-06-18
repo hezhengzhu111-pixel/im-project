@@ -221,7 +221,7 @@ def ensure_runtime_ready_hint() -> None:
 
 def cmd_start(args) -> None:
     """启动服务。"""
-    print("🚀 启动服务...")
+    print("[START] 启动服务...")
     ensure_runtime_ready_hint()
     load_images_from_manifest()
 
@@ -229,7 +229,7 @@ def cmd_start(args) -> None:
         from deploy_services import main as services_main
 
         # 构造参数
-        cmd_args = ["start", "--no-build"]
+        cmd_args = ["--no-build"]
         if args.services:
             cmd_args.extend(args.services)
         if args.env_file:
@@ -260,23 +260,13 @@ def cmd_stop(args) -> None:
     ensure_runtime_ready_hint()
 
     try:
-        from deploy_services import main as services_main
+        from deploy_utils import compose_base_command, load_config, run_command
 
-        # 构造参数
-        cmd_args = ["stop"]
+        config = load_config(env_file=args.env_file)
+        cmd = [*compose_base_command(config), "stop"]
         if args.services:
-            cmd_args.extend(args.services)
-        if args.env_file:
-            cmd_args.extend(["--env-file", args.env_file])
-
-        # 临时修改 sys.argv 以传递参数
-        original_argv = sys.argv
-        sys.argv = ["deploy_services.py"] + cmd_args
-
-        try:
-            services_main()
-        finally:
-            sys.argv = original_argv
+            cmd.extend(args.services)
+        run_command(cmd, check=False)
     except Exception as e:
         print(f"[FAIL] 停止失败: {e}")
         sys.exit(1)
@@ -289,27 +279,21 @@ def cmd_restart(args) -> None:
     load_images_from_manifest()
 
     try:
-        from deploy_services import main as services_main
+        from deploy_utils import compose_base_command, load_config, run_command
 
-        # 构造参数
-        cmd_args = ["restart"]
+        config = load_config(env_file=args.env_file)
+        cmd = [*compose_base_command(config), "restart"]
         if args.services:
-            cmd_args.extend(args.services)
-        if args.env_file:
-            cmd_args.extend(["--env-file", args.env_file])
-        if args.no_wait:
-            cmd_args.append("--no-wait")
+            cmd.extend(args.services)
+        run_command(cmd, check=False)
 
-        # 临时修改 sys.argv 以传递参数
-        original_argv = sys.argv
-        sys.argv = ["deploy_services.py"] + cmd_args
-
-        try:
-            services_main()
-        finally:
-            sys.argv = original_argv
+        if not args.no_wait:
+            from deploy_utils import known_application_services, wait_for_service_ready
+            services = known_application_services()
+            for svc in services:
+                wait_for_service_ready(config, svc)
     except Exception as e:
-        print(f"❌ 重启失败: {e}")
+        print(f"[FAIL] 重启失败: {e}")
         sys.exit(1)
 
 
@@ -354,9 +338,9 @@ def cmd_logs(args) -> None:
         # 执行命令
         run_command(cmd, check=False)
     except KeyboardInterrupt:
-        print("\n⏹️  停止日志跟踪")
+        print("\n[STOP] 停止日志跟踪")
     except Exception as e:
-        print(f"❌ 获取日志失败: {e}")
+        print(f"[FAIL] 获取日志失败: {e}")
         sys.exit(1)
 
 
