@@ -41,6 +41,11 @@ RUST_PACKAGES = [
     ("im-flutter-bridge", "crates/im-flutter-bridge"),
     ("im-e2ee-wasm", "crates/im-e2ee-wasm"),
 ]
+E2EE_RUST_CRATES = [
+    ("im-e2ee-core", "crates/im-e2ee-core"),
+    ("im-e2ee-ffi", "crates/im-e2ee-ffi"),
+    ("im-e2ee-wasm", "crates/im-e2ee-wasm"),
+]
 
 
 def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
@@ -77,6 +82,79 @@ def rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
             )
         if results[-1].status == "FAIL" and not continue_on_error:
             return results
+    return results
+
+
+def e2ee_rust_steps(*, continue_on_error: bool = False) -> list[StepResult]:
+    """E2EE Rust crates: fmt, clippy, test, wasm check."""
+    results: list[StepResult] = []
+    ensure_work_workspace()
+    env = setup_isolated_env()
+
+    # fmt check scoped to e2ee crates
+    for package, _ in E2EE_RUST_CRATES:
+        results.append(run_step(f"E2EE fmt {package}", ["cargo", "fmt", "--check", "-p", package], cwd=RUST_WORK_DIR, timeout=300, env=env))
+        if results[-1].status == "FAIL" and not continue_on_error:
+            return results
+
+    # clippy
+    for package, rel_path in E2EE_RUST_CRATES:
+        package_path = RUST_WORK_DIR / rel_path
+        if not package_path.exists():
+            results.append(skip_step(f"E2EE clippy {package}", f"missing package path {package_path}", critical=True))
+            continue
+        results.append(run_step(f"E2EE clippy {package}", ["cargo", "clippy", "-p", package, "--", "-D", "warnings"], cwd=RUST_WORK_DIR, timeout=900, env=env))
+        if results[-1].status == "FAIL" and not continue_on_error:
+            return results
+
+    # test
+    for package, _ in E2EE_RUST_CRATES:
+        results.append(run_step(f"E2EE test {package}", ["cargo", "test", "-p", package], cwd=RUST_WORK_DIR, timeout=1200, env=env))
+        if results[-1].status == "FAIL" and not continue_on_error:
+            return results
+
+    # wasm target check
+    results.append(run_step("E2EE wasm target add", ["rustup", "target", "add", "wasm32-unknown-unknown"], cwd=RUST_WORK_DIR, timeout=120, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("E2EE wasm check", ["cargo", "check", "-p", "im-e2ee-wasm", "--target", "wasm32-unknown-unknown"], cwd=RUST_WORK_DIR, timeout=600, env=env))
+
+    return results
+
+
+def rust_bridge_steps(*, continue_on_error: bool = False) -> list[StepResult]:
+    """Rust bridge: Rust im-flutter-bridge build/test + Flutter rust_bridge package."""
+    results: list[StepResult] = []
+    ensure_work_workspace()
+    env = setup_isolated_env()
+
+    # Rust side
+    results.append(run_step("Bridge fmt", ["cargo", "fmt", "--check", "-p", "im-flutter-bridge"], cwd=RUST_WORK_DIR, timeout=300, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("Bridge check", ["cargo", "check", "-p", "im-flutter-bridge"], cwd=RUST_WORK_DIR, timeout=600, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("Bridge test", ["cargo", "test", "-p", "im-flutter-bridge"], cwd=RUST_WORK_DIR, timeout=1200, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("Bridge release build", ["cargo", "build", "-p", "im-flutter-bridge", "--release"], cwd=RUST_WORK_DIR, timeout=1200, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+
+    # Flutter side: rust_bridge package only
+    bridge_dir = FLUTTER_WORK_DIR / "packages" / "rust_bridge"
+    if not bridge_dir.exists():
+        results.append(skip_step("Flutter rust_bridge", f"missing target path {bridge_dir}", critical=True))
+        return results
+    results.append(run_step("Bridge flutter pub get", ["flutter", "pub", "get"], cwd=bridge_dir, timeout=600, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("Bridge flutter analyze", ["flutter", "analyze"], cwd=bridge_dir, timeout=600, env=env))
+    if results[-1].status == "FAIL" and not continue_on_error:
+        return results
+    results.append(run_step("Bridge flutter test", ["flutter", "test"], cwd=bridge_dir, timeout=1200, env=env))
+
     return results
 
 
@@ -187,6 +265,10 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
                 timeout=7200,
             )
         ]
+    if args.command == "e2ee-rust":
+        return e2ee_rust_steps(continue_on_error=args.continue_on_error)
+    if args.command == "rust-bridge":
+        return rust_bridge_steps(continue_on_error=args.continue_on_error)
     raise AssertionError(f"unknown command: {args.command}")
 
 
@@ -194,7 +276,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["pr-fast", "main-full", "gray-release", "gray-signoff", "rust", "flutter", "coverage", "manifest", "sit"],
+        choices=["pr-fast", "main-full", "gray-release", "gray-signoff", "rust", "flutter", "coverage", "manifest", "sit", "e2ee-rust", "rust-bridge"],
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable summary.")
     parser.add_argument(

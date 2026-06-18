@@ -12,9 +12,7 @@ on:
       - 'flutter/apps/web/**'
       - 'flutter/apps/desktop/**'
       - 'flutter/apps/mobile/**'
-      - 'flutter/melos.yaml'
-      - 'flutter/pubspec.yaml'
-      - 'scripts/check_architecture_boundaries.py'
+      - 'tests/test.py'
       - '.github/workflows/rust-bridge-ci.yml'
   pull_request:
     paths:
@@ -27,9 +25,7 @@ on:
       - 'flutter/apps/web/**'
       - 'flutter/apps/desktop/**'
       - 'flutter/apps/mobile/**'
-      - 'flutter/melos.yaml'
-      - 'flutter/pubspec.yaml'
-      - 'scripts/check_architecture_boundaries.py'
+      - 'tests/test.py'
       - '.github/workflows/rust-bridge-ci.yml'
   workflow_dispatch:
 
@@ -41,10 +37,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        run: |
-          rustup update stable
-          rustup default stable
-          rustup component add rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -52,37 +52,23 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Rust bridge format
-        working-directory: rust
-        run: cargo fmt --check -p im-flutter-bridge
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Rust bridge check
-        working-directory: rust
-        run: cargo check -p im-flutter-bridge
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
 
-      - name: Rust bridge test
-        working-directory: rust
-        run: cargo test -p im-flutter-bridge
+      - name: Run Rust Bridge gate
+        run: python tests/test.py rust-bridge
 
-      - name: Rust bridge release build
-        working-directory: rust
-        run: cargo build -p im-flutter-bridge --release
-
-      - name: Flutter dependencies
-        working-directory: flutter
-        run: flutter pub get
-
-      - name: im_rust_bridge analyze
-        working-directory: flutter
-        run: dart run melos exec --scope="im_rust_bridge" -- flutter analyze
-
-      - name: im_rust_bridge tests
-        working-directory: flutter
-        run: dart run melos exec --scope="im_rust_bridge" -- flutter test
-
-      - name: Rust bridge smoke
-        working-directory: flutter
-        run: dart run melos run rust-bridge:smoke
-
-      - name: Architecture boundaries
-        run: python scripts/check_architecture_boundaries.py
+      - name: Upload bridge reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-bridge-reports
+          path: |
+            build/reports/
+            build/logs/
+          retention-days: 14

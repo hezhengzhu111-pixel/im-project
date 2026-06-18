@@ -5,15 +5,17 @@ on:
     paths:
       - 'rust/**'
       - 'flutter/**'
+      - 'spring-ai/**'
+      - 'sql/**'
       - 'scripts/build.py'
-      - 'scripts/check_build_outputs.py'
       - '.github/workflows/build-artifacts.yml'
   pull_request:
     paths:
       - 'rust/**'
       - 'flutter/**'
+      - 'spring-ai/**'
+      - 'sql/**'
       - 'scripts/build.py'
-      - 'scripts/check_build_outputs.py'
       - '.github/workflows/build-artifacts.yml'
   workflow_dispatch:
 
@@ -25,9 +27,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
-        run: |
-          rustup update stable
-          rustup default stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -35,20 +40,22 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Flutter dependencies
-        working-directory: flutter
-        run: flutter pub get
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Build local artifacts
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
+
+      - name: Build all artifacts
         run: python scripts/build.py all
-
-      - name: Check local artifacts
-        run: python scripts/check_build_outputs.py
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: im-build-artifacts
           path: |
-            build/dist
+            build/dist/
             build/manifest.json
+            build/logs/
