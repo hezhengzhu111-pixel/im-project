@@ -22,7 +22,7 @@ Default runtime files live under `build/runtime/`:
 - File storage: `build/runtime/files`
 - Runtime logs: `build/runtime/logs`
 
-`build/runtime/env/local.env` is generated from `.env.example` when missing. The repository root `.env` is not the recommended default runtime env. `deploy/sit/docker-compose.yml` remains a source template; it is not the default runtime Compose file.
+`build/runtime/env/local.env` is generated from `.env.example` when missing.
 
 ## Workflow
 

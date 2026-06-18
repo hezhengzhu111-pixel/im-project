@@ -47,8 +47,6 @@ Source directories must not receive build products, dependency caches, runtime d
 - File storage: `build/runtime/files`
 - Runtime logs: `build/runtime/logs`
 
-`deploy/sit/docker-compose.yml` remains a template/source file. The default runtime Compose file is the generated file under `build/runtime/compose/`.
-
 ## Lifecycle Entrypoints
 
 Use these commands as the public lifecycle interface:
@@ -58,4 +56,4 @@ Use these commands as the public lifecycle interface:
 - `python scripts/start.py`
 - `python tests/test.py`
 
-Lower-level helpers such as `scripts/deploy_services.py`, `scripts/deploy_middleware.py`, `scripts/init_db.py`, `scripts/deploy_utils.py`, and `scripts/gate_common.py` may remain because the lifecycle entrypoints and gates use them, but they are not the recommended user-facing commands.
+Helper modules in `scripts/` (such as `deploy_middleware.py`, `deploy_services.py`, `init_db.py`, `gate_common.py`, `runtime_paths.py`, and `coverage/`) support these entry points but are not intended for direct invocation.
