@@ -26,14 +26,11 @@ env:
 
 jobs:
   # ==========================================================================
-  # Rust: format, check, test, clippy
+  # PR Fast gate: Rust (fmt + check + test + clippy) + Flutter (analyze + test)
   # ==========================================================================
-  rust:
-    name: Rust (fmt + check + test + clippy)
+  pr-fast:
+    name: PR Fast Gate (Rust + Flutter)
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v4
 
@@ -47,103 +44,32 @@ jobs:
         with:
           workspaces: rust
 
-      - name: cargo fmt --check
-        run: cargo fmt --check
-
-      - name: cargo check --workspace
-        run: cargo check --workspace
-
-      - name: cargo test --workspace
-        run: cargo test --workspace
-
-      - name: cargo clippy (P0 crates)
-        run: |
-          set -euo pipefail
-          declare -A crates=(
-            ["api-server"]="apps/api-server"
-            ["im-server"]="apps/im-server"
-            ["im-common"]="crates/im-common"
-            ["im-e2ee-core"]="crates/im-e2ee-core"
-            ["im-e2ee-ffi"]="crates/im-e2ee-ffi"
-            ["im-flutter-bridge"]="crates/im-flutter-bridge"
-            ["im-e2ee-wasm"]="crates/im-e2ee-wasm"
-          )
-          for crate in "${!crates[@]}"; do
-            path="${crates[$crate]}"
-            if [ ! -d "$path" ]; then
-              echo "::error::missing Rust crate path for $crate: $path"
-              exit 1
-            fi
-            echo "--- clippy $crate ($path) ---"
-            cargo clippy -p "$crate" --all-targets -- -D warnings
-          done
-
-  # ==========================================================================
-  # Flutter: analyze + test (PR gate — no SIT)
-  # ==========================================================================
-  flutter:
-    name: Flutter (analyze + test)
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: flutter
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
 
-      - name: Cache Flutter
-        uses: actions/cache@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
+          python-version: '3.12'
+
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
+
+      - name: Run PR Fast gate
+        run: python tests/test.py pr-fast
+
+      - name: Upload gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-gate-reports
           path: |
-            ~/.pub-cache
-            flutter/.dart_tool
-            flutter/**/.dart_tool
-          key: flutter-${{ runner.os }}-${{ hashFiles('flutter/**/pubspec.yaml', 'flutter/**/pubspec.lock') }}
-          restore-keys: |
-            flutter-${{ runner.os }}-
-
-      - name: flutter pub get (all packages)
-        run: |
-          for pkg in packages/core_flutter packages/shared_features apps/web apps/mobile apps/desktop; do
-            echo "--- pub get $pkg ---"
-            cd $pkg && flutter pub get && cd -
-          done
-
-      # --- analyze ---
-      - name: flutter analyze core_flutter
-        run: cd packages/core_flutter && flutter analyze
-
-      - name: flutter analyze shared_features
-        run: cd packages/shared_features && flutter analyze
-
-      - name: flutter analyze web
-        run: cd apps/web && flutter analyze
-
-      - name: flutter analyze mobile
-        run: cd apps/mobile && flutter analyze
-
-      - name: flutter analyze desktop
-        run: cd apps/desktop && flutter analyze
-
-      # --- test ---
-      - name: flutter test core_flutter
-        run: cd packages/core_flutter && flutter test
-
-      - name: flutter test shared_features
-        run: cd packages/shared_features && flutter test
-
-      - name: flutter test web
-        run: cd apps/web && flutter test
-
-      - name: flutter test mobile
-        run: cd apps/mobile && flutter test
-
-      - name: flutter test desktop
-        run: cd apps/desktop && flutter test
+            build/reports/
+            build/logs/
+          retention-days: 14
 
   # ==========================================================================
   # P0-1 E2EE SIT (manual gate via workflow_dispatch)
@@ -152,7 +78,7 @@ jobs:
     name: P0-1 E2EE SIT
     runs-on: ubuntu-24.04
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.sit_enabled }}
-    needs: [rust]
+    needs: [pr-fast]
     services:
       mysql:
         image: mysql:8.0
@@ -170,6 +96,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -178,12 +107,19 @@ jobs:
       - name: Install Python deps
         run: pip install requests pymysql
 
-      - name: Build Rust E2EE FFI
-        working-directory: rust
-        run: cargo build -p im-e2ee-ffi --release
-
-      - name: Run P0-1 E2EE SIT
+      - name: Run P1 SIT gate
         run: |
-          python tests/p0/p0_e2ee_private_text_acceptance.py \
+          python tests/sit/p1_sit_gate.py \
             --base-url ${{ inputs.base_url }} \
-            --db-url ${{ inputs.db_url }}
+            --db-url ${{ inputs.db_url }} \
+            --skip-p0-gate
+
+      - name: Upload SIT artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-sit-artifacts
+          path: |
+            build/reports/
+            build/logs/
+          retention-days: 14

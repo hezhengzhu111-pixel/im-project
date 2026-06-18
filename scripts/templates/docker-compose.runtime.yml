@@ -13,7 +13,7 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ${SQL_INIT_FILE:-../../sql/mysql8/init_all.sql}:/docker-entrypoint-initdb.d/01-init_all.sql:ro
+      - sql_init_file:/docker-entrypoint-initdb.d/01-init_all.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -33,7 +33,7 @@ services:
       TZ: Asia/Shanghai
       MYSQL_PWD: "${MYSQL_ROOT_PASSWORD:-root123}"
     volumes:
-      - ${SQL_MIGRATION_FILE:-../../sql/mysql8/e2ee_migration.sql}:/migrations/e2ee_migration.sql:ro
+      - sql_migration_file:/migrations/e2ee_migration.sql:ro
     command:
       - sh
       - -c

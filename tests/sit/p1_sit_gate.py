@@ -37,8 +37,10 @@ TESTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TESTS_DIR / "common"))
 
 from gate_common import sanitize
+from workspace import ensure_work_workspace, setup_isolated_env
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+RUST_WORK_DIR = ROOT / "build" / "work" / "rust"
 RUNTIME_COMPOSE = ROOT / "build" / "runtime" / "compose" / "docker-compose.generated.yml"
 DEFAULT_ARTIFACT_ROOT = ROOT / "build" / "reports" / "test" / "p1-sit"
 
@@ -65,9 +67,11 @@ def run_command(
     artifact_dir: Path,
     timeout: int = 600,
     allow_failure: bool = False,
+    env: dict[str, str] | None = None,
 ) -> StepResult:
     log_path = artifact_dir / f"{slug(name)}.log"
     started = datetime.now(timezone.utc).isoformat()
+    merged_env = {**os.environ, **(env or {})} if env else None
     with log_path.open("w", encoding="utf-8") as log:
         log.write(f"# {name}\n")
         log.write(f"started={started}\n")
@@ -83,6 +87,7 @@ def run_command(
                 timeout=timeout,
                 encoding="utf-8",
                 errors="replace",
+                env=merged_env,
             )
             if proc.stdout:
                 log.write(sanitize(proc.stdout))
@@ -352,13 +357,18 @@ def main() -> int:
             )
         )
 
+    # Sync source to isolated build/work before cargo build
+    ensure_work_workspace()
+    isolated_env = setup_isolated_env()
+
     results.append(
         run_command(
             "build rust e2ee ffi",
             ["cargo", "build", "-p", "im-e2ee-ffi", "--release"],
-            ROOT / "rust",
+            RUST_WORK_DIR,
             artifact_dir,
             timeout=1200,
+            env=isolated_env,
         )
     )
 

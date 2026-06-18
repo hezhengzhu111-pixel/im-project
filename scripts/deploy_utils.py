@@ -73,6 +73,8 @@ RUNTIME_VOLUME_SOURCES = {
     "redis_group_hot_data_3": RUNTIME_REDIS_DIR / "group-hot-3",
     "redis_group_hot_data_4": RUNTIME_REDIS_DIR / "group-hot-4",
     "im_files": RUNTIME_FILES_DIR,
+    "sql_init_file": PROJECT_ROOT / "sql" / "mysql8" / "init_all.sql",
+    "sql_migration_file": PROJECT_ROOT / "sql" / "mysql8" / "e2ee_migration.sql",
 }
 
 

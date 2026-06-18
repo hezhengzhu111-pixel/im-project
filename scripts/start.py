@@ -49,21 +49,21 @@ def _image_exists_locally(image_name: str) -> bool:
 
 
 def load_images_from_manifest() -> None:
-    """Load Docker images from build/dist/images/*.tar if not present locally."""
+    """Load Docker images from build/dist/images/*.tar if not present locally.
+
+    Raises RuntimeError on any failure so callers (start/restart) can abort.
+    """
+    _BUILD_HINT = "请先运行: python scripts/build.py --docker"
+
     manifest = _load_manifest()
     if manifest is None:
-        print(
-            "[WARN] build/manifest.json 不存在，无法自动加载镜像。\n"
-            "  请先运行: python scripts/build.py --docker"
-        )
-        return
+        raise RuntimeError(f"build/manifest.json 不存在，无法确认镜像状态。{_BUILD_HINT}")
 
     image_names: dict[str, str] = manifest.get("docker_image_names", {})
     tar_paths: dict[str, str] = manifest.get("docker_image_tar_paths", {})
 
     if not image_names:
-        print("[WARN] manifest.json 中未记录 Docker 镜像名，跳过镜像加载。")
-        return
+        raise RuntimeError(f"manifest.json 中未记录 Docker 镜像名。{_BUILD_HINT}")
 
     for service, image_name in image_names.items():
         if _image_exists_locally(image_name):
@@ -71,19 +71,15 @@ def load_images_from_manifest() -> None:
 
         tar_rel = tar_paths.get(service)
         if not tar_rel:
-            print(
-                f"[WARN] 镜像 {image_name} 本地不存在，且 manifest 中无 tar 路径记录。\n"
-                f"  请运行: python scripts/build.py --docker"
+            raise RuntimeError(
+                f"镜像 {image_name} 本地不存在，且 manifest 中无 tar 路径记录。{_BUILD_HINT}"
             )
-            continue
 
         tar_path = PROJECT_ROOT / tar_rel
         if not tar_path.is_file():
-            print(
-                f"[ERROR] 镜像 {image_name} 本地不存在，tar 文件也缺失: {relative(tar_path)}\n"
-                f"  请运行: python scripts/build.py --docker"
+            raise RuntimeError(
+                f"镜像 {image_name} 本地不存在，tar 文件也缺失: {relative(tar_path)}。{_BUILD_HINT}"
             )
-            continue
 
         print(f"[INFO] 正在加载镜像 {image_name} 从 {relative(tar_path)} ...")
         load_result = subprocess.run(
@@ -95,15 +91,12 @@ def load_images_from_manifest() -> None:
         )
         if load_result.returncode != 0:
             stderr = (load_result.stderr or "").strip()
-            print(f"[ERROR] docker load 失败 ({image_name}): {stderr}")
-            continue
+            raise RuntimeError(f"docker load 失败 ({image_name}): {stderr}")
 
         if not _image_exists_locally(image_name):
-            print(
-                f"[ERROR] docker load 完成但镜像 {image_name} 仍不可用。\n"
-                f"  请运行: python scripts/build.py --docker"
+            raise RuntimeError(
+                f"docker load 完成但镜像 {image_name} 仍不可用。{_BUILD_HINT}"
             )
-            continue
 
         print(f"[OK] 镜像 {image_name} 已加载。")
 
