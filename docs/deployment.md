@@ -146,7 +146,7 @@ Supported service aliases:
   restarts repeatedly, or times out.
 - `scripts/deploy_services.py` checks middleware readiness before deploying app
   services unless `--skip-middleware-check` is passed.
-- `python init.py --skip-middleware` skips starting middleware, but still checks
+- `python scripts/init.py --skip-middleware` skips starting middleware, but still checks
   middleware readiness before services unless `--skip-middleware-check` is also passed.
 - `scripts/deploy_services.py` applies `sql/mysql8/e2ee_migration.sql` before
   deploying `im-api-server` unless `--skip-migrations` is passed.

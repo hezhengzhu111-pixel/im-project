@@ -152,11 +152,12 @@ build/
 
 | 子目录 | 内容 | 说明 |
 |-------|------|------|
-| `docker-compose/` | Docker Compose 配置 | 运行时配置文件 |
+| `env/` | 环境配置文件 | 环境变量和配置 |
+| `compose/` | Docker Compose 配置 | 运行时配置文件 |
+| `mysql/` | MySQL 数据 | 数据目录和备份 |
 | `redis/` | Redis 数据和 AOF | 持久化存储 |
-| `postgres/` | PostgreSQL 数据 | 数据目录和备份 |
-| `mq/` | 消息队列数据 | 持久化存储 |
-| `config/` | 动态配置 | 运行时生成的配置 |
+| `files/` | 文件存储数据 | 上传文件存储 |
+| `logs/` | 运行时日志 | 服务运行日志 |
 
 **注意：** 运行时数据不应提交到 Git（已被 .gitignore 忽略）。
 
@@ -206,32 +207,29 @@ build/
 }
 ```
 
-## 5. 后续迁移计划（Batch 2 - Batch 7）
+## 5. 后续迁移计划（Batch 3 - Batch 6）
 
-本阶段（Batch 1）仅建立规则和契约。后续批次将进行实际迁移：
+本阶段（Batch 1 和 Batch 2）已完成规则建立、契约制定和根目录清理。后续批次将进行实际迁移：
 
-### Batch 2: 迁移 scripts/ 和构建脚本 ✅ 已完成
-
-**目标：**
-- ✅ 将 `backend/spring-ai/` 迁移至根目录 `spring-ai/`
-- ✅ 删除根目录兼容脚本（`deploy.py`、`1_deploy_middleware.py`、`2_init_db.py`、`3_deploy_services.py`）
-- ✅ 创建三个主要生命周期入口（`scripts/init.py`、`scripts/build.py`、`scripts/start.py`）
-- ✅ 更新所有 `backend/spring-ai` 路径引用
-
-**实际改动：**
-- ✅ 迁移 `backend/spring-ai/` → `spring-ai/`
-- ✅ 删除 `backend/` 目录（已为空）
-- ✅ 移动 `backend/API.md` → `docs/backend-api.md`
-- ✅ 更新 `deploy/sit/docker-compose.yml` 中的构建上下文路径
-- ✅ 删除根目录 4 个 wrapper 脚本
-- ✅ 创建 `scripts/init.py`（环境检查、中间件初始化、数据库检查）
-- ✅ 创建 `scripts/start.py`（服务启动、停止、重启、状态、日志）
-
-### Batch 3: 迁移 runtime/ 和中间件配置
+### 第 3 批：Phase 4 - 完成隔离工作区构建 ✅ 已完成
 
 **目标：**
-- 将 `docker-compose.sit.yml` 迁移至 `build/runtime/docker-compose/`
-- 生成默认运行时配置（Redis、PostgreSQL、MQ）
+- ✅ 完成隔离工作区构建
+- ✅ 所有编译在 `build/work/` 下进行
+- ✅ 依赖缓存进 `build/cache/`
+- ✅ 最终产物进 `build/dist/`
+
+**改动范围：**
+- ✅ 实现完整的 build/work 隔离构建
+- ✅ 更新 scripts/build.py 以使用隔离工作区
+- ✅ 配置依赖缓存路径
+- ✅ 不改动业务代码和部署逻辑
+
+### 第 4 批：Phase 5 - 迁移中间件和 runtime
+
+**目标：**
+- 迁移中间件配置到 `build/runtime/`
+- 生成默认运行时配置（MySQL、Redis、文件存储）
 - 更新所有配置文件中的路径引用
 - 验证本地开发环境启动
 
@@ -241,49 +239,22 @@ build/
 - 更新部署脚本中的路径引用
 - 不改动中间件配置参数
 
-### Batch 4: 迁移 tests/ 和测试配置
+### 第 5 批：Phase 6 + Phase 7 - 迁移 tests 和 docs / CI
 
 **目标：**
-- 将 `tests/` 整合到统一的测试目录结构
-- 更新测试配置中的路径引用
-- 将测试报告输出到 `build/reports/`
-- 验证所有测试套件完整运行
+- 迁移 `tests/` 到统一的测试目录结构
+- 整理 `docs/` 结构，创建清晰的文档入口
+- 更新 CI 配置以使用新的目录结构
+- 验证所有测试套件和 CI 完整运行
 
 **改动范围：**
 - 重组测试目录结构
 - 更新 pytest、cargo test 配置
-- 添加测试报告输出路径配置
-- 不改动测试逻辑和测试用例
-
-### Batch 5: 迁移 docs/ 和文档结构
-
-**目标：**
-- 整理 `docs/` 结构，创建清晰的文档入口
-- 归档旧文档，保持兼容性
-- 添加项目结构文档和开发者指南
-- 验证文档链接和引用
-
-**改动范围：**
 - 创建文档索引和导航
-- 移动和重命名文档文件
-- 添加新文档（开发者指南、贡献指南等）
-- 不删除历史文档（只是归档）
+- 更新 GitHub Actions 配置
+- 不改动测试逻辑和 CI 触发条件
 
-### Batch 6: 更新 CI/CD 和 GitHub Actions
-
-**目标：**
-- 更新 GitHub Actions 工作流以使用 `build/` 工作区
-- 配置 CI 使用隔离的构建目录
-- 添加构建缓存优化
-- 验证 CI 完整流程
-
-**改动范围：**
-- 更新 `.github/workflows/*.yml`
-- 添加构建缓存配置
-- 更新路径引用
-- 不改动 CI 触发条件和流程逻辑
-
-### Batch 7: 清理和验证
+### 第 6 批：Phase 8 - 删除遗留内容
 
 **目标：**
 - 清理根目录中的旧目录和文件
@@ -320,7 +291,7 @@ build/
 rm -rf build/work/*
 
 # 运行隔离构建
-CARGO_HOME=build/cache/cargo cargo build --target-dir build/work/rust
+CARGO_HOME=build/cache/cargo-home CARGO_TARGET_DIR=build/cache/rust-target cargo build
 
 # 查看构建 manifest
 cat build/manifest.json | jq .
@@ -335,9 +306,10 @@ find flutter/ rust/ spring-ai/ sql/ \
 
 ```bash
 # 依赖缓存重定向
-export CARGO_HOME=build/cache/cargo
-export PUB_CACHE=build/cache/flutter
-export MAVEN_OPTS="-Dmaven.repo.local=build/cache/maven/repository"
+export CARGO_HOME=build/cache/cargo-home
+export CARGO_TARGET_DIR=build/cache/rust-target
+export PUB_CACHE=build/cache/pub-cache
+export MAVEN_OPTS="-Dmaven.repo.local=build/cache/maven-repo/repository"
 
 # 构建目录配置
 export BUILD_WORK_DIR=build/work

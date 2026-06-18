@@ -1,2 +1,2 @@
 *.sh text eol=lf
-backend/spring-ai/mvnw text eol=lf
+spring-ai/mvnw text eol=lf
