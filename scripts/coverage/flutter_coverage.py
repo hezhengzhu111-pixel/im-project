@@ -16,7 +16,7 @@ from gate_common import ROOT, run_step, skip_step, write_gate_reports  # noqa: E
 
 
 FLUTTER_ROOT = ROOT / "flutter"
-OUT_DIR = ROOT / "build" / "coverage" / "flutter"
+OUT_DIR = ROOT / "build" / "reports" / "coverage" / "flutter"
 TARGETS = {
     "core": FLUTTER_ROOT / "packages" / "core",
     "core_flutter": FLUTTER_ROOT / "packages" / "core_flutter",
@@ -140,6 +140,7 @@ def main() -> int:
         target_out = OUT_DIR / target / "lcov.info"
         target_out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(lcov_path, target_out)
+        shutil.rmtree(target_dir / "coverage", ignore_errors=True)
         lcovs.append(target_out)
         item = parse_lcov(target_out)
         item["threshold"] = THRESHOLDS[target]

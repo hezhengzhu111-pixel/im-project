@@ -101,6 +101,9 @@ jobs:
           pip install requests pymysql redis
           pip install -r scripts/requirements.txt 2>/dev/null || true
 
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
+
       - name: Generate build info
         run: |
           python scripts/gray_report.py build-info \
@@ -129,22 +132,22 @@ jobs:
       - name: Run manifest and PR Fast gate
         continue-on-error: true
         run: |
-          python scripts/test.py manifest
-          python scripts/test.py pr-fast
+          python tests/test.py manifest
+          python tests/test.py pr-fast
 
       - name: Run coverage gate
         continue-on-error: true
-        run: python scripts/test.py coverage
+        run: python tests/test.py coverage
 
       - name: Run Main Full gate
         continue-on-error: true
-        run: python scripts/test.py main-full
+        run: python tests/test.py main-full
 
       - name: Run Gray Release gate
         if: ${{ inputs.run_sit }}
         continue-on-error: true
         run: |
-          python scripts/test.py gray-release \
+          python tests/test.py gray-release \
             --api-base "${{ env.IM_API_BASE }}" \
             --db-url "${{ env.IM_DB_URL }}"
 
@@ -194,8 +197,8 @@ jobs:
             --env-check build/reports/gray-env-check.json \
             --gate-summary build/reports/gray-gate-report.json \
             --smoke build/reports/gray-smoke.json \
-            --coverage build/reports/coverage-summary.json \
-            --manifest build/reports/test-manifest-check.json \
+            --coverage build/reports/coverage/coverage-summary.json \
+            --manifest build/reports/manifest/test-manifest-check.json \
             --frontend-build build/reports/gray-frontend-build.json \
             --out build/reports/gray-release-report.md
 
@@ -252,6 +255,4 @@ jobs:
           name: gray-release-gate-artifacts-${{ github.run_id }}
           path: |
             build/reports/
-            build/coverage/
-            artifacts/p1-sit/
           retention-days: 30

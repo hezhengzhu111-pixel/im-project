@@ -39,11 +39,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
+
       - name: Install coverage tools
         run: cargo install cargo-llvm-cov --locked
 
       - name: Run Main Full Gate
-        run: python scripts/test.py main-full
+        run: python tests/test.py main-full
 
       - name: Upload gate and coverage reports
         if: always()
@@ -52,4 +55,3 @@ jobs:
           name: main-full-gate-reports
           path: |
             build/reports/
-            build/coverage/

@@ -66,4 +66,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: p1-sit-artifacts
-          path: artifacts/p1-sit/
+          path: build/reports/test/p1-sit/

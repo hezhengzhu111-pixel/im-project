@@ -11,7 +11,7 @@ from pathlib import Path
 from gate_common import ROOT
 
 
-DEFAULT_DOC = ROOT / "docs" / "testing" / "known-test-failures.md"
+DEFAULT_DOC = ROOT / "build" / "reports" / "manifest" / "known-test-failures.md"
 REQUIRED = ["test file", "test name", "failure reason", "owner", "first observed", "cleanup condition", "issue"]
 WILDCARDS = {"*", ".*", "all", "ALL", "<all>"}
 

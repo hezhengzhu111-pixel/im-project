@@ -15,7 +15,7 @@ from gate_common import ROOT, run_step, skip_step, write_gate_reports  # noqa: E
 
 
 RUST_ROOT = ROOT / "rust"
-OUT_DIR = ROOT / "build" / "coverage" / "rust"
+OUT_DIR = ROOT / "build" / "reports" / "coverage" / "rust"
 THRESHOLDS = {
     "overall": 65.0,
     "api-server": 60.0,

@@ -13,7 +13,7 @@ from typing import Iterable
 from gate_common import ROOT
 
 
-REPORT_DIR = ROOT / "build" / "reports"
+REPORT_DIR = ROOT / "build" / "reports" / "manifest"
 ROUTE_DIR = ROOT / "rust" / "apps" / "api-server" / "src" / "routes"
 ENDPOINT_FILE = ROOT / "flutter" / "packages" / "core" / "lib" / "src" / "contracts" / "api_endpoints.dart"
 APP_ROUTERS = {

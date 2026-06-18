@@ -9,7 +9,7 @@ This script orchestrates local or manual-CI SIT:
   - builds the Rust E2EE FFI;
   - runs the P0 gate;
   - runs P1 staged SIT scripts when present;
-  - writes summary, logs, and plaintext-scan artifacts under artifacts/.
+  - writes summary, logs, and plaintext-scan reports under build/reports/test/.
 
 Gate semantics:
   - fail_count > 0                            → exit 1
@@ -36,13 +36,13 @@ from typing import Iterable
 from gate_common import sanitize
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ARTIFACT_ROOT = ROOT / "artifacts" / "p1-sit"
+DEFAULT_ARTIFACT_ROOT = ROOT / "build" / "reports" / "test" / "p1-sit"
 
 P1_REQUIRED_SCRIPTS = [
-    "tests/p1_opk_lifecycle.py",
-    "tests/p1_private_multidevice_fanout.py",
-    "tests/p1_group_e2ee.py",
-    "tests/p1_db_plaintext_scan.py",
+    "tests/p1/p1_opk_lifecycle.py",
+    "tests/p1/p1_private_multidevice_fanout.py",
+    "tests/p1/p1_group_e2ee.py",
+    "tests/p1/p1_db_plaintext_scan.py",
 ]
 
 
@@ -133,11 +133,11 @@ def wait_for_health(base_url: str, timeout: int, artifact_dir: Path) -> StepResu
 
 def p1_stage_scripts() -> list[tuple[str, Path]]:
     return [
-        ("private single-device", ROOT / "tests" / "p0_e2ee_private_text_acceptance.py"),
-        ("opk lifecycle", ROOT / "tests" / "p1_opk_lifecycle.py"),
-        ("private multi-device fan-out", ROOT / "tests" / "p1_private_multidevice_fanout.py"),
-        ("group e2ee", ROOT / "tests" / "p1_group_e2ee.py"),
-        ("db plaintext scan", ROOT / "tests" / "p1_db_plaintext_scan.py"),
+        ("private single-device", ROOT / "tests" / "p0" / "p0_e2ee_private_text_acceptance.py"),
+        ("opk lifecycle", ROOT / "tests" / "p1" / "p1_opk_lifecycle.py"),
+        ("private multi-device fan-out", ROOT / "tests" / "p1" / "p1_private_multidevice_fanout.py"),
+        ("group e2ee", ROOT / "tests" / "p1" / "p1_group_e2ee.py"),
+        ("db plaintext scan", ROOT / "tests" / "p1" / "p1_db_plaintext_scan.py"),
     ]
 
 

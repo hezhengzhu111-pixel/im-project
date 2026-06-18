@@ -172,7 +172,7 @@ def run_gate(base_url: str, db_url: Optional[str], skip_sit_db: bool = False) ->
         print("  [FAIL] --db-url is required for P0 verification")
         results.append((s, False))
     else:
-        sit_script = ROOT / "tests" / "p0_e2ee_private_text_acceptance.py"
+        sit_script = ROOT / "tests" / "p0" / "p0_e2ee_private_text_acceptance.py"
         cmd = f"python {sit_script} --base-url {base_url} --db-url {db_url}"
         results.append((s,
             _step(s, cmd, str(ROOT), timeout=120)))

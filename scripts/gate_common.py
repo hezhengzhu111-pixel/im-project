@@ -18,6 +18,7 @@ from typing import Iterable, Sequence
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORT_DIR = ROOT / "build" / "reports"
+GATE_REPORT_DIR = REPORT_DIR / "gates"
 
 SECRET_PATTERNS = [
     re.compile(r"(?i)(token|secret|password|api[_-]?key)(\s*[:=]\s*)([^\s,'\"}]+)"),
@@ -45,8 +46,8 @@ def repo_root() -> Path:
 
 
 def ensure_report_dir() -> Path:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    return REPORT_DIR
+    GATE_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    return GATE_REPORT_DIR
 
 
 def sanitize(text: str) -> str:

@@ -12,8 +12,8 @@ from gate_common import ROOT, run_step, write_gate_reports
 
 
 PYTHON = sys.executable
-OUT_DIR = ROOT / "build" / "coverage"
-REPORT_DIR = ROOT / "build" / "reports"
+OUT_DIR = ROOT / "build" / "reports" / "coverage"
+REPORT_DIR = ROOT / "build" / "reports" / "coverage"
 
 
 def write_combined_summary() -> None:

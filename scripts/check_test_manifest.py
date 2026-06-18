@@ -13,7 +13,7 @@ from gate_common import ROOT
 from test_inventory import generate, write_markdown
 
 
-REPORT_DIR = ROOT / "build" / "reports"
+REPORT_DIR = ROOT / "build" / "reports" / "manifest"
 CRITICAL_SECTIONS = {"backend_routes", "frontend_endpoints", "frontend_page_routes", "public_api"}
 ALLOWED_MISSING_CATEGORIES = {
     "generated",

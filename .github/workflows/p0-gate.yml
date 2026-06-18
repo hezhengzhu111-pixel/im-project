@@ -184,6 +184,6 @@ jobs:
 
       - name: Run P0-1 E2EE SIT
         run: |
-          python tests/p0_e2ee_private_text_acceptance.py \
+          python tests/p0/p0_e2ee_private_text_acceptance.py \
             --base-url ${{ inputs.base_url }} \
             --db-url ${{ inputs.db_url }}

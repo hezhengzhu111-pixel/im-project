@@ -39,8 +39,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check lifecycle prerequisites
+        run: python scripts/init.py --check-only
+
       - name: Run PR Fast Gate
-        run: python scripts/test.py pr-fast
+        run: python tests/test.py pr-fast
 
       - name: Upload gate reports
         if: always()
