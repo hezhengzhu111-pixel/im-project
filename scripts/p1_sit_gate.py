@@ -169,6 +169,17 @@ def write_summary(
     allowed_pending_count = sum(1 for r in results if r.status == "allowed-pending")
     allowed_fail_count = sum(1 for r in results if r.status == "allowed-fail")
 
+    # Write summary.json for machine-readable results
+    summary_json = {
+        "overall_status": "PASS",
+        "pass": pass_count,
+        "fail": fail_count,
+        "pending": pending_count,
+        "allowed_pending": allowed_pending_count,
+        "allowed_fail": allowed_fail_count,
+        "valid_for_p1_signoff": True,
+    }
+
     with summary_path.open("w", encoding="utf-8") as out:
         out.write("# P1 SIT Summary\n\n")
         out.write(f"generated={datetime.now(timezone.utc).isoformat()}\n\n")
@@ -195,6 +206,9 @@ def write_summary(
                 f"| {result.name} | {result.status} | {result.exit_code} | {Path(result.log).name} |\n"
             )
 
+        # Write gate status to summary.md
+        out.write("\n## Gate Status\n\n")
+
     plaintext_scan = artifact_dir / "plaintext-scan.txt"
     if not plaintext_scan.exists():
         plaintext_scan.write_text(
@@ -203,23 +217,46 @@ def write_summary(
         )
 
     print(f"P1 SIT artifacts: {artifact_dir}")
+
+    # Compute exit code and determine final status.
+    gate_status = "PASS"
+    exit_code = 0
+    if fail_count > 0:
+        gate_status = "FAIL"
+        exit_code = 1
+        summary_json["overall_status"] = "FAIL"
+        summary_json["valid_for_p1_signoff"] = False
+        print("\nP1 SIT GATE: FAIL (failures present)")
+    elif pending_count > 0 and not allow_pending:
+        gate_status = "FAIL"
+        exit_code = 1
+        summary_json["overall_status"] = "FAIL"
+        summary_json["valid_for_p1_signoff"] = False
+        print("\nP1 SIT GATE: FAIL (pending scripts without --allow-pending)")
+    elif allowed_pending_count > 0:
+        gate_status = "FAIL"
+        exit_code = 1
+        summary_json["overall_status"] = "FAIL"
+        summary_json["valid_for_p1_signoff"] = False
+        print("\nP1 SIT GATE: NOT VALID FOR P1 SIGN-OFF (allowed-pending)")
+    else:
+        print("\nP1 SIT GATE: PASS")
+
+    # Append gate status to summary.md
+    with summary_path.open("a", encoding="utf-8") as out:
+        out.write(f"P1 SIT GATE: **{gate_status}**\n")
+        if not summary_json["valid_for_p1_signoff"]:
+            out.write("\n> **NOT VALID FOR P1 SIGN-OFF**\n")
+
+    # Write summary.json
+    summary_json_path = artifact_dir / "summary.json"
+    with summary_json_path.open("w", encoding="utf-8") as f:
+        json.dump(summary_json, f, indent=2, ensure_ascii=False)
+
+    print(f"Summary JSON: {summary_json_path}")
     print(summary_path.read_text(encoding="utf-8"))
 
-    # Compute exit code.
-    if fail_count > 0:
-        print("\nP1 SIT GATE: FAIL (failures present)")
-        return 1
-
-    if pending_count > 0 and not allow_pending:
-        print("\nP1 SIT GATE: FAIL (pending scripts without --allow-pending)")
-        return 1
-
-    if allowed_pending_count > 0:
-        print("\nP1 SIT GATE: NOT VALID FOR P1 SIGN-OFF (allowed-pending)")
-        return 1
-
-    print("\nP1 SIT GATE: PASS")
-    return 0
+    return exit_code
 
 
 def check_required_scripts(artifact_dir: Path) -> list[StepResult]:

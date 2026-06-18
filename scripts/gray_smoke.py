@@ -28,6 +28,104 @@ def extract_data(response_json: dict) -> dict:
     return response_json
 
 
+def check_p1_sit_status(root: Path) -> tuple[bool, str, Optional[Path]]:
+    """Check P1 SIT status from artifact directory.
+
+    Returns:
+        (passed, error_message, report_path)
+        - passed: True if P1 SIT passed and valid for sign-off
+        - error_message: Error description if failed, None if passed
+        - report_path: Path to the summary file used
+    """
+    possible_paths = [
+        root / "artifacts" / "p1-sit",
+        root / "build" / "artifacts" / "p1-sit",
+    ]
+
+    p1_sit_report = None
+    for path in possible_paths:
+        if path.exists():
+            p1_sit_report = path
+            break
+
+    if not p1_sit_report:
+        return False, f"P1 SIT report not found in {possible_paths}", None
+
+    # Look for latest P1 SIT summary
+    for timestamp_dir in sorted(p1_sit_report.iterdir(), reverse=True):
+        # Prefer summary.json (machine-readable)
+        summary_json_file = timestamp_dir / "summary.json"
+        summary_md_file = timestamp_dir / "summary.md"
+
+        if summary_json_file.exists():
+            try:
+                data = json.loads(summary_json_file.read_text(encoding="utf-8"))
+                overall_status = data.get("overall_status", "").upper()
+                valid_for_signoff = data.get("valid_for_p1_signoff", False)
+
+                if overall_status == "PASS" and valid_for_signoff:
+                    return True, None, summary_json_file
+                else:
+                    error = f"P1 SIT status: {overall_status}, valid_for_p1_signoff: {valid_for_signoff}"
+                    return False, error, summary_json_file
+            except (json.JSONDecodeError, KeyError) as e:
+                # Fallback to summary.md if JSON is invalid
+                pass
+
+        if summary_md_file.exists():
+            return _check_p1_sit_markdown(summary_md_file)
+
+    return False, f"No P1 SIT summary found in {p1_sit_report}", None
+
+
+def _check_p1_sit_markdown(summary_path: Path) -> tuple[bool, str, Optional[Path]]:
+    """Check P1 SIT status from summary.md using strict parsing.
+
+    Strict rules:
+    - fail == 0
+    - pending == 0
+    - allowed-pending == 0
+    - allowed-fail == 0
+    - pass > 0
+    """
+    content = summary_path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+
+    counts = {}
+    for line in lines:
+        # Parse table rows like: | pass | 5 |
+        if line.startswith("|") and "|" in line[1:]:
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 3:
+                status_name = parts[1].strip()
+                count_str = parts[2].strip()
+                if status_name in ("pass", "fail", "pending", "allowed-pending", "allowed-fail"):
+                    try:
+                        counts[status_name] = int(count_str)
+                    except ValueError:
+                        pass
+
+    pass_count = counts.get("pass", 0)
+    fail_count = counts.get("fail", 0)
+    pending_count = counts.get("pending", 0)
+    allowed_pending_count = counts.get("allowed-pending", 0)
+    allowed_fail_count = counts.get("allowed-fail", 0)
+
+    # Strict validation
+    if fail_count > 0:
+        return False, f"P1 SIT has {fail_count} failure(s)", summary_path
+    if pending_count > 0:
+        return False, f"P1 SIT has {pending_count} pending test(s)", summary_path
+    if allowed_pending_count > 0:
+        return False, f"P1 SIT has {allowed_pending_count} allowed-pending (NOT VALID for sign-off)", summary_path
+    if allowed_fail_count > 0:
+        return False, f"P1 SIT has {allowed_fail_count} allowed-fail(s)", summary_path
+    if pass_count <= 0:
+        return False, "P1 SIT has no passing tests", summary_path
+
+    return True, None, summary_path
+
+
 class GraySmokeTest:
     """Gray release smoke test suite."""
 
@@ -494,73 +592,17 @@ class GraySmokeTest:
 
     def test_e2ee_private_smoke(self) -> dict:
         """Test E2EE private smoke - MUST depend on P1 SIT report."""
-        # Check multiple possible P1 SIT report locations
-        possible_paths = [
-            ROOT / "artifacts" / "p1-sit",
-            ROOT / "build" / "artifacts" / "p1-sit",
-        ]
-
-        p1_sit_report = None
-        for path in possible_paths:
-            if path.exists():
-                p1_sit_report = path
-                break
-
-        if not p1_sit_report:
-            return {"success": False, "error": f"P1 SIT report not found in {possible_paths} - E2EE smoke cannot proceed"}
-
-        # Look for latest P1 SIT summary
-        latest_summary = None
-        for timestamp_dir in sorted(p1_sit_report.iterdir(), reverse=True):
-            summary_file = timestamp_dir / "summary.md"
-            if summary_file.exists():
-                latest_summary = summary_file
-                break
-
-        if not latest_summary:
-            return {"success": False, "error": f"No P1 SIT summary found in {p1_sit_report}"}
-
-        # Check if P1 SIT passed
-        content = latest_summary.read_text(encoding="utf-8")
-        if "PASS" not in content:
-            return {"success": False, "error": f"P1 SIT did not pass ({latest_summary}) - E2EE smoke cannot proceed"}
-
-        return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
+        passed, error, report_path = check_p1_sit_status(ROOT)
+        if not passed:
+            return {"success": False, "error": f"{error} ({report_path}) - E2EE smoke cannot proceed"}
+        return {"success": True, "details": {"p1_sit_report": str(report_path)}}
 
     def test_e2ee_group_smoke(self) -> dict:
         """Test E2EE group smoke - MUST depend on P1 SIT report."""
-        # Check multiple possible P1 SIT report locations
-        possible_paths = [
-            ROOT / "artifacts" / "p1-sit",
-            ROOT / "build" / "artifacts" / "p1-sit",
-        ]
-
-        p1_sit_report = None
-        for path in possible_paths:
-            if path.exists():
-                p1_sit_report = path
-                break
-
-        if not p1_sit_report:
-            return {"success": False, "error": f"P1 SIT report not found in {possible_paths} - Group E2EE smoke cannot proceed"}
-
-        # Look for latest P1 SIT summary
-        latest_summary = None
-        for timestamp_dir in sorted(p1_sit_report.iterdir(), reverse=True):
-            summary_file = timestamp_dir / "summary.md"
-            if summary_file.exists():
-                latest_summary = summary_file
-                break
-
-        if not latest_summary:
-            return {"success": False, "error": f"No P1 SIT summary found in {p1_sit_report}"}
-
-        # Check if P1 SIT passed (including group E2EE)
-        content = latest_summary.read_text(encoding="utf-8")
-        if "PASS" not in content:
-            return {"success": False, "error": f"P1 SIT did not pass ({latest_summary}) - Group E2EE smoke cannot proceed"}
-
-        return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
+        passed, error, report_path = check_p1_sit_status(ROOT)
+        if not passed:
+            return {"success": False, "error": f"{error} ({report_path}) - Group E2EE smoke cannot proceed"}
+        return {"success": True, "details": {"p1_sit_report": str(report_path)}}
 
     # ===== F. Group Smoke =====
 
