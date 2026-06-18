@@ -74,7 +74,6 @@ RUNTIME_VOLUME_SOURCES = {
     "redis_group_hot_data_4": RUNTIME_REDIS_DIR / "group-hot-4",
     "im_files": RUNTIME_FILES_DIR,
     "sql_init_file": PROJECT_ROOT / "sql" / "mysql8" / "init_all.sql",
-    "sql_migration_file": PROJECT_ROOT / "sql" / "mysql8" / "e2ee_migration.sql",
 }
 
 
@@ -298,6 +297,9 @@ def load_config(
     resolved_env_file = resolve_env_file(root, env_file, require_env_file=require_env_file)
     load_env_file(resolved_env_file, override=False)
 
+    # Import paths from new module
+    from deploy_system.paths import INIT_SQL, MIGRATIONS_DIR
+
     config = DeploymentConfig(
         project_dir=root,
         env_file=resolved_env_file,
@@ -306,8 +308,8 @@ def load_config(
         backend_root=root,  # spring-ai 已迁移到根目录
         rust_root=root / "rust",
         frontend_root=root / "flutter" / "apps" / "web",
-        sql_init_file=root / "sql" / "mysql8" / "init_all.sql",
-        sql_migration_file=root / "sql" / "mysql8" / "e2ee_migration.sql",
+        sql_init_file=INIT_SQL,
+        sql_migration_file=MIGRATIONS_DIR,  # Now points to migrations directory
         mysql_root_password=os.getenv("MYSQL_ROOT_PASSWORD", "root123"),
         network_name=os.getenv("GLOBAL_DOCKER_NETWORK", "im-sit-network"),
     )
@@ -325,14 +327,18 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.frontend_root / "Dockerfile",
         config.frontend_root / "nginx.conf",
         config.sql_init_file,
-        config.sql_migration_file,
         config.compose_file,
     ]
+
+    # Check migrations directory
+    if not config.sql_migration_file.is_dir():
+        fatal(f"Migrations directory does not exist: {relative(config.sql_migration_file)}")
+
     missing = [relative(path) for path in required_files if not path.is_file()]
     if missing:
         if relative(config.compose_file) in missing:
             fatal(
-                "Runtime compose file is missing. Run `python scripts/init.py --runtime-only` "
+                "Runtime compose file is missing. Run `python scripts/imctl.py runtime ensure` "
                 f"to generate {relative(GENERATED_COMPOSE_FILE)}."
             )
         fatal("Project layout is incomplete. Missing files: " + ", ".join(missing))
