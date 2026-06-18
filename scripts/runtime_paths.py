@@ -2,20 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Import from new paths module
+from deploy_system.paths import (
+    PROJECT_ROOT,
+    BUILD_DIR,
+    RUNTIME_DIR,
+    COMPOSE_DIR as RUNTIME_COMPOSE_DIR,
+    ENV_DIR as RUNTIME_ENV_DIR,
+    MYSQL_DATA as RUNTIME_MYSQL_DIR,
+    REDIS_DATA as RUNTIME_REDIS_DIR,
+    FILES_DATA as RUNTIME_FILES_DIR,
+    RUNTIME_LOGS as RUNTIME_LOGS_DIR,
+    GENERATED_COMPOSE_FILE,
+    DEFAULT_RUNTIME_ENV_FILE,
+)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BUILD_DIR = PROJECT_ROOT / "build"
-
-RUNTIME_DIR = BUILD_DIR / "runtime"
-RUNTIME_ENV_DIR = RUNTIME_DIR / "env"
-RUNTIME_COMPOSE_DIR = RUNTIME_DIR / "compose"
-RUNTIME_MYSQL_DIR = RUNTIME_DIR / "mysql"
-RUNTIME_REDIS_DIR = RUNTIME_DIR / "redis"
-RUNTIME_FILES_DIR = RUNTIME_DIR / "files"
-RUNTIME_LOGS_DIR = RUNTIME_DIR / "logs"
-
-GENERATED_COMPOSE_FILE = RUNTIME_COMPOSE_DIR / "docker-compose.generated.yml"
-DEFAULT_RUNTIME_ENV_FILE = RUNTIME_ENV_DIR / "local.env"
+# Legacy aliases
 SOURCE_COMPOSE_TEMPLATE = PROJECT_ROOT / "scripts" / "templates" / "docker-compose.runtime.yml"
 ENV_TEMPLATE_FILE = PROJECT_ROOT / ".env.example"
 

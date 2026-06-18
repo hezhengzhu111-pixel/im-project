@@ -53,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     # build command - 构建
     build = sub.add_parser("build", help="增量构建所有组件")
     build.add_argument("--clean", action="store_true", help="构建前清理工作目录")
+    build.add_argument("--dry-run", action="store_true", help="仅显示将要执行的操作，不实际执行")
 
     # down command - 停止服务
     sub.add_parser("down", help="停止所有应用服务")
@@ -115,7 +116,7 @@ def _clean(target: str, *, yes: bool) -> None:
         targets.append(paths.cache)
     if target == "source-pollution":
         from .source_guard import clean_source_pollution
-        clean_source_pollution(paths.project_root)
+        clean_source_pollution(paths.PROJECT_ROOT)
         return
 
     for path in targets:

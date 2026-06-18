@@ -1,0 +1,197 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import List, Set
+
+# Patterns that should NOT appear in source directories
+POLLUTION_PATTERNS = [
+    # Rust build artifacts
+    "target/",
+    "*.pdb",
+    "*.rlib",
+    "*.lib",
+
+    # Flutter/Dart artifacts
+    ".dart_tool/",
+    ".packages",
+    ".flutter-plugins",
+    ".flutter-plugins-dependencies",
+    "pubspec.lock",
+
+    # Node.js artifacts
+    "node_modules/",
+
+    # Java/Maven artifacts
+    "*.class",
+    "*.jar",
+    ".mvn/",
+
+    # General build artifacts
+    "build/",
+    "dist/",
+    "out/",
+    "*.log",
+    "*.tar",
+    "*.tar.gz",
+    "*.zip",
+
+    # IDE artifacts
+    "*.iml",
+    ".idea/",
+    ".vscode/",
+]
+
+# Directories to scan (relative to project root)
+SOURCE_DIRS = [
+    "rust",
+    "flutter",
+    "spring-ai",
+    "sql",
+]
+
+
+class PollutionDetector:
+    """Detects build artifacts and intermediate files in source directories."""
+
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+        self.findings: List[Path] = []
+
+    def scan(self, fix: bool = False) -> List[Path]:
+        """Scan source directories for pollution.
+
+        Args:
+            fix: If True, remove pollution files. If False, just report.
+
+        Returns:
+            List of pollution paths found.
+        """
+        self.findings = []
+
+        for source_dir in SOURCE_DIRS:
+            source_path = self.project_root / source_dir
+            if source_path.exists():
+                self._scan_directory(source_path)
+
+        if fix and self.findings:
+            self._clean_pollution()
+
+        return self.findings
+
+    def _scan_directory(self, directory: Path) -> None:
+        """Recursively scan a directory for pollution."""
+        try:
+            for item in directory.iterdir():
+                if item.name.startswith('.'):
+                    # Skip hidden files (like .git)
+                    continue
+
+                relative_path = item.relative_to(self.project_root)
+
+                if self._is_pollution(item, relative_path):
+                    self.findings.append(item)
+                elif item.is_dir() and not self._should_skip_dir(item):
+                    self._scan_directory(item)
+        except PermissionError:
+            pass
+
+    def _is_pollution(self, path: Path, relative_path: Path) -> bool:
+        """Check if a path matches pollution patterns."""
+        path_str = str(relative_path).replace('\\', '/')
+
+        for pattern in POLLUTION_PATTERNS:
+            if self._matches_pattern(path, path_str, pattern):
+                return True
+
+        return False
+
+    def _matches_pattern(self, path: Path, path_str: str, pattern: str) -> bool:
+        """Check if path matches a specific pattern."""
+        if pattern.endswith('/'):
+            # Directory pattern
+            dir_name = pattern.rstrip('/')
+            return path.is_dir() and path.name == dir_name
+        elif pattern.startswith('*'):
+            # Wildcard pattern
+            suffix = pattern[1:]
+            return path.name.endswith(suffix)
+        elif '/' in pattern:
+            # Path pattern
+            return path_str == pattern or path_str.endswith('/' + pattern)
+        else:
+            # Exact name
+            return path.name == pattern
+
+    def _should_skip_dir(self, path: Path) -> bool:
+        """Determine if a directory should be skipped during scanning."""
+        # Skip .git and other hidden directories
+        if path.name.startswith('.'):
+            return True
+
+        # Skip node_modules at any level (already detected as pollution)
+        if path.name == 'node_modules':
+            return True
+
+        return False
+
+    def _clean_pollution(self) -> None:
+        """Remove all detected pollution files."""
+        import shutil
+
+        for path in self.findings:
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                    print(f"[CLEAN] Removed directory: {self._relative(path)}")
+                else:
+                    path.unlink()
+                    print(f"[CLEAN] Removed file: {self._relative(path)}")
+            except Exception as e:
+                print(f"[ERROR] Failed to remove {self._relative(path)}: {e}", file=sys.stderr)
+
+    def _relative(self, path: Path) -> str:
+        """Return relative path for display."""
+        try:
+            return str(path.relative_to(self.project_root))
+        except ValueError:
+            return str(path)
+
+
+def check_source_pollution(project_root: Path, verbose: bool = False) -> bool:
+    """Check for source pollution and report findings.
+
+    Args:
+        project_root: Root directory of the project.
+        verbose: If True, print detailed information.
+
+    Returns:
+        True if pollution found, False if clean.
+    """
+    detector = PollutionDetector(project_root)
+    findings = detector.scan(fix=False)
+
+    if findings:
+        print(f"[POLLUTION] Found {len(findings)} pollution items in source directories:")
+        for path in findings:
+            print(f"  - {detector._relative(path)}")
+        return True
+    else:
+        if verbose:
+            print("[POLLUTION] No pollution found in source directories.")
+        return False
+
+
+def clean_source_pollution(project_root: Path) -> None:
+    """Clean source pollution by removing detected artifacts.
+
+    Args:
+        project_root: Root directory of the project.
+    """
+    detector = PollutionDetector(project_root)
+    findings = detector.scan(fix=True)
+
+    if findings:
+        print(f"\n[CLEAN] Removed {len(findings)} pollution items.")
+    else:
+        print("[CLEAN] No pollution found.")
