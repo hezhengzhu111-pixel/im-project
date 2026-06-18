@@ -164,14 +164,21 @@ def generate_build_info(args: argparse.Namespace) -> dict:
 
     # Validation
     issues = []
-    if not git_info["commit_sha"]:
+
+    # Handle --commit parameter
+    candidate_commit = args.commit if args.commit else git_info["commit_sha"]
+    if args.commit and args.commit != git_info["commit_sha"]:
+        issues.append(f"FAIL: --commit {args.commit[:12]} does not match current HEAD {git_info['commit_sha'][:12]}")
+    if not candidate_commit:
         issues.append("FAIL: commit SHA is missing")
     if git_info["is_dirty"]:
         issues.append(f"FAIL: workspace is dirty ({len(git_info['dirty_files'])} files changed)")
 
     build_info = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "commit_sha": git_info["commit_sha"],
+        "candidate_commit": candidate_commit,
+        "current_head": git_info["commit_sha"],
+        "commit_sha": candidate_commit,  # For backward compatibility
         "branch": git_info["branch"],
         "is_dirty": git_info["is_dirty"],
         "dirty_files": git_info["dirty_files"],
@@ -385,13 +392,58 @@ def determine_decision(
     elif smoke_status == "NOT RUN":
         issues.append("Smoke tests NOT RUN")
 
-    # Check coverage
-    if coverage_summary and not coverage_summary.get("gate_passed", True):
-        issues.append("Coverage gate FAIL")
+    # Check coverage - compatible with real JSON structure
+    if not coverage_summary:
+        issues.append("Coverage summary missing")
+    else:
+        # Check Rust coverage
+        rust_summary = coverage_summary.get("rust", {})
+        if not rust_summary:
+            issues.append("Rust coverage summary missing")
+        else:
+            # Check all Rust modules for gate_passed/passed
+            for module_name, module_data in rust_summary.items():
+                if isinstance(module_data, dict):
+                    gate_passed = module_data.get("gate_passed")
+                    passed = module_data.get("passed")
+                    if gate_passed is False or passed is False:
+                        issues.append(f"Rust {module_name} coverage FAIL")
+                    elif gate_passed is None and passed is None:
+                        # No determinable field
+                        issues.append(f"Rust {module_name} coverage status unknown")
 
-    # Check manifest
-    if manifest_summary and not manifest_summary.get("all_critical_passed", True):
-        issues.append("Critical manifest items FAIL")
+        # Check Flutter coverage
+        flutter_summary = coverage_summary.get("flutter", {})
+        if not flutter_summary:
+            issues.append("Flutter coverage summary missing")
+        else:
+            # Check all Flutter packages for gate_passed/passed
+            for package_name, package_data in flutter_summary.items():
+                if isinstance(package_data, dict):
+                    gate_passed = package_data.get("gate_passed")
+                    passed = package_data.get("passed")
+                    if gate_passed is False or passed is False:
+                        issues.append(f"Flutter {package_name} coverage FAIL")
+                    elif gate_passed is None and passed is None:
+                        # No determinable field
+                        issues.append(f"Flutter {package_name} coverage status unknown")
+
+    # Check manifest - compatible with real JSON structure
+    if not manifest_summary:
+        issues.append("Manifest summary missing")
+    else:
+        # Check errors field
+        errors = manifest_summary.get("errors", [])
+        if errors:
+            issues.append(f"Manifest has {len(errors)} errors")
+
+        # Check critical sections for missing > 0
+        categories = manifest_summary.get("categories", {})
+        for category_name, category_data in categories.items():
+            if isinstance(category_data, dict):
+                missing = category_data.get("missing", 0)
+                if missing > 0:
+                    issues.append(f"Manifest {category_name} has {missing} missing items")
 
     # Determine decision
     if issues:

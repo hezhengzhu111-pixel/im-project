@@ -173,7 +173,7 @@ jobs:
       - name: Run frontend build verification
         if: ${{ inputs.run_frontend_build }}
         run: |
-          cd flutter
+          cd flutter/apps/web
           flutter pub get
           flutter analyze
           flutter test
@@ -181,7 +181,23 @@ jobs:
             --dart-define=APP_ENV=${{ env.GRAY_ENV }} \
             --dart-define=API_BASE_URL=${{ env.IM_API_BASE }} \
             --dart-define=WS_BASE_URL=${{ env.IM_WS_BASE }}
-          echo "Frontend build verification completed" > ../build/reports/gray-frontend-build.json
+          echo "Frontend build verification completed" > ../../../build/reports/gray-frontend-build.json
+
+      - name: Run mobile tests (optional)
+        if: ${{ inputs.run_frontend_build }}
+        run: |
+          cd flutter/apps/mobile
+          flutter pub get
+          flutter test
+        continue-on-error: true
+
+      - name: Run desktop tests (optional)
+        if: ${{ inputs.run_frontend_build }}
+        run: |
+          cd flutter/apps/desktop
+          flutter pub get
+          flutter test
+        continue-on-error: true
 
       - name: Mark frontend build not run
         if: ${{ !inputs.run_frontend_build }}

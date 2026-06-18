@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from gate_common import ROOT, run_step, skip_step, write_gate_reports
+from gate_common import ROOT, REPORT_DIR, run_step, skip_step, write_gate_reports
 
 
 PYTHON = sys.executable
@@ -407,26 +407,8 @@ def gray_signoff(
         )
     )
 
-    # Step 9: Generate final report
-    results.append(
-        run_step(
-            "Generate final report",
-            [
-                PYTHON,
-                str(ROOT / "scripts" / "gray_report.py"),
-                "finalize",
-                "--build-info", str(REPORT_DIR / "gray-build-info.json"),
-                "--env-check", str(REPORT_DIR / "gray-env-check.json"),
-                "--gate-summary", str(REPORT_DIR / "gray-gate-report.json"),
-                "--smoke", str(REPORT_DIR / "gray-smoke.json"),
-                "--coverage", str(REPORT_DIR / "coverage-summary.json"),
-                "--manifest", str(REPORT_DIR / "test-manifest-check.json"),
-                "--out", str(REPORT_DIR / "gray-release-report.md"),
-            ],
-            cwd=ROOT,
-            timeout=120,
-        )
-    )
+    # NOTE: final report is generated in main() after write_gate_reports()
+    # to ensure gray-gate-report.json exists before finalize reads it.
 
     return results
 
@@ -472,7 +454,32 @@ def main() -> int:
 
     report_md = Path(args.write_report)
     report_base = report_md.with_suffix("")
-    return write_gate_reports("gray-gate-report", args.mode, results, report_base=report_base)
+    exit_code = write_gate_reports("gray-gate-report", args.mode, results, report_base=report_base)
+
+    # For gray-signoff, generate final report after gate report is written
+    if args.mode == "gray-signoff":
+        import subprocess
+        finalize_result = subprocess.run(
+            [
+                PYTHON,
+                str(ROOT / "scripts" / "gray_report.py"),
+                "finalize",
+                "--build-info", str(REPORT_DIR / "gray-build-info.json"),
+                "--env-check", str(REPORT_DIR / "gray-env-check.json"),
+                "--gate-summary", str(REPORT_DIR / "gray-gate-report.json"),
+                "--smoke", str(REPORT_DIR / "gray-smoke.json"),
+                "--coverage", str(REPORT_DIR / "coverage-summary.json"),
+                "--manifest", str(REPORT_DIR / "test-manifest-check.json"),
+                "--out", str(REPORT_DIR / "gray-release-report.md"),
+            ],
+            cwd=str(ROOT),
+            timeout=120,
+        )
+        if finalize_result.returncode != 0:
+            print(f"Final report generation failed: {finalize_result.returncode}", file=sys.stderr)
+            return 1
+
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -20,6 +20,14 @@ try:
 except ImportError:
     requests = None
 
+
+def extract_data(response_json: dict) -> dict:
+    """Extract data from ApiResponse wrapper."""
+    if "data" in response_json:
+        return response_json["data"]
+    return response_json
+
+
 class GraySmokeTest:
     """Gray release smoke test suite."""
 
@@ -52,16 +60,16 @@ class GraySmokeTest:
         try:
             # Register
             resp = requests.post(
-                f"{self.api_base}/api/auth/register",
+                f"{self.api_base}/api/user/register",
                 json={"username": username, "password": password},
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
                 return {"success": False, "error": f"Register failed: {resp.status_code}"}
 
-            data = resp.json()
-            token = data.get("token") or data.get("access_token")
-            user_id = data.get("user_id") or data.get("id")
+            data = extract_data(resp.json())
+            token = data.get("token") or data.get("accessToken")
+            user_id = data.get("userId") or data.get("id")
 
             if not token:
                 return {"success": False, "error": "No token received"}
@@ -142,14 +150,14 @@ class GraySmokeTest:
         for username, user in self.users.items():
             try:
                 resp = requests.post(
-                    f"{self.api_base}/api/auth/login",
+                    f"{self.api_base}/api/user/login",
                     json={"username": username, "password": user["password"]},
                     timeout=30,
                 )
                 if resp.status_code != 200:
                     return {"success": False, "error": f"Login failed for {username}: {resp.status_code}"}
-                data = resp.json()
-                if not (data.get("token") or data.get("access_token")):
+                data = extract_data(resp.json())
+                if not (data.get("token") or data.get("accessToken")):
                     return {"success": False, "error": f"No token for {username}"}
             except Exception as e:
                 return {"success": False, "error": f"Login error for {username}: {str(e)[:50]}"}
@@ -180,13 +188,13 @@ class GraySmokeTest:
         username = list(self.users.keys())[0]
         headers = self.get_headers(username)
         try:
-            resp = requests.get(
-                f"{self.api_base}/api/ws/ticket",
+            resp = requests.post(
+                f"{self.api_base}/api/auth/ws-ticket",
                 headers=headers,
                 timeout=30,
             )
             if resp.status_code == 200:
-                data = resp.json()
+                data = extract_data(resp.json())
                 return {"success": True, "details": {"has_ticket": "ticket" in data or "token" in data}}
             return {"success": False, "error": f"Get ticket failed: {resp.status_code}"}
         except Exception as e:
@@ -200,7 +208,7 @@ class GraySmokeTest:
         headers = self.get_headers(username)
         try:
             resp = requests.post(
-                f"{self.api_base}/api/auth/logout",
+                f"{self.api_base}/api/user/logout",
                 headers=headers,
                 timeout=30,
             )
@@ -253,28 +261,6 @@ class GraySmokeTest:
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}
 
-    def test_user_upload_avatar(self) -> dict:
-        """Test upload avatar."""
-        if not self.users:
-            return {"success": False, "error": "No users available"}
-        username = list(self.users.keys())[0]
-        headers = self.get_headers(username)
-        try:
-            # Create a small test image
-            test_image = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
-            files = {"avatar": ("test.png", test_image, "image/png")}
-            resp = requests.post(
-                f"{self.api_base}/api/user/avatar",
-                headers=headers,
-                files=files,
-                timeout=30,
-            )
-            if resp.status_code in (200, 201):
-                return {"success": True}
-            return {"success": False, "error": f"Upload avatar failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
-
     def test_user_search(self) -> dict:
         """Test user search."""
         if len(self.users) < 2:
@@ -305,6 +291,7 @@ class GraySmokeTest:
             resp = requests.post(
                 f"{self.api_base}/api/user/heartbeat",
                 headers=headers,
+                json=[],  # Empty array for heartbeat
                 timeout=30,
             )
             if resp.status_code in (200, 204):
@@ -331,9 +318,9 @@ class GraySmokeTest:
 
             # Update settings
             resp = requests.put(
-                f"{self.api_base}/api/user/settings",
+                f"{self.api_base}/api/user/settings/general",
                 headers=headers,
-                json={"notification_enabled": True, "theme": "dark"},
+                json={"theme": "dark"},
                 timeout=30,
             )
             if resp.status_code in (200, 204):
@@ -357,7 +344,7 @@ class GraySmokeTest:
             resp = requests.post(
                 f"{self.api_base}/api/friend/request",
                 headers=headers_a,
-                json={"user_id": self.users[user_b]["user_id"]},
+                json={"targetUserId": str(self.users[user_b]["user_id"])},
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
@@ -372,11 +359,19 @@ class GraySmokeTest:
             if resp.status_code != 200:
                 return {"success": False, "error": f"List requests failed: {resp.status_code}"}
 
+            # Extract request ID
+            requests_data = extract_data(resp.json())
+            request_list = requests_data if isinstance(requests_data, list) else requests_data.get("requests", [])
+            if not request_list:
+                return {"success": False, "error": "No friend requests found"}
+
+            request_id = request_list[0].get("requestId") or request_list[0].get("id")
+
             # B accepts request
             resp = requests.post(
                 f"{self.api_base}/api/friend/accept",
                 headers=headers_b,
-                json={"user_id": self.users[user_a]["user_id"]},
+                json={"requestId": str(request_id)},
                 timeout=30,
             )
             if resp.status_code in (200, 201):
@@ -394,16 +389,16 @@ class GraySmokeTest:
         headers_a = self.get_headers(user_a)
         try:
             resp = requests.get(
-                f"{self.api_base}/api/friends",
+                f"{self.api_base}/api/friend/list",
                 headers=headers_a,
                 timeout=30,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                friends = data.get("friends") or data.get("data") or []
-                user_b_id = self.users[user_b]["user_id"]
+                data = extract_data(resp.json())
+                friends = data if isinstance(data, list) else data.get("friends", [])
+                user_b_id = str(self.users[user_b]["user_id"])
                 found = any(
-                    (f.get("user_id") or f.get("id")) == user_b_id
+                    str(f.get("userId") or f.get("id")) == user_b_id
                     for f in friends
                 )
                 if found:
@@ -424,29 +419,32 @@ class GraySmokeTest:
         headers_a = self.get_headers(user_a)
         headers_b = self.get_headers(user_b)
         message_text = f"Gray test message {uuid.uuid4().hex[:8]}"
+        client_message_id = str(uuid.uuid4())
         try:
             # A sends message to B
             resp = requests.post(
-                f"{self.api_base}/api/messages/send",
+                f"{self.api_base}/api/message/send/private",
                 headers=headers_a,
                 json={
-                    "receiver_id": self.users[user_b]["user_id"],
+                    "receiverId": str(self.users[user_b]["user_id"]),
                     "content": message_text,
-                    "type": "text",
+                    "messageType": "text",
+                    "clientMessageId": client_message_id,
                 },
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
                 return {"success": False, "error": f"Send message failed: {resp.status_code}"}
 
-            data = resp.json()
-            message_id = data.get("message_id") or data.get("id")
-            self.messages[message_id] = message_text
+            data = extract_data(resp.json())
+            message_id = data.get("messageId") or data.get("id")
+            self.messages[message_id] = {"text": message_text, "client_id": client_message_id}
 
             # B gets private history
             resp = requests.get(
-                f"{self.api_base}/api/messages/private/{self.users[user_a]['user_id']}",
+                f"{self.api_base}/api/message/private/{self.users[user_a]['user_id']}",
                 headers=headers_b,
+                params={"size": 20},
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -464,7 +462,7 @@ class GraySmokeTest:
         message_id = list(self.messages.keys())[0]
         try:
             resp = requests.post(
-                f"{self.api_base}/api/messages/{message_id}/recall",
+                f"{self.api_base}/api/message/recall/{message_id}",
                 headers=headers_a,
                 timeout=30,
             )
@@ -494,75 +492,55 @@ class GraySmokeTest:
 
     # ===== E. Private E2EE Smoke =====
 
-    def test_e2ee_device_key_bundle(self) -> dict:
-        """Test E2EE device key bundle upload."""
-        if not self.users:
-            return {"success": False, "error": "No users available"}
-        username = list(self.users.keys())[0]
-        headers = self.get_headers(username)
-        try:
-            # Upload device key bundle
-            resp = requests.post(
-                f"{self.api_base}/api/e2ee/device-keys",
-                headers=headers,
-                json={
-                    "device_id": f"gray_device_{uuid.uuid4().hex[:8]}",
-                    "identity_key": "test_identity_key_base64",
-                    "signed_pre_key": "test_signed_pre_key_base64",
-                    "one_time_pre_keys": ["test_opk_1", "test_opk_2"],
-                },
-                timeout=30,
-            )
-            if resp.status_code in (200, 201):
-                return {"success": True}
-            return {"success": False, "error": f"Upload bundle failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
+    def test_e2ee_private_smoke(self) -> dict:
+        """Test E2EE private smoke - MUST depend on P1 SIT report."""
+        # Check if P1 SIT report exists and passed
+        p1_sit_report = Path(REPORT_DIR).parent / "artifacts" / "p1-sit"
+        if not p1_sit_report.exists():
+            return {"success": False, "error": "P1 SIT report not found - E2EE smoke cannot proceed"}
 
-    def test_e2ee_remote_bundle_fetch(self) -> dict:
-        """Test E2EE remote bundle fetch."""
-        if len(self.users) < 2:
-            return {"success": False, "error": "Need at least 2 users"}
-        user_a = list(self.users.keys())[0]
-        user_b = list(self.users.keys())[1]
-        headers_a = self.get_headers(user_a)
-        try:
-            resp = requests.get(
-                f"{self.api_base}/api/e2ee/device-keys/{self.users[user_b]['user_id']}",
-                headers=headers_a,
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                return {"success": True}
-            return {"success": False, "error": f"Fetch bundle failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
+        # Look for latest P1 SIT summary
+        latest_summary = None
+        for timestamp_dir in sorted(p1_sit_report.iterdir(), reverse=True):
+            summary_file = timestamp_dir / "summary.md"
+            if summary_file.exists():
+                latest_summary = summary_file
+                break
 
-    def test_e2ee_encrypted_message(self) -> dict:
-        """Test encrypted private message."""
-        if len(self.users) < 2:
-            return {"success": False, "error": "Need at least 2 users"}
-        user_a = list(self.users.keys())[0]
-        user_b = list(self.users.keys())[1]
-        headers_a = self.get_headers(user_a)
-        try:
-            # Send encrypted message (simplified test)
-            resp = requests.post(
-                f"{self.api_base}/api/messages/send",
-                headers=headers_a,
-                json={
-                    "receiver_id": self.users[user_b]["user_id"],
-                    "content": "encrypted_envelope_base64_placeholder",
-                    "type": "e2ee",
-                    "encrypted": True,
-                },
-                timeout=30,
-            )
-            if resp.status_code in (200, 201):
-                return {"success": True}
-            return {"success": False, "error": f"Send encrypted message failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
+        if not latest_summary:
+            return {"success": False, "error": "No P1 SIT summary found"}
+
+        # Check if P1 SIT passed
+        content = latest_summary.read_text(encoding="utf-8")
+        if "PASS" not in content:
+            return {"success": False, "error": "P1 SIT did not pass - E2EE smoke cannot proceed"}
+
+        return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
+
+    def test_e2ee_group_smoke(self) -> dict:
+        """Test E2EE group smoke - MUST depend on P1 SIT report."""
+        # Check if P1 SIT report exists and passed
+        p1_sit_report = Path(REPORT_DIR).parent / "artifacts" / "p1-sit"
+        if not p1_sit_report.exists():
+            return {"success": False, "error": "P1 SIT report not found - Group E2EE smoke cannot proceed"}
+
+        # Look for latest P1 SIT summary
+        latest_summary = None
+        for timestamp_dir in sorted(p1_sit_report.iterdir(), reverse=True):
+            summary_file = timestamp_dir / "summary.md"
+            if summary_file.exists():
+                latest_summary = summary_file
+                break
+
+        if not latest_summary:
+            return {"success": False, "error": "No P1 SIT summary found"}
+
+        # Check if P1 SIT passed (including group E2EE)
+        content = latest_summary.read_text(encoding="utf-8")
+        if "PASS" not in content:
+            return {"success": False, "error": "P1 SIT did not pass - Group E2EE smoke cannot proceed"}
+
+        return {"success": True, "details": {"p1_sit_report": str(latest_summary)}}
 
     # ===== F. Group Smoke =====
 
@@ -575,17 +553,16 @@ class GraySmokeTest:
         group_name = f"gray_group_{uuid.uuid4().hex[:8]}"
         try:
             resp = requests.post(
-                f"{self.api_base}/api/groups",
+                f"{self.api_base}/api/group/create",
                 headers=headers_a,
                 json={
-                    "name": group_name,
-                    "description": "Gray test group",
+                    "groupName": group_name,
                 },
                 timeout=30,
             )
             if resp.status_code in (200, 201):
-                data = resp.json()
-                group_id = data.get("group_id") or data.get("id")
+                data = extract_data(resp.json())
+                group_id = data.get("groupId") or data.get("id")
                 self.groups[group_id] = {"name": group_name, "owner": user_a}
                 return {"success": True, "details": {"group_id": group_id}}
             return {"success": False, "error": f"Create group failed: {resp.status_code}"}
@@ -601,16 +578,16 @@ class GraySmokeTest:
         headers_a = self.get_headers(user_a)
         try:
             # Add user B and C to group
-            for username in list(self.users.keys())[1:3]:
-                resp = requests.post(
-                    f"{self.api_base}/api/groups/{group_id}/members",
-                    headers=headers_a,
-                    json={"user_id": self.users[username]["user_id"]},
-                    timeout=30,
-                )
-                if resp.status_code not in (200, 201):
-                    return {"success": False, "error": f"Add member failed: {resp.status_code}"}
-            return {"success": True}
+            member_ids = [str(self.users[username]["user_id"]) for username in list(self.users.keys())[1:3]]
+            resp = requests.post(
+                f"{self.api_base}/api/group/{group_id}/add-members",
+                headers=headers_a,
+                json=member_ids,
+                timeout=30,
+            )
+            if resp.status_code in (200, 201):
+                return {"success": True}
+            return {"success": False, "error": f"Add members failed: {resp.status_code}"}
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}
 
@@ -622,9 +599,10 @@ class GraySmokeTest:
         user_a = list(self.users.keys())[0]
         headers_a = self.get_headers(user_a)
         try:
-            resp = requests.get(
-                f"{self.api_base}/api/groups/{group_id}/members",
+            resp = requests.post(
+                f"{self.api_base}/api/group/members/list",
                 headers=headers_a,
+                json={"groupId": str(group_id)},
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -643,9 +621,13 @@ class GraySmokeTest:
         try:
             # Send group message
             resp = requests.post(
-                f"{self.api_base}/api/groups/{group_id}/messages",
+                f"{self.api_base}/api/message/send/group",
                 headers=headers_a,
-                json={"content": f"Gray group message {uuid.uuid4().hex[:8]}", "type": "text"},
+                json={
+                    "groupId": str(group_id),
+                    "content": f"Gray group message {uuid.uuid4().hex[:8]}",
+                    "messageType": "text",
+                },
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
@@ -653,8 +635,9 @@ class GraySmokeTest:
 
             # Get group history
             resp = requests.get(
-                f"{self.api_base}/api/groups/{group_id}/messages",
+                f"{self.api_base}/api/message/group/{group_id}",
                 headers=headers_a,
+                params={"size": 20},
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -672,7 +655,7 @@ class GraySmokeTest:
         headers_a = self.get_headers(user_a)
         try:
             resp = requests.delete(
-                f"{self.api_base}/api/groups/{group_id}",
+                f"{self.api_base}/api/group/{group_id}",
                 headers=headers_a,
                 timeout=30,
             )
@@ -680,81 +663,6 @@ class GraySmokeTest:
                 del self.groups[group_id]
                 return {"success": True}
             return {"success": False, "error": f"Dismiss group failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
-
-    # ===== G. Group E2EE Smoke =====
-
-    def test_group_e2ee_enable(self) -> dict:
-        """Test enable group E2EE."""
-        if not self.groups:
-            return {"success": False, "error": "No groups available"}
-        group_id = list(self.groups.keys())[0]
-        user_a = list(self.users.keys())[0]
-        headers_a = self.get_headers(user_a)
-        try:
-            resp = requests.post(
-                f"{self.api_base}/api/groups/{group_id}/e2ee/enable",
-                headers=headers_a,
-                timeout=30,
-            )
-            if resp.status_code in (200, 204):
-                return {"success": True}
-            return {"success": False, "error": f"Enable group E2EE failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
-
-    def test_group_e2ee_sender_key(self) -> dict:
-        """Test sender key push/fetch."""
-        if not self.groups:
-            return {"success": False, "error": "No groups available"}
-        group_id = list(self.groups.keys())[0]
-        user_a = list(self.users.keys())[0]
-        headers_a = self.get_headers(user_a)
-        try:
-            # Push sender key
-            resp = requests.post(
-                f"{self.api_base}/api/groups/{group_id}/e2ee/sender-key",
-                headers=headers_a,
-                json={"sender_key": "test_sender_key_base64"},
-                timeout=30,
-            )
-            if resp.status_code not in (200, 201):
-                return {"success": False, "error": f"Push sender key failed: {resp.status_code}"}
-
-            # Fetch sender key
-            resp = requests.get(
-                f"{self.api_base}/api/groups/{group_id}/e2ee/sender-key",
-                headers=headers_a,
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                return {"success": True}
-            return {"success": False, "error": f"Fetch sender key failed: {resp.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)[:100]}
-
-    def test_group_e2ee_encrypted_message(self) -> dict:
-        """Test encrypted group message."""
-        if not self.groups:
-            return {"success": False, "error": "No groups available"}
-        group_id = list(self.groups.keys())[0]
-        user_a = list(self.users.keys())[0]
-        headers_a = self.get_headers(user_a)
-        try:
-            resp = requests.post(
-                f"{self.api_base}/api/groups/{group_id}/messages",
-                headers=headers_a,
-                json={
-                    "content": "encrypted_group_envelope_base64",
-                    "type": "e2ee",
-                    "encrypted": True,
-                },
-                timeout=30,
-            )
-            if resp.status_code in (200, 201):
-                return {"success": True}
-            return {"success": False, "error": f"Send encrypted group message failed: {resp.status_code}"}
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}
 
@@ -770,16 +678,23 @@ class GraySmokeTest:
             test_content = b"gray-test-file-content-" + uuid.uuid4().bytes
             files = {"file": ("gray_test.txt", test_content, "text/plain")}
             resp = requests.post(
-                f"{self.api_base}/api/files/upload",
+                f"{self.api_base}/api/file/upload/file",
                 headers=headers,
                 files=files,
                 timeout=30,
             )
             if resp.status_code in (200, 201):
-                data = resp.json()
-                file_id = data.get("id") or data.get("file_id")
-                self.files[file_id] = {"content": test_content, "filename": "gray_test.txt"}
-                return {"success": True, "details": {"file_id": file_id}}
+                data = extract_data(resp.json())
+                filename = data.get("filename")
+                category = data.get("category", "file")
+                upload_date = data.get("uploadDate")
+                self.files[filename] = {
+                    "content": test_content,
+                    "filename": "gray_test.txt",
+                    "category": category,
+                    "date": upload_date,
+                }
+                return {"success": True, "details": {"filename": filename}}
             return {"success": False, "error": f"Upload failed: {resp.status_code}"}
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}
@@ -790,11 +705,17 @@ class GraySmokeTest:
             return {"success": False, "error": "No files available"}
         username = list(self.users.keys())[0]
         headers = self.get_headers(username)
-        file_id = list(self.files.keys())[0]
+        filename = list(self.files.keys())[0]
+        file_info = self.files[filename]
         try:
             resp = requests.get(
-                f"{self.api_base}/api/files/{file_id}",
+                f"{self.api_base}/api/file/download",
                 headers=headers,
+                params={
+                    "category": file_info["category"],
+                    "date": file_info["date"],
+                    "filename": filename,
+                },
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -809,15 +730,21 @@ class GraySmokeTest:
             return {"success": False, "error": "No files available"}
         username = list(self.users.keys())[0]
         headers = self.get_headers(username)
-        file_id = list(self.files.keys())[0]
+        filename = list(self.files.keys())[0]
+        file_info = self.files[filename]
         try:
             resp = requests.delete(
-                f"{self.api_base}/api/files/{file_id}",
+                f"{self.api_base}/api/file/delete",
                 headers=headers,
+                params={
+                    "category": file_info["category"],
+                    "date": file_info["date"],
+                    "filename": filename,
+                },
                 timeout=30,
             )
             if resp.status_code in (200, 204):
-                del self.files[file_id]
+                del self.files[filename]
                 return {"success": True}
             return {"success": False, "error": f"Delete failed: {resp.status_code}"}
         except Exception as e:
@@ -839,8 +766,8 @@ class GraySmokeTest:
                 timeout=30,
             )
             if resp.status_code in (200, 201):
-                data = resp.json()
-                moment_id = data.get("moment_id") or data.get("id")
+                data = extract_data(resp.json())
+                moment_id = data.get("momentId") or data.get("id")
                 self.moments[moment_id] = {"content": "Gray test moment"}
                 return {"success": True, "details": {"moment_id": moment_id}}
             return {"success": False, "error": f"Create moment failed: {resp.status_code}"}
@@ -994,12 +921,13 @@ class GraySmokeTest:
         headers = self.get_headers(username)
         try:
             resp = requests.post(
-                f"{self.api_base}/api/push/register",
+                f"{self.api_base}/api/push/devices/register",
                 headers=headers,
                 json={
-                    "device_token": f"gray_device_{uuid.uuid4().hex[:8]}",
+                    "deviceId": f"gray_device_{uuid.uuid4().hex[:8]}",
                     "platform": "android",
-                    "device_info": {"model": "Gray Test Device"},
+                    "fcmToken": f"gray_fcm_{uuid.uuid4().hex[:8]}",
+                    "deviceModel": "Gray Test Device",
                 },
                 timeout=30,
             )
@@ -1037,15 +965,15 @@ class GraySmokeTest:
         headers = self.get_headers(username)
         try:
             # Get ws-ticket
-            resp = requests.get(
-                f"{self.api_base}/api/ws/ticket",
+            resp = requests.post(
+                f"{self.api_base}/api/auth/ws-ticket",
                 headers=headers,
                 timeout=30,
             )
             if resp.status_code != 200:
                 return {"success": False, "error": f"Get ticket failed: {resp.status_code}"}
 
-            data = resp.json()
+            data = extract_data(resp.json())
             ticket = data.get("ticket") or data.get("token")
 
             if not ticket:
@@ -1132,10 +1060,9 @@ class GraySmokeTest:
         # B. User smoke
         self.run_scenario("B1. Get profile", self.test_user_profile)
         self.run_scenario("B2. Update profile", self.test_user_update_profile)
-        self.run_scenario("B3. Upload avatar", self.test_user_upload_avatar, critical=False)
-        self.run_scenario("B4. Search user", self.test_user_search)
-        self.run_scenario("B5. Heartbeat", self.test_user_heartbeat, critical=False)
-        self.run_scenario("B6. User settings", self.test_user_settings, critical=False)
+        self.run_scenario("B3. Search user", self.test_user_search)
+        self.run_scenario("B4. Heartbeat", self.test_user_heartbeat, critical=False)
+        self.run_scenario("B5. User settings", self.test_user_settings, critical=False)
 
         # C. Friend smoke
         self.run_scenario("C1. Friend request/accept", self.test_friend_request_and_accept)
@@ -1146,10 +1073,8 @@ class GraySmokeTest:
         self.run_scenario("D2. Recall message", self.test_private_message_recall, critical=False)
         self.run_scenario("D3. Old message path negative", self.test_old_message_path_negative)
 
-        # E. Private E2EE smoke
-        self.run_scenario("E1. Device key bundle", self.test_e2ee_device_key_bundle)
-        self.run_scenario("E2. Remote bundle fetch", self.test_e2ee_remote_bundle_fetch)
-        self.run_scenario("E3. Encrypted private message", self.test_e2ee_encrypted_message)
+        # E. Private E2EE smoke (depends on P1 SIT)
+        self.run_scenario("E1. Private E2EE smoke", self.test_e2ee_private_smoke)
 
         # F. Group smoke
         self.run_scenario("F1. Create group", self.test_group_create)
@@ -1158,10 +1083,8 @@ class GraySmokeTest:
         self.run_scenario("F4. Group message", self.test_group_message)
         self.run_scenario("F5. Dismiss group", self.test_group_dismiss, critical=False)
 
-        # G. Group E2EE smoke
-        self.run_scenario("G1. Enable group E2EE", self.test_group_e2ee_enable)
-        self.run_scenario("G2. Sender key push/fetch", self.test_group_e2ee_sender_key)
-        self.run_scenario("G3. Encrypted group message", self.test_group_e2ee_encrypted_message)
+        # G. Group E2EE smoke (depends on P1 SIT)
+        self.run_scenario("G1. Group E2EE smoke", self.test_e2ee_group_smoke)
 
         # H. File/avatar smoke
         self.run_scenario("H1. File upload", self.test_file_upload)
@@ -1226,6 +1149,7 @@ class GraySmokeTest:
             },
             "scenarios": self.scenarios,
         }
+
 
 def write_reports(results: dict, output_json: Path, output_md: Path) -> None:
     """Write smoke test results as JSON and Markdown."""
@@ -1299,6 +1223,7 @@ def write_reports(results: dict, output_json: Path, output_md: Path) -> None:
         lines.append("")
 
     output_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

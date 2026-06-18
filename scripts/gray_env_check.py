@@ -118,22 +118,25 @@ def check_websocket(ws_base: str, api_base: str, timeout: int = 30) -> dict:
             import uuid
             test_user = f"gray_ws_test_{uuid.uuid4().hex[:8]}"
             resp = requests.post(
-                f"{api_base}/api/auth/register",
+                f"{api_base}/api/user/register",
                 json={"username": test_user, "password": "TestPassword123!"},
                 timeout=timeout,
             )
             if resp.status_code in (200, 201):
                 data = resp.json()
-                token = data.get("token") or data.get("access_token")
+                # Extract token from ApiResponse wrapper
+                user_data = data.get("data", data)
+                token = user_data.get("token") or user_data.get("accessToken")
                 if token:
-                    resp2 = requests.get(
-                        f"{api_base}/api/ws/ticket",
+                    resp2 = requests.post(
+                        f"{api_base}/api/auth/ws-ticket",
                         headers={"Authorization": f"Bearer {token}"},
                         timeout=timeout,
                     )
                     result["can_get_ticket"] = resp2.status_code == 200
                     if resp2.status_code == 200:
-                        result["ticket_data"] = resp2.json()
+                        ticket_data = resp2.json()
+                        result["ticket_data"] = ticket_data.get("data", ticket_data)
         except Exception as e:
             result["error"] = f"Cannot get ws-ticket: {str(e)[:100]}"
 
@@ -313,7 +316,7 @@ def check_storage(api_base: str, timeout: int = 30) -> dict:
         import uuid
         test_user = f"gray_storage_test_{uuid.uuid4().hex[:8]}"
         resp = requests.post(
-            f"{api_base}/api/auth/register",
+            f"{api_base}/api/user/register",
             json={"username": test_user, "password": "TestPassword123!"},
             timeout=timeout,
         )
@@ -323,7 +326,8 @@ def check_storage(api_base: str, timeout: int = 30) -> dict:
             return result
 
         data = resp.json()
-        token = data.get("token") or data.get("access_token")
+        user_data = data.get("data", data)
+        token = user_data.get("token") or user_data.get("accessToken")
         if not token:
             result["error"] = "No token received"
             result["status"] = "FAIL"
@@ -336,7 +340,7 @@ def check_storage(api_base: str, timeout: int = 30) -> dict:
         test_filename = f"gray_test_{uuid.uuid4().hex[:8]}.txt"
         files = {"file": (test_filename, test_content, "text/plain")}
         resp = requests.post(
-            f"{api_base}/api/files/upload",
+            f"{api_base}/api/file/upload/file",
             headers=headers,
             files=files,
             timeout=timeout,
@@ -345,20 +349,25 @@ def check_storage(api_base: str, timeout: int = 30) -> dict:
 
         if result["can_upload"]:
             file_data = resp.json()
-            file_id = file_data.get("id") or file_data.get("file_id")
+            file_info = file_data.get("data", file_data)
+            category = file_info.get("category", "file")
+            date = file_info.get("uploadDate", "")
+            filename = file_info.get("filename", test_filename)
 
-            # Download
-            resp = requests.get(
-                f"{api_base}/api/files/{file_id}",
+            # Get file info
+            resp = requests.post(
+                f"{api_base}/api/file/info",
                 headers=headers,
+                json={"category": category, "date": date, "filename": filename},
                 timeout=timeout,
             )
             result["can_download"] = resp.status_code == 200
 
-            # Delete
+            # Delete file
             resp = requests.delete(
-                f"{api_base}/api/files/{file_id}",
+                f"{api_base}/api/file/delete",
                 headers=headers,
+                params={"category": category, "date": date, "filename": filename},
                 timeout=timeout,
             )
             result["can_delete"] = resp.status_code in (200, 204)

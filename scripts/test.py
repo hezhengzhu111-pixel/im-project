@@ -98,21 +98,23 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
             )
         ]
     if args.command == "gray-signoff":
+        cmd = [
+            PYTHON,
+            str(ROOT / "scripts" / "gray_gate.py"),
+            "--mode", "gray-signoff",
+            "--env", args.env,
+            "--base-url", args.api_base,
+            "--ws-base", args.ws_base,
+            "--db-url", args.db_url,
+            "--redis-url", args.redis_url,
+            "--operator", args.operator,
+        ]
+        if args.continue_on_error:
+            cmd.append("--continue-on-error")
         return [
             run_step(
                 "Gray signoff gate",
-                [
-                    PYTHON,
-                    str(ROOT / "scripts" / "gray_gate.py"),
-                    "--mode", "gray-signoff",
-                    "--env", args.env,
-                    "--base-url", args.api_base,
-                    "--ws-base", args.ws_base,
-                    "--db-url", args.db_url,
-                    "--redis-url", args.redis_url,
-                    "--operator", args.operator,
-                    "--continue-on-error" if args.continue_on_error else "",
-                ],
+                cmd,
                 cwd=ROOT,
                 timeout=7200,
             )
