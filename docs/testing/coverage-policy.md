@@ -8,6 +8,18 @@ Coverage has two gates:
   project must keep a generated baseline from falling while critical scopes
   reach their target.
 
+Coverage reports expose both meanings explicitly:
+
+- `target_passed`: the configured percentage threshold was met.
+- `baseline_passed`: the current result did not fall below the stored baseline.
+- `gate_passed`: the coverage gate result used by CI.
+- `mode`: `threshold` when the target was met, otherwise `baseline`.
+
+Baseline mode is temporary debt tracking. A baseline-mode PASS does not mean the
+target threshold was met. When a baseline is created for the first time, the
+Markdown summary must include: `BASELINE CREATED: this does not mean target
+threshold was met.`
+
 Initial thresholds:
 
 | scope | line threshold |

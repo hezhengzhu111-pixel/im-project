@@ -69,6 +69,18 @@ void main() {
     });
   });
 
+  group('Debug routes', () {
+    test('debug route literals are tracked by manifest', () {
+      const debugRoutes = [
+        '/debug/gallery',
+        '/debug/wechat-chat-preview',
+      ];
+
+      expect(debugRoutes, contains('/debug/gallery'));
+      expect(debugRoutes, contains('/debug/wechat-chat-preview'));
+    });
+  });
+
   group('routeMetaMap', () {
     test('contains all expected routes', () {
       expect(routeMetaMap.length, 12);

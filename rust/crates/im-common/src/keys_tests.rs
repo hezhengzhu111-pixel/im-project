@@ -36,6 +36,16 @@ mod keys_tests {
     }
 
     #[test]
+    fn conversation_last_key_format() {
+        assert_eq!(keys::conversation_last_key("p_1_2"), "im:conv:p_1_2:last");
+    }
+
+    #[test]
+    fn user_conversations_key_format() {
+        assert_eq!(keys::user_conversations_key(7), "im:user:7:convs");
+    }
+
+    #[test]
     fn user_unread_key_format() {
         assert_eq!(keys::user_unread_key(7), "im:user:7:unread");
     }
@@ -83,6 +93,14 @@ mod keys_tests {
     #[test]
     fn ai_auto_reply_key_format() {
         assert_eq!(keys::ai_auto_reply_key(3), "im:ai:auto_reply:3");
+    }
+
+    #[test]
+    fn ai_anti_reentry_key_format() {
+        assert_eq!(
+            keys::ai_anti_reentry_key(3, "p_1_2"),
+            "im:ai:antireentry:3:p_1_2"
+        );
     }
 
     #[test]

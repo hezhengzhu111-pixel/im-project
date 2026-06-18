@@ -14,7 +14,21 @@ from test_inventory import generate, write_markdown
 
 
 REPORT_DIR = ROOT / "build" / "reports"
-CRITICAL_SECTIONS = {"backend_routes", "frontend_endpoints", "frontend_page_routes"}
+CRITICAL_SECTIONS = {"backend_routes", "frontend_endpoints", "frontend_page_routes", "public_api"}
+ALLOWED_MISSING_CATEGORIES = {
+    "generated",
+    "bootstrap",
+    "platform_glue",
+    "internal_test_helper",
+    "internal",
+    "internal_admin",
+}
+ALLOWED_MISSING = {
+    ("backend_routes", "POST /api/auth/internal/token"),
+    ("backend_routes", "GET /api/auth/internal/user-resource/:user_id"),
+    ("backend_routes", "POST /api/auth/internal/revoke-user-tokens/:user_id"),
+    ("frontend_endpoints", "AdminEndpoints.logs"),
+}
 LEGACY_API_RE = re.compile(r"['\"]/(?:user|message|friend|group|file|moments|push|ai|keys|e2ee)(?:/|['\"])", re.IGNORECASE)
 SECRET_RE = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password)\s*[:=]\s*['\"][^'\"]{24,}['\"]")
 
@@ -97,8 +111,17 @@ def check_manifest(data: dict[str, list[dict[str, str]]]) -> list[str]:
         for item in items:
             if section in CRITICAL_SECTIONS and item["status"] == "missing":
                 errors.append(f"{section}: missing {item['name']} ({item['file']})")
-            if item["status"] == "allowed_missing" and not item.get("reason"):
-                errors.append(f"{section}: allowed_missing without reason {item['name']}")
+            if item["status"] == "allowed_missing":
+                if (section, item["name"]) not in ALLOWED_MISSING:
+                    errors.append(f"{section}: allowed_missing is not allowlisted {item['name']}")
+                if not item.get("reason"):
+                    errors.append(f"{section}: allowed_missing without reason {item['name']}")
+                if item.get("category") not in ALLOWED_MISSING_CATEGORIES:
+                    errors.append(
+                        f"{section}: allowed_missing category must be non-business {item['name']} ({item.get('category', '')})"
+                    )
+                if section == "public_api":
+                    errors.append(f"{section}: public_api may not use allowed_missing {item['name']}")
     for section, items in data.items():
         for item in items:
             if item["kind"] == "frontend_endpoint" and item.get("category") != "websocket":

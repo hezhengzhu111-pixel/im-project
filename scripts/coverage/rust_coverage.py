@@ -72,9 +72,12 @@ def apply_baseline_policy(summary: dict[str, dict], baseline: dict[str, dict]) -
         item["target_passed"] = target_passed
         item["baseline_percent"] = baseline_percent
         item["baseline_passed"] = baseline_passed
-        item["passed"] = target_passed or baseline_passed
+        item["gate_passed"] = target_passed or baseline_passed
+        item["passed"] = item["gate_passed"]
+        item["mode"] = "threshold" if target_passed else "baseline"
         item["policy"] = "target threshold met" if target_passed else "baseline must not decrease until target threshold is reached"
-        if not item["passed"]:
+        item["baseline_created"] = False
+        if not item["gate_passed"]:
             failed.append(module)
     return failed
 
@@ -194,15 +197,29 @@ def main() -> int:
         write_baseline(summary, baseline_path)
         failed = []
         for item in summary.values():
+            target_passed = item["line_percent"] >= item["threshold"]
+            item["target_passed"] = target_passed
             item["baseline_percent"] = item["line_percent"]
             item["baseline_passed"] = True
+            item["gate_passed"] = True
             item["passed"] = True
+            item["mode"] = "threshold" if target_passed else "baseline"
+            item["baseline_created"] = True
     (OUT_DIR / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-    lines = ["# Rust Coverage Summary", "", "| module | lines hit | lines found | line % | threshold | status |", "| --- | ---: | ---: | ---: | ---: | --- |"]
+    lines = ["# Rust Coverage Summary", ""]
+    if not existing_baseline:
+        lines.extend(["BASELINE CREATED: this does not mean target threshold was met.", ""])
+    lines.extend(
+        [
+            "| module | lines hit | lines found | line % | threshold | target_passed | baseline_passed | gate_passed | mode |",
+            "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- |",
+        ]
+    )
     for module, item in summary.items():
         lines.append(
             f"| {module} | {item['line_hit']} | {item['line_found']} | {item['line_percent']:.2f} | "
-            f"{item['threshold']:.2f} | {'PASS' if item['passed'] else 'FAIL'} |"
+            f"{item['threshold']:.2f} | {item['target_passed']} | {item['baseline_passed']} | "
+            f"{item['gate_passed']} | {item['mode']} |"
         )
     (OUT_DIR / "coverage_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))

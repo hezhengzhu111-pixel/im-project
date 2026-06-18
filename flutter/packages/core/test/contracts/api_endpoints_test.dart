@@ -32,6 +32,7 @@ void main() {
       expect(UserEndpoints.emailBind, '/api/user/email/bind');
       expect(UserEndpoints.account, '/api/user/account');
       expect(UserEndpoints.settings, '/api/user/settings');
+      expect(UserEndpoints.avatar, '/api/user/avatar');
       expect(UserEndpoints.offline, '/api/user/offline');
     });
 
@@ -334,6 +335,16 @@ void main() {
     test('MessageEndpoints.privateHistory encodes special chars', () {
       expect(MessageEndpoints.privateHistory('user/1'),
           contains('user%2F1'));
+    });
+
+    test('MessageEndpoints.privateHistoryCursor encodes special chars', () {
+      expect(MessageEndpoints.privateHistoryCursor('user/1'),
+          contains('user%2F1'));
+    });
+
+    test('MessageEndpoints.groupHistory encodes special chars', () {
+      expect(MessageEndpoints.groupHistory('g/1'),
+          contains('g%2F1'));
     });
 
     test('MessageEndpoints.groupHistoryCursor encodes special chars', () {
