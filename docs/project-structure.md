@@ -73,37 +73,35 @@
 ```
 build/
 ├── cache/                # 依赖缓存和工具链缓存
-│   ├── cargo/            # Cargo 和 Rust 依赖缓存
-│   ├── flutter/          # Flutter pub 和构建缓存
-│   ├── maven/            # Maven 和 Spring 依赖缓存 (.m2)
+│   ├── cargo-home/       # Cargo 和 Rust 依赖缓存
+│   ├── rust-target/      # Rust 编译目标缓存
+│   ├── pub-cache/        # Flutter pub 缓存
+│   ├── maven-repo/       # Maven 和 Spring 依赖缓存 (.m2)
 │   ├── docker/           # Docker 层缓存和镜像构建缓存
 │   └── tools/            # 构建工具和运行时缓存
 ├── work/                 # 隔离构建工作区（每个构建任务独立）
-│   ├── rust/             # Rust 构建目标和中间文件
 │   ├── flutter/          # Flutter 构建工作区
-│   └── spring-ai/        # Spring 构建工作区
+│   ├── rust/             # Rust 构建目标和中间文件
+│   ├── spring-ai/        # Spring 构建工作区
+│   └── sql/              # SQL 迁移和验证工作区
 ├── dist/                 # 最终产物和发布物
+│   ├── frontend/         # Flutter Web、Desktop、Mobile 打包产物
 │   ├── rust/             # Rust 二进制和库文件
-│   ├── flutter/          # Flutter Web、Desktop、Mobile 打包产物
 │   ├── spring-ai/        # Spring JAR 和可执行文件
-│   ├── docker/           # Docker 镜像导出（tar 格式）
-│   └── release/          # 发布归档和校验文件
+│   └── images/           # Docker 镜像导出（tar 格式）
 ├── runtime/              # 本地运行时和中间件数据
-│   ├── docker-compose/   # 运行时配置和 compose 文件
+│   ├── env/              # 环境配置文件
+│   ├── compose/          # Docker Compose 配置
+│   ├── mysql/            # MySQL 数据目录
 │   ├── redis/            # Redis 数据目录和 AOF
-│   ├── postgres/         # PostgreSQL 数据目录和备份
-│   ├── mq/               # 消息队列数据目录
-│   └── config/           # 运行时配置文件（动态生成）
+│   ├── files/            # 文件存储数据
+│   └── logs/             # 运行时日志
 ├── reports/              # 测试、覆盖率和质量报告
 │   ├── test/             # 单元测试和集成测试结果
 │   ├── coverage/         # 代码覆盖率报告
-│   ├── gate/             # Gate 判定和质量门禁报告
+│   ├── gates/            # Gate 判定和质量门禁报告
 │   └── manifest/         # 构建 manifest 和依赖关系报告
-├── logs/                 # 日志和状态文件
-│   ├── scripts/          # 脚本执行日志
-│   ├── build/            # 构建过程日志
-│   └── deploy/           # 部署过程日志
-└── manifest.json         # 构建 manifest 总入口
+└── logs/                 # 脚本和构建日志
 ```
 
 ### 4.1 cache/ - 依赖缓存
@@ -112,16 +110,17 @@ build/
 
 | 子目录 | 内容 | 示例 |
 |-------|------|------|
-| `cargo/` | Cargo 和 Rust 依赖 | `~/.cargo` 的子集 |
-| `flutter/` | Flutter pub 缓存 | `~/.pub-cache` 的子集 |
-| `maven/` | Maven 依赖缓存 | `.m2/repository` |
+| `cargo-home/` | Cargo 和 Rust 依赖 | `~/.cargo` 的子集 |
+| `rust-target/` | Rust 编译目标缓存 | `target/` 缓存 |
+| `pub-cache/` | Flutter pub 缓存 | `~/.pub-cache` 的子集 |
+| `maven-repo/` | Maven 依赖缓存 | `.m2/repository` |
 | `docker/` | Docker 层缓存 | 构建上下文缓存 |
 | `tools/` | 工具链缓存 | `rustup`、`flutter` SDK 缓存 |
 
 **注意：** 使用环境变量重定向依赖管理器：
-- `CARGO_HOME=build/cache/cargo`
-- `PUB_CACHE=build/cache/flutter`
-- `MAVEN_OPTS=-Dmaven.repo.local=build/cache/maven/repository`
+- `CARGO_HOME=build/cache/cargo-home`
+- `PUB_CACHE=build/cache/pub-cache`
+- `MAVEN_OPTS=-Dmaven.repo.local=build/cache/maven-repo/repository`
 
 ### 4.2 work/ - 隔离构建工作区
 
@@ -129,9 +128,10 @@ build/
 
 | 子目录 | 内容 | 说明 |
 |-------|------|------|
-| `rust/` | Rust 目标文件和中间编译文件 | `target/` 的隔离副本 |
 | `flutter/` | Flutter 构建工作区 | `.dart_tool`、`.flutter-plugins` 等 |
+| `rust/` | Rust 目标文件和中间编译文件 | `target/` 的隔离副本 |
 | `spring-ai/` | Spring 构建工作区 | `target/`、`.mvn` 等 |
+| `sql/` | SQL 迁移和验证 | 数据库脚本测试工作区 |
 
 **清理策略：** 每次完整构建前清理 `work/`，确保干净构建。
 
@@ -141,11 +141,10 @@ build/
 
 | 子目录 | 内容 | 格式 |
 |-------|------|------|
+| `frontend/` | Flutter 打包产物 | `.wasm`、`.apk`、`.ipa`、`.exe` |
 | `rust/` | Rust 二进制和库文件 | `.exe`、`.dll`、`.so` |
-| `flutter/` | Flutter 打包产物 | `.wasm`、`.apk`、`.ipa`、`.exe` |
 | `spring-ai/` | Spring JAR 和可执行文件 | `.jar`、可执行 JAR |
-| `docker/` | Docker 镜像导出 | `.tar`、OCI image |
-| `release/` | 发布归档 | `.tar.gz`、校验和 |
+| `images/` | Docker 镜像导出 | `.tar`、OCI image |
 
 ### 4.4 runtime/ - 本地运行时
 

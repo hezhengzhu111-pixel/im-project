@@ -107,31 +107,37 @@ def init_build_directories() -> bool:
 
     build_dir = Path("build")
     subdirs = [
-        "cache/cargo",
-        "cache/flutter",
-        "cache/maven",
+        # Cache directories
+        "cache/cargo-home",
+        "cache/rust-target",
+        "cache/pub-cache",
+        "cache/maven-repo",
         "cache/docker",
         "cache/tools",
-        "work/rust",
+        # Work directories
         "work/flutter",
+        "work/rust",
         "work/spring-ai",
+        "work/sql",
+        # Distribution directories
+        "dist/frontend",
         "dist/rust",
-        "dist/flutter",
         "dist/spring-ai",
-        "dist/docker",
-        "dist/release",
-        "runtime/docker-compose",
+        "dist/images",
+        # Runtime directories
+        "runtime/env",
+        "runtime/compose",
+        "runtime/mysql",
         "runtime/redis",
-        "runtime/postgres",
-        "runtime/mq",
-        "runtime/config",
+        "runtime/files",
+        "runtime/logs",
+        # Reports directories
         "reports/test",
         "reports/coverage",
-        "reports/gate",
+        "reports/gates",
         "reports/manifest",
-        "logs/scripts",
-        "logs/build",
-        "logs/deploy",
+        # Logs
+        "logs",
     ]
 
     try:
@@ -139,12 +145,6 @@ def init_build_directories() -> bool:
             dir_path = build_dir / subdir
             dir_path.mkdir(parents=True, exist_ok=True)
             print(f"  [OK] {dir_path}")
-
-        # 创建 .gitkeep 文件以保留空目录
-        for subdir in subdirs:
-            gitkeep = build_dir / subdir / ".gitkeep"
-            if not gitkeep.exists():
-                gitkeep.touch()
 
         print("  [OK] build/ 目录结构初始化完成")
         return True

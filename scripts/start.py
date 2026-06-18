@@ -52,11 +52,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="启动前拉取最新镜像。"
     )
     start_parser.add_argument(
-        "--build",
-        action="store_true",
-        help="启动前重新构建镜像。"
-    )
-    start_parser.add_argument(
         "--force-recreate",
         action="store_true",
         help="强制重建容器。"
@@ -161,8 +156,6 @@ def cmd_start(args) -> None:
             cmd_args.extend(["--env-file", args.env_file])
         if args.pull:
             cmd_args.append("--pull")
-        if args.build:
-            cmd_args.append("--build")
         if args.force_recreate:
             cmd_args.append("--force-recreate")
         if args.no_wait:
@@ -177,13 +170,13 @@ def cmd_start(args) -> None:
         finally:
             sys.argv = original_argv
     except Exception as e:
-        print(f"❌ 启动失败: {e}")
+        print(f"[FAIL] 启动失败: {e}")
         sys.exit(1)
 
 
 def cmd_stop(args) -> None:
     """停止服务。"""
-    print("🛑 停止服务...")
+    print("[STOP] 停止服务...")
 
     try:
         from deploy_services import main as services_main
@@ -204,13 +197,13 @@ def cmd_stop(args) -> None:
         finally:
             sys.argv = original_argv
     except Exception as e:
-        print(f"❌ 停止失败: {e}")
+        print(f"[FAIL] 停止失败: {e}")
         sys.exit(1)
 
 
 def cmd_restart(args) -> None:
     """重启服务。"""
-    print("🔄 重启服务...")
+    print("[RESTART] 重启服务...")
 
     try:
         from deploy_services import main as services_main
