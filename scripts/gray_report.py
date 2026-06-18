@@ -614,16 +614,42 @@ def generate_report_lines(
 
     # Gate Results
     if gate_summary:
+        gate_status = infer_gate_status(gate_summary)
+        summary = gate_summary.get("summary", {})
+        steps = gate_summary.get("steps", [])
+
         lines.extend([
             "## Gate Results",
             "",
-            f"| Gate | Status |",
-            f"| --- | --- |",
-            f"| Overall | {gate_summary.get('overall_status', 'NOT RUN')} |",
+            f"**Overall Status: {gate_status}**",
+            "",
+            f"| Metric | Count |",
+            f"| --- | ---: |",
+            f"| Passed | {summary.get('pass', 0)} |",
+            f"| Failed | {summary.get('fail', 0)} |",
+            f"| Skipped | {summary.get('skip', 0)} |",
+            "",
         ])
-        for gate_name, gate_data in gate_summary.get("gates", {}).items():
-            lines.append(f"| {gate_name} | {gate_data.get('status', 'NOT RUN')} |")
-        lines.extend(["", "---", ""])
+
+        if steps:
+            lines.extend([
+                "### Gate Steps",
+                "",
+                f"| Step | Status | Exit Code | Reason |",
+                f"| --- | --- | ---: | --- |",
+            ])
+            for step in steps:
+                step_name = step.get("name", "N/A")
+                step_status = step.get("status", "N/A")
+                exit_code = step.get("exit_code", "N/A")
+                reason = step.get("reason", "-")
+                # Truncate long reasons for readability
+                if len(str(reason)) > 60:
+                    reason = str(reason)[:57] + "..."
+                lines.append(f"| {step_name} | {step_status} | {exit_code} | {reason} |")
+            lines.append("")
+
+        lines.extend(["---", ""])
 
     # Environment Results
     if env_check:
