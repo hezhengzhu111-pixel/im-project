@@ -1,50 +1,50 @@
-# Deployment
+# 部署
 
-The local and CI lifecycle is driven by Python entrypoints and Docker Compose. Run commands from the repository root.
+本地和 CI 生命周期由 Python 入口点和 Docker Compose 驱动。从仓库根目录运行命令。
 
-## Requirements
+## 环境要求
 
-- Python 3.12 or newer.
-- Docker and Docker Compose for runtime and SIT workflows.
-- Rust toolchain for Rust builds and tests.
-- Flutter SDK for Flutter builds and tests.
-- Maven or Docker JDK fallback for Spring AI builds.
-- Optional coverage tools such as `cargo-llvm-cov` for coverage gates.
+- Python 3.12 或更新版本
+- Docker 和 Docker Compose（用于运行时和 SIT 工作流）
+- Rust 工具链（用于 Rust 构建和测试）
+- Flutter SDK（用于 Flutter 构建和测试）
+- Maven 或 Docker JDK 回退（用于 Spring AI 构建）
+- 可选的覆盖率工具（如 `cargo-llvm-cov`，用于覆盖率门控）
 
-## Runtime Files
+## 运行时文件
 
-Default runtime files live under `build/runtime/`:
+默认运行时文件位于 `build/runtime/` 下：
 
-- Env file: `build/runtime/env/local.env`
-- Generated Compose file: `build/runtime/compose/docker-compose.generated.yml`
-- MySQL data: `build/runtime/mysql`
-- Redis data: `build/runtime/redis`
-- File storage: `build/runtime/files`
-- Runtime logs: `build/runtime/logs`
+- 环境配置文件：`build/runtime/env/local.env`
+- 生成的 Compose 文件：`build/runtime/compose/docker-compose.generated.yml`
+- MySQL 数据：`build/runtime/mysql`
+- Redis 数据：`build/runtime/redis`
+- 文件存储：`build/runtime/files`
+- 运行时日志：`build/runtime/logs`
 
-`build/runtime/env/local.env` is generated from `.env.example` when missing.
+`build/runtime/env/local.env` 在缺失时从 `.env.example` 生成。
 
-## Workflow
+## 工作流程
 
-Initialize runtime directories, env, generated Compose, middleware, and database checks:
+初始化运行时目录、环境配置、生成的 Compose、中间件和数据库检查：
 
 ```sh
 python scripts/init.py
 ```
 
-Create only runtime directories, env, and generated Compose:
+仅创建运行时目录、环境配置和生成的 Compose：
 
 ```sh
 python scripts/init.py --runtime-only
 ```
 
-Build artifacts:
+构建产物：
 
 ```sh
 python scripts/build.py all
 ```
 
-Start, inspect, and stop services:
+启动、查看和停止服务：
 
 ```sh
 python scripts/start.py start
@@ -52,7 +52,7 @@ python scripts/start.py status
 python scripts/start.py stop
 ```
 
-Run tests through the unified test entrypoint:
+通过统一测试入口运行测试：
 
 ```sh
 python tests/test.py manifest
@@ -62,27 +62,27 @@ python tests/test.py coverage
 python tests/test.py sit
 ```
 
-`scripts/start.py` uses existing images and does not trigger builds. Rebuild explicitly with `python scripts/build.py`.
+`scripts/start.py` 使用现有镜像，不会触发构建。如需重新构建，请显式运行 `python scripts/build.py`。
 
-## Reports
+## 报告
 
-Generated reports belong under `build/reports/`:
+生成的报告位于 `build/reports/` 下：
 
-- Test entrypoint summaries: `build/reports/test`
-- Coverage output: `build/reports/coverage`
-- Gate summaries: `build/reports/gates`
-- Manifest reports: `build/reports/manifest`
+- 测试入口摘要：`build/reports/test`
+- 覆盖率输出：`build/reports/coverage`
+- 门控摘要：`build/reports/gates`
+- 清单报告：`build/reports/manifest`
 
-Do not commit `build/reports/` contents.
+不要提交 `build/reports/` 的内容。
 
-## Cleanup Risk
+## 清理风险
 
-Deleting `build/runtime/` resets local runtime state and removes local MySQL data, Redis data, uploaded files, runtime logs, generated Compose, and local env configuration. Ordinary init/start/test commands do not delete runtime data.
+删除 `build/runtime/` 会重置本地运行时状态，移除本地 MySQL 数据、Redis 数据、上传的文件、运行时日志、生成的 Compose 和本地环境配置。普通的 init/start/test 命令不会删除运行时数据。
 
-## Troubleshooting
+## 故障排除
 
-- If runtime env or Compose is missing, run `python scripts/init.py --runtime-only`.
-- If services fail to start after code changes, run `python scripts/build.py all` and then `python scripts/start.py restart`.
-- If Docker commands fail, confirm Docker Desktop or the Docker daemon is running and `python scripts/init.py --check-only` passes.
-- If tests cannot find reports, check `build/reports/` rather than root-level legacy report directories.
-- If a lower-level script is needed for debugging, prefer invoking it through `python scripts/init.py`, `python scripts/start.py`, or `python tests/test.py` first.
+- 如果运行时环境配置或 Compose 缺失，运行 `python scripts/init.py --runtime-only`
+- 如果代码更改后服务启动失败，运行 `python scripts/build.py all`，然后 `python scripts/start.py restart`
+- 如果 Docker 命令失败，确认 Docker Desktop 或 Docker 守护进程正在运行，并且 `python scripts/init.py --check-only` 通过
+- 如果测试找不到报告，检查 `build/reports/` 而不是根目录的旧报告目录
+- 如果调试需要底层脚本，优先通过 `python scripts/init.py`、`python scripts/start.py` 或 `python tests/test.py` 调用

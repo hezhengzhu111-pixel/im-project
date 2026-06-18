@@ -1,59 +1,59 @@
-# Architecture
+# 架构
 
-This repository is organized around four source areas and one generated work area.
+本仓库围绕四个源码区域和一个生成工作区组织。
 
-## Root Layout
+## 根目录布局
 
-- `flutter/`: Flutter applications and shared packages.
-- `rust/`: Rust backend services, shared crates, E2EE crates, and Flutter bridge crates.
-- `spring-ai/`: Spring AI service.
-- `sql/`: SQL initialization and migration scripts.
-- `scripts/`: lifecycle commands and compatibility helpers.
-- `tests/`: the unified test entry point and test suites.
-- `docs/`: final project documentation.
-- `build/`: the only writable workspace for generated local state.
+- `flutter/`：Flutter 应用程序和共享包
+- `rust/`：Rust 后端服务、共享 crate、E2EE crate 和 Flutter bridge crate
+- `spring-ai/`：Spring AI 服务
+- `sql/`：SQL 初始化和迁移脚本
+- `scripts/`：生命周期命令和兼容性 helper
+- `tests/`：统一测试入口和测试套件
+- `docs/`：最终项目文档
+- `build/`：唯一可写的本地状态工作区
 
-## Writable Workspace
+## 可写工作区
 
-`build/` is the only place where generated build products, runtime data, reports, and local caches should be written.
+`build/` 是唯一应该写入生成的构建产物、运行时数据、报告和本地缓存的地方。
 
-- `build/work/`: isolated build workspaces copied from source directories.
-- `build/cache/`: dependency and tool caches such as Cargo, Flutter pub, Maven, and Docker config.
-- `build/dist/`: final build outputs and exported images.
-- `build/runtime/`: local runtime configuration, Docker Compose output, middleware data, file storage, and logs.
-- `build/reports/`: test, coverage, gate, and manifest reports.
-- `build/logs/`: build and script logs.
+- `build/work/`：从源码目录复制的隔离构建工作区
+- `build/cache/`：依赖和工具缓存（Cargo、Flutter pub、Maven、Docker 配置等）
+- `build/dist/`：最终构建输出和导出的镜像
+- `build/runtime/`：本地运行时配置、Docker Compose 输出、中间件数据、文件存储和日志
+- `build/reports/`：测试、覆盖率、门控和清单报告
+- `build/logs/`：构建和脚本日志
 
-Source directories must not receive build products, dependency caches, runtime data, coverage output, or test reports.
+源码目录不应接收构建产物、依赖缓存、运行时数据、覆盖率输出或测试报告。
 
-## Isolated Build
+## 隔离构建
 
-`python scripts/build.py` builds from `build/work/` and keeps dependencies in `build/cache/`.
+`python scripts/build.py` 从 `build/work/` 构建，并将依赖保存在 `build/cache/` 中。
 
-- Rust builds use `build/cache/rust-target` instead of `rust/target`.
-- Flutter builds use isolated work paths and `build/cache/pub-cache`.
-- Spring AI builds use isolated work paths and `build/cache/maven-repo`.
-- Final artifacts go to `build/dist/`.
-- The build manifest is `build/manifest.json`.
+- Rust 构建使用 `build/cache/rust-target` 而不是 `rust/target`
+- Flutter 构建使用隔离的工作路径和 `build/cache/pub-cache`
+- Spring AI 构建使用隔离的工作路径和 `build/cache/maven-repo`
+- 最终产物进入 `build/dist/`
+- 构建清单为 `build/manifest.json`
 
-## Runtime
+## 运行时
 
-`python scripts/init.py` prepares runtime state under `build/runtime/`.
+`python scripts/init.py` 在 `build/runtime/` 下准备运行时状态。
 
-- Env: `build/runtime/env/local.env`
-- Generated Compose: `build/runtime/compose/docker-compose.generated.yml`
-- MySQL data: `build/runtime/mysql`
-- Redis data: `build/runtime/redis`
-- File storage: `build/runtime/files`
-- Runtime logs: `build/runtime/logs`
+- 环境配置：`build/runtime/env/local.env`
+- 生成的 Compose：`build/runtime/compose/docker-compose.generated.yml`
+- MySQL 数据：`build/runtime/mysql`
+- Redis 数据：`build/runtime/redis`
+- 文件存储：`build/runtime/files`
+- 运行时日志：`build/runtime/logs`
 
-## Lifecycle Entrypoints
+## 生命周期入口
 
-Use these commands as the public lifecycle interface:
+使用以下命令作为公共生命周期接口：
 
 - `python scripts/init.py`
 - `python scripts/build.py`
 - `python scripts/start.py`
 - `python tests/test.py`
 
-Helper modules in `scripts/` (such as `deploy_middleware.py`, `deploy_services.py`, `init_db.py`, `gate_common.py`, `runtime_paths.py`, and `coverage/`) support these entry points but are not intended for direct invocation.
+`scripts/` 中的 helper 模块（如 `deploy_middleware.py`、`deploy_services.py`、`init_db.py`、`gate_common.py`、`runtime_paths.py` 和 `coverage/`）支持这些入口点，但不建议直接调用。

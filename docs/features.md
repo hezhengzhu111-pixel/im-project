@@ -1,43 +1,43 @@
-# Features
+# 功能
 
-The IM project provides a multi-platform messaging product with Rust backend services, Flutter clients, and an optional Spring AI service.
+IM 项目提供多平台即时通讯产品，包含 Rust 后端服务、Flutter 客户端和可选的 Spring AI 服务。
 
-## Authentication
+## 认证
 
-The platform supports account authentication, token issuance, refresh-token handling, WebSocket ticketing, internal service authentication, and gateway-to-service authorization.
+平台支持账户认证、令牌颁发、刷新令牌处理、WebSocket 票据、内部服务认证和网关到服务授权。
 
-## One-to-One Chat
+## 单聊
 
-Private chat supports message sending, receiving, storage, delivery through the IM server, unread state, event streams, and multi-device fan-out behavior.
+私聊支持消息发送、接收、存储、通过 IM 服务器投递、未读状态、事件流和多设备扇出行为。
 
-## Group Chat
+## 群聊
 
-Group messaging supports group conversation flows, group event streams, hot Redis shards for group traffic, and E2EE-oriented group message handling.
+群消息支持群会话流程、群事件流、群流量的热 Redis 分片和面向 E2EE 的群消息处理。
 
-## Contacts
+## 联系人
 
-Contact features cover user relationship flows, friend/contact APIs, and client-side contact presentation through shared Flutter feature packages.
+联系人功能涵盖用户关系流程、好友/联系人 API，以及通过共享 Flutter 功能包实现的客户端联系人展示。
 
-## Moments
+## 朋友圈
 
-Moments functionality provides social timeline-style publishing and reading flows through the Flutter feature layer and backend API contracts.
+朋友圈功能通过 Flutter 功能层和后端 API 契约提供社交时间线式的发布和阅读流程。
 
-## File Transfer
+## 文件传输
 
-Local file storage is mounted at `/data/im-files` inside runtime containers and persisted at `build/runtime/files` on the host. The API server enforces configured limits for images, files, audio, video, avatars, and multipart uploads.
+本地文件存储挂载到运行时容器内的 `/data/im-files`，并在主机上持久化到 `build/runtime/files`。API 服务器对图片、文件、音频、视频、头像和分片上传执行配置的大小限制。
 
-## Voice Messages
+## 语音消息
 
-Voice message support is included through the file/message pipeline with audio-specific upload sizing and message metadata handling.
+语音消息支持通过文件/消息管道实现，包含音频特定的上传大小限制和消息元数据处理。
 
-## Notifications
+## 通知
 
-Notification and push dispatch behavior is controlled by backend event streams and runtime options such as `IM_PUSH_DISPATCHER_ENABLED`.
+通知和推送分发行为由后端事件流和运行时选项控制，如 `IM_PUSH_DISPATCHER_ENABLED`。
 
-## End-to-End Encryption
+## 端到端加密
 
-E2EE support includes Rust core crates, FFI/bridge crates, private and group E2EE flows, OPK lifecycle checks, plaintext database scan gates, and staged acceptance tests under `tests/`.
+E2EE 支持包括 Rust 核心 crate、FFI/bridge crate、私聊和群聊 E2EE 流程、OPK 生命周期检查、明文数据库扫描门控，以及 `tests/` 下的分阶段验收测试。
 
 ## AI
 
-The optional Spring AI service integrates with the API server through `im-spring-ai`, Redis, internal service secrets, and AI task streams. Runtime AI settings are provided through `build/runtime/env/local.env`.
+可选的 Spring AI 服务通过 `im-spring-ai`、Redis、内部服务密钥和 AI 任务流与 API 服务器集成。运行时 AI 设置通过 `build/runtime/env/local.env` 提供。
