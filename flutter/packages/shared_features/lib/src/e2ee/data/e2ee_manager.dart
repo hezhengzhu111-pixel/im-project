@@ -415,33 +415,87 @@ class E2eeManager {
   }) async {
     await init();
 
-    final remoteDeviceId = await metaStore.getRemoteDeviceId(sessionId);
-    if (remoteDeviceId == null || remoteDeviceId.isEmpty) {
-      throw Exception('remote device ID not set for session $sessionId');
-    }
-
     final remoteUserId = _extractPeerId(sessionId);
-
-    // Get stored session state.
-    final stateBase64 = await sessionStore.getSession(
+    return _encryptToDeviceEnvelope(
       sessionId: sessionId,
-      localDeviceId: senderDeviceId,
+      senderDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
-      remoteDeviceId: remoteDeviceId,
+      recipientDeviceId: recipientDeviceId,
+      plaintext: plaintext,
     );
+  }
 
-    if (stateBase64 == null) {
-      throw Exception('no E2EE session found for $sessionId');
+  /// Encrypt plaintext once for every active device owned by [peerUserId].
+  ///
+  /// Each returned item matches the backend `e2eeEnvelopes` API shape:
+  /// `{recipientUserId, recipientDeviceId, envelope}`.
+  Future<List<Map<String, dynamic>>> encryptToDeviceEnvelopes({
+    required String sessionId,
+    required String senderDeviceId,
+    required String peerUserId,
+    required String plaintext,
+  }) async {
+    await init();
+
+    final devices = await api.getDevices(peerUserId);
+    devices.sort((a, b) {
+      final left = DateTime.tryParse(a['lastActiveAt'] as String? ?? '')
+              ?.millisecondsSinceEpoch ??
+          0;
+      final right = DateTime.tryParse(b['lastActiveAt'] as String? ?? '')
+              ?.millisecondsSinceEpoch ??
+          0;
+      return right.compareTo(left);
+    });
+
+    final envelopes = <Map<String, dynamic>>[];
+    final seenDeviceIds = <String>{};
+    for (final device in devices) {
+      final deviceId = device['deviceId']?.toString() ?? '';
+      if (deviceId.isEmpty || !seenDeviceIds.add(deviceId)) continue;
+      final envelope = await _encryptToDeviceEnvelope(
+        sessionId: sessionId,
+        senderDeviceId: senderDeviceId,
+        remoteUserId: peerUserId,
+        recipientDeviceId: deviceId,
+        plaintext: plaintext,
+      );
+      envelopes.add({
+        'recipientUserId': peerUserId,
+        'recipientDeviceId': deviceId,
+        'envelope': envelope,
+      });
     }
+
+    if (envelopes.isEmpty) {
+      throw Exception('remote user has no active E2EE device');
+    }
+    return envelopes;
+  }
+
+  Future<Map<String, dynamic>> _encryptToDeviceEnvelope({
+    required String sessionId,
+    required String senderDeviceId,
+    required String remoteUserId,
+    required String recipientDeviceId,
+    required String plaintext,
+  }) async {
+    final session = await _ensureOutboundSessionForDevice(
+      sessionId: sessionId,
+      senderDeviceId: senderDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: recipientDeviceId,
+    );
 
     // Encrypt via FRB.
     final plaintextBase64 = base64Encode(utf8.encode(plaintext));
     final result = await adapter.encryptMessage(
-      stateBase64: stateBase64,
+      stateBase64: session.stateBase64,
       plaintextBase64: plaintextBase64,
       senderDeviceId: senderDeviceId,
       recipientDeviceId: recipientDeviceId,
       sessionId: sessionId,
+      handshakeBase64: session.handshakeBase64,
     );
 
     // Save updated session state as v3 envelope.
@@ -451,7 +505,7 @@ class E2eeManager {
       stateBase64: newStateBase64,
       localDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
-      remoteDeviceId: remoteDeviceId,
+      remoteDeviceId: recipientDeviceId,
       direction: 'outbound',
     );
 
@@ -459,6 +513,62 @@ class E2eeManager {
     final envelope = Map<String, dynamic>.from(result);
     envelope.remove('new_state');
     return envelope;
+  }
+
+  Future<({String stateBase64, String? handshakeBase64})>
+      _ensureOutboundSessionForDevice({
+    required String sessionId,
+    required String senderDeviceId,
+    required String remoteUserId,
+    required String remoteDeviceId,
+  }) async {
+    final existing = await sessionStore.getSession(
+      sessionId: sessionId,
+      localDeviceId: senderDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: remoteDeviceId,
+    );
+    if (existing != null) {
+      return (stateBase64: existing, handshakeBase64: null);
+    }
+
+    final localKeys = await _getLocalKeyMaterial();
+    final remoteBundle = await api.getBundle(
+      remoteUserId,
+      deviceId: remoteDeviceId,
+      conversationId: sessionId,
+      requesterDeviceId: senderDeviceId,
+    );
+    final resolvedRemoteDeviceId = remoteBundle['deviceId'] as String;
+    final remoteBundleForFrb = _buildRemoteBundleJson(remoteBundle);
+    final identityKeyPairBincode =
+        localKeys['identity_key_pair_bincode'] as String;
+
+    final outboundResult = await adapter.createOutboundSession(
+      sessionId: sessionId,
+      localIdentityKeyPairBase64: identityKeyPairBincode,
+      remoteBundleBase64:
+          base64Encode(utf8.encode(jsonEncode(remoteBundleForFrb))),
+    );
+
+    final stateBase64 = outboundResult['state'] as String;
+    await sessionStore.saveSession(
+      sessionId: sessionId,
+      stateBase64: stateBase64,
+      localDeviceId: senderDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: resolvedRemoteDeviceId,
+      direction: 'outbound',
+    );
+    final currentRemoteDeviceId = await metaStore.getRemoteDeviceId(sessionId);
+    if (currentRemoteDeviceId == null || currentRemoteDeviceId.isEmpty) {
+      await metaStore.setRemoteDeviceId(sessionId, resolvedRemoteDeviceId);
+    }
+
+    return (
+      stateBase64: stateBase64,
+      handshakeBase64: outboundResult['handshake'] as String?,
+    );
   }
 
   /// Decrypt an E2EE envelope to plaintext.

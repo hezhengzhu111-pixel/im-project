@@ -228,6 +228,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         clientMessageId: outboxMsg.clientMessageId,
         messageType: outboxMsg.messageType,
         e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(envelope),
+        e2eeEnvelopes: outboxMsg.e2eeEnvelopes,
         e2eeDeviceId: outboxMsg.e2eeDeviceId!,
         mediaUrl: outboxMsg.mediaUrl,
         mediaName: outboxMsg.mediaName,
@@ -776,6 +777,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       addMessage(sessionKey, pendingMessage);
 
       Map<String, dynamic>? encryptedEnvelope;
+      List<Map<String, dynamic>>? encryptedDeviceEnvelopes;
       String? encryptedDeviceId;
 
       try {
@@ -783,18 +785,17 @@ class ChatNotifier extends StateNotifier<ChatState> {
         if (_e2eeAvailable && e2eeStatus == 'encrypted') {
           final e2eeManager = _e2eeManager!;
           final senderDeviceId = await _e2eeMetaStore!.getOrCreateDeviceId();
-          final recipientDeviceId =
-              await _e2eeMetaStore!.getRemoteDeviceId(e2eeSessionId);
-          if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
-            throw Exception('remote device ID not found for session');
-          }
 
           encryptedDeviceId = senderDeviceId;
-          encryptedEnvelope = await e2eeManager.encryptToEnvelope(
+          encryptedDeviceEnvelopes = await e2eeManager.encryptToDeviceEnvelopes(
             sessionId: e2eeSessionId,
             senderDeviceId: senderDeviceId,
-            recipientDeviceId: recipientDeviceId,
+            peerUserId: receiverId,
             plaintext: content,
+          );
+          final primaryEnvelope = encryptedDeviceEnvelopes.first['envelope'];
+          encryptedEnvelope = Map<String, dynamic>.from(
+            primaryEnvelope as Map,
           );
           _updateMessageE2eeMetadata(
             sessionKey: sessionKey,
@@ -811,6 +812,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
               encryptedEnvelope,
             ),
             e2eeDeviceId: senderDeviceId,
+            e2eeEnvelopes: encryptedDeviceEnvelopes.length > 1
+                ? encryptedDeviceEnvelopes
+                : null,
             mediaUrl: mediaUrl,
             mediaName: mediaName,
             mediaSize: mediaSize,
@@ -877,6 +881,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             extra: extra,
             isEncrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
             e2eeEnvelope: encryptedEnvelope,
+            e2eeEnvelopes: encryptedDeviceEnvelopes,
             e2eeDeviceId: encryptedDeviceId,
           ));
           _updateMessageStatus(sessionKey, cid, 'PENDING');

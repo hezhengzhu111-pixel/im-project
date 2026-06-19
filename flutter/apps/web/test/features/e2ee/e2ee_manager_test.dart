@@ -173,6 +173,89 @@ void main() {
   });
 
   group('E2eeManager envelope handling', () {
+    test('encrypts for every active remote device without overwriting state',
+        () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': const [],
+          'public_bundle': {
+            'identity_key': 'identity-public',
+            'signed_pre_key': {'key': 'public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore();
+      final api = _FakeE2eeApi()
+        ..devicesByUser['user-b'] = [
+          {
+            'deviceId': 'device-b1',
+            'lastActiveAt': '2026-06-19T00:00:02Z',
+          },
+          {
+            'deviceId': 'device-b2',
+            'lastActiveAt': '2026-06-19T00:00:01Z',
+          },
+        ]
+        ..bundlesByUserAndDevice['user-b:device-b1'] = {
+          'deviceId': 'device-b1',
+          'identityKey': 'remote-identity-1',
+          'signingIdentityKey': 'remote-signing-1',
+          'signedPreKey': 'remote-spk-1',
+          'signedPreKeySignature': 'remote-signature-1',
+          'oneTimePreKey': null,
+          'oneTimePreKeyId': null,
+        }
+        ..bundlesByUserAndDevice['user-b:device-b2'] = {
+          'deviceId': 'device-b2',
+          'identityKey': 'remote-identity-2',
+          'signingIdentityKey': 'remote-signing-2',
+          'signedPreKey': 'remote-spk-2',
+          'signedPreKeySignature': 'remote-signature-2',
+          'oneTimePreKey': null,
+          'oneTimePreKeyId': null,
+        };
+      final manager = E2eeManager(
+        adapter: _FakeE2eeBridge(),
+        api: api,
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: E2eeMetaStore(
+          FakeSecureStoragePort({'e2ee_device_id': 'device-a'}),
+        ),
+        currentUserId: 'user-a',
+      );
+
+      final envelopes = await manager.encryptToDeviceEnvelopes(
+        sessionId: 'p_user-a_user-b',
+        senderDeviceId: 'device-a',
+        peerUserId: 'user-b',
+        plaintext: 'hello',
+      );
+
+      expect(envelopes, hasLength(2));
+      expect(
+        envelopes.map((item) => item['recipientDeviceId']),
+        ['device-b1', 'device-b2'],
+      );
+      expect(
+        sessionStore.sessions.keys,
+        containsAll([
+          'p_user-a_user-b::device-a::device-b1',
+          'p_user-a_user-b::device-a::device-b2',
+        ]),
+      );
+      expect(
+        (envelopes[0]['envelope'] as Map<String, dynamic>)['handshake'],
+        'outbound-handshake-1',
+      );
+      expect(
+        (envelopes[1]['envelope'] as Map<String, dynamic>)['handshake'],
+        'outbound-handshake-2',
+      );
+    });
+
     test('decrypts camelCase envelopes from the API layer', () async {
       final sessionStore = _MemorySessionStore()
         ..seedSession(
@@ -295,6 +378,7 @@ String _handshakeWithOtkId(int otkId) {
 class _FakeE2eeBridge implements E2eeBridge {
   String? lastLocalOtkPairBase64;
   Map<String, dynamic>? lastDecryptEnvelope;
+  int outboundCount = 0;
 
   @override
   Future<Map<String, dynamic>> createInboundSession({
@@ -315,7 +399,11 @@ class _FakeE2eeBridge implements E2eeBridge {
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
   }) async {
-    return {'state': 'outbound-state', 'handshake': 'outbound-handshake'};
+    outboundCount += 1;
+    return {
+      'state': 'outbound-state-$outboundCount',
+      'handshake': 'outbound-handshake-$outboundCount',
+    };
   }
 
   @override
@@ -338,8 +426,17 @@ class _FakeE2eeBridge implements E2eeBridge {
     required String recipientDeviceId,
     required String sessionId,
     String? handshakeBase64,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    return {
+      'version': 2,
+      'algorithm': 'rust-x25519-x3dh-dr-v1',
+      'sender_device_id': senderDeviceId,
+      'recipient_device_id': recipientDeviceId,
+      'session_id': sessionId,
+      'wire': 'wire-$recipientDeviceId',
+      if (handshakeBase64 != null) 'handshake': handshakeBase64,
+      'new_state': '$stateBase64-encrypted',
+    };
   }
 
   @override
@@ -550,7 +647,7 @@ class _MemorySessionStore extends E2eeSessionStore {
       remoteUserId: remoteUserId,
       remoteDeviceId: remoteDeviceId,
     );
-    sessions[sessionId] = savedSession!;
+    sessions[_key(sessionId, localDeviceId, remoteDeviceId)] = savedSession!;
   }
 
   void seedSession({
@@ -560,7 +657,7 @@ class _MemorySessionStore extends E2eeSessionStore {
     required String remoteUserId,
     required String remoteDeviceId,
   }) {
-    sessions[sessionId] = _SavedSession(
+    sessions[_key(sessionId, localDeviceId, remoteDeviceId)] = _SavedSession(
       sessionId: sessionId,
       stateBase64: stateBase64,
       localDeviceId: localDeviceId,
@@ -576,7 +673,7 @@ class _MemorySessionStore extends E2eeSessionStore {
     required String remoteUserId,
     required String remoteDeviceId,
   }) async {
-    final session = sessions[sessionId];
+    final session = sessions[_key(sessionId, localDeviceId, remoteDeviceId)];
     if (session == null) return null;
     if (session.localDeviceId != localDeviceId) return null;
     if (session.remoteUserId != remoteUserId) return null;
@@ -589,7 +686,10 @@ class _MemorySessionStore extends E2eeSessionStore {
     required String sessionId,
     required String localDeviceId,
   }) async {
-    final session = sessions[sessionId];
+    final session = sessions.values
+        .where((item) =>
+            item.sessionId == sessionId && item.localDeviceId == localDeviceId)
+        .firstOrNull;
     if (session == null || session.localDeviceId != localDeviceId) {
       return null;
     }
@@ -602,7 +702,15 @@ class _MemorySessionStore extends E2eeSessionStore {
   @override
   Future<void> deleteSession(String sessionId) async {
     deletedSessionIds.add(sessionId);
-    sessions.remove(sessionId);
+    sessions.removeWhere((_, value) => value.sessionId == sessionId);
+  }
+
+  static String _key(
+    String sessionId,
+    String localDeviceId,
+    String remoteDeviceId,
+  ) {
+    return '$sessionId::$localDeviceId::$remoteDeviceId';
   }
 }
 

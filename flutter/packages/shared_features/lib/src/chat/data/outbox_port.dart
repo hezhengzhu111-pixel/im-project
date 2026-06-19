@@ -5,7 +5,14 @@ import 'package:im_core/core.dart';
 enum OutboxMessageStatus { pending, retrying, sent, failed }
 
 /// Type of outbox events.
-enum OutboxEventType { messageAdded, messageRetrying, messageSent, messageFailed, retryAllStarted, retryAllCompleted }
+enum OutboxEventType {
+  messageAdded,
+  messageRetrying,
+  messageSent,
+  messageFailed,
+  retryAllStarted,
+  retryAllCompleted
+}
 
 /// Event emitted by the outbox when message state changes.
 class OutboxEvent {
@@ -39,6 +46,7 @@ class OutboxMessage {
   /// E2EE fields.
   final bool isEncrypted;
   final Map<String, dynamic>? e2eeEnvelope;
+  final List<Map<String, dynamic>>? e2eeEnvelopes;
   final String? e2eeDeviceId;
 
   /// Error information.
@@ -64,6 +72,7 @@ class OutboxMessage {
     this.extra,
     this.isEncrypted = false,
     this.e2eeEnvelope,
+    this.e2eeEnvelopes,
     this.e2eeDeviceId,
     this.lastError,
     this.createdAt,
@@ -94,6 +103,7 @@ class OutboxMessage {
       extra: extra,
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
+      e2eeEnvelopes: e2eeEnvelopes,
       e2eeDeviceId: e2eeDeviceId,
       lastError: lastError ?? this.lastError,
       createdAt: createdAt,
@@ -120,6 +130,7 @@ class OutboxMessage {
       'extra': extra,
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope,
+      'e2eeEnvelopes': e2eeEnvelopes,
       'e2eeDeviceId': e2eeDeviceId,
       'lastError': lastError,
       'createdAt': createdAt,
@@ -146,6 +157,9 @@ class OutboxMessage {
       extra: map['extra'] as Map<String, dynamic>?,
       isEncrypted: map['isEncrypted'] as bool? ?? false,
       e2eeEnvelope: map['e2eeEnvelope'] as Map<String, dynamic>?,
+      e2eeEnvelopes: (map['e2eeEnvelopes'] as List?)
+          ?.map((item) => Map<String, dynamic>.from(item as Map))
+          .toList(),
       e2eeDeviceId: map['e2eeDeviceId'] as String?,
       lastError: map['lastError'] as String?,
       createdAt: map['createdAt'] as String?,

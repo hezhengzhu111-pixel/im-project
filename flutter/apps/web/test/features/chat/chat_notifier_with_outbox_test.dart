@@ -214,6 +214,28 @@ class TestableE2eeManager extends E2eeManager {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> encryptToDeviceEnvelopes({
+    required String sessionId,
+    required String senderDeviceId,
+    required String peerUserId,
+    required String plaintext,
+  }) async {
+    final envelope = await encryptToEnvelope(
+      sessionId: sessionId,
+      senderDeviceId: senderDeviceId,
+      recipientDeviceId: 'device-b',
+      plaintext: plaintext,
+    );
+    return [
+      {
+        'recipientUserId': peerUserId,
+        'recipientDeviceId': 'device-b',
+        'envelope': envelope,
+      },
+    ];
+  }
+
+  @override
   Future<String> decryptEnvelope({
     required String sessionId,
     required Map<String, dynamic> envelope,
@@ -287,6 +309,7 @@ class SpyMessageOutbox extends MessageOutbox {
     String? groupId,
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? e2eeDeviceId,
     String? mediaUrl,
     String? mediaName,
@@ -304,6 +327,7 @@ class SpyMessageOutbox extends MessageOutbox {
       'groupId': groupId,
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope,
+      'e2eeEnvelopes': e2eeEnvelopes,
       'e2eeDeviceId': e2eeDeviceId,
       'mediaUrl': mediaUrl,
       'mediaName': mediaName,
@@ -325,6 +349,7 @@ class SpyMessageOutbox extends MessageOutbox {
       createdAt: DateTime.now(),
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
+      e2eeEnvelopes: e2eeEnvelopes,
       e2eeDeviceId: e2eeDeviceId,
       mediaUrl: mediaUrl,
       mediaName: mediaName,

@@ -1181,24 +1181,25 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       addMessage(sessionKey, pendingMessage);
 
       Map<String, dynamic>? encryptedEnvelope;
+      List<Map<String, dynamic>>? encryptedDeviceEnvelopes;
       String? encryptedDeviceId;
 
       try {
         Message serverMessage;
         if (e2eeStatus == 'encrypted') {
           final senderDeviceId = await _e2eeMetaStore.getOrCreateDeviceId();
-          final recipientDeviceId =
-              await _e2eeMetaStore.getRemoteDeviceId(e2eeSessionId);
-          if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
-            throw Exception('remote device ID not found for session');
-          }
 
           encryptedDeviceId = senderDeviceId;
-          encryptedEnvelope = await _e2eeManager.encryptToEnvelope(
+          encryptedDeviceEnvelopes =
+              await _e2eeManager.encryptToDeviceEnvelopes(
             sessionId: e2eeSessionId,
             senderDeviceId: senderDeviceId,
-            recipientDeviceId: recipientDeviceId,
+            peerUserId: receiverId,
             plaintext: content,
+          );
+          final primaryEnvelope = encryptedDeviceEnvelopes.first['envelope'];
+          encryptedEnvelope = Map<String, dynamic>.from(
+            primaryEnvelope as Map,
           );
           _updateMessageE2eeMetadata(
             sessionKey: sessionKey,
@@ -1215,6 +1216,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
               encryptedEnvelope,
             ),
             e2eeDeviceId: senderDeviceId,
+            e2eeEnvelopes: encryptedDeviceEnvelopes.length > 1
+                ? encryptedDeviceEnvelopes
+                : null,
             mediaUrl: mediaUrl,
             mediaName: mediaName,
             mediaSize: mediaSize,
@@ -1278,6 +1282,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             isGroupChat: false,
             isEncrypted: e2eeStatus == 'encrypted',
             e2eeEnvelope: encryptedEnvelope,
+            e2eeEnvelopes: encryptedDeviceEnvelopes,
             e2eeDeviceId: encryptedDeviceId,
             mediaUrl: mediaUrl,
             mediaName: mediaName,

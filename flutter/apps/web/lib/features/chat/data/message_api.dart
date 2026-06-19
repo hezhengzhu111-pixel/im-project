@@ -167,7 +167,8 @@ class MessageApi {
         'clientMessageId': clientMessageId,
         'messageType': messageType,
         'encrypted': true,
-        'e2eeEnvelope': E2eeHistoryRecovery.envelopeToApiJson(e2eeEnvelope),
+        if (e2eeEnvelopes == null)
+          'e2eeEnvelope': E2eeHistoryRecovery.envelopeToApiJson(e2eeEnvelope),
         if (e2eeEnvelopes != null)
           'e2eeEnvelopes': e2eeEnvelopes
               .map(E2eeHistoryRecovery.deviceEnvelopeToApiJson)
