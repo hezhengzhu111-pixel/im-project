@@ -273,7 +273,8 @@ void main() {
         bridge.lastExportEnvelopeContext?['remoteUserId'],
         'user-a',
       );
-      expect(sessionStore.savedSession?.stateBase64, 'envelope:decrypted-state');
+      expect(
+          sessionStore.savedSession?.stateBase64, 'envelope:decrypted-state');
     });
   });
 
@@ -480,6 +481,95 @@ void main() {
       expect(accepted, isFalse);
       expect(
           await metaStore.getSessionStatus('user-a_private_user-b'), 'failed');
+    });
+  });
+
+  group('E2eeManager context-bound state', () {
+    test('wraps new session states in a context-bound envelope', () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': [
+            {'id': 7, 'key_pair_bincode': 'otk-seven'},
+          ],
+          'public_bundle': {
+            'signed_pre_key': {'key': 'public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore();
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({'e2ee_device_id': 'device-b'}),
+      );
+      final bridge = _FakeE2eeBridge();
+      final manager = E2eeManager(
+        adapter: bridge,
+        api: _FakeE2eeApi(),
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: metaStore,
+        currentUserId: 'user-b',
+      );
+
+      final accepted = await manager.respondToNegotiation(
+        'p_user-a_user-b',
+        {
+          'senderDeviceId': 'device-a',
+          'targetDeviceId': 'device-b',
+          'senderIdentityKey': 'sender-identity',
+          'senderUserId': 'user-a',
+          'handshake': _handshakeWithOtkId(7),
+        },
+      );
+
+      expect(accepted, isTrue);
+      expect(sessionStore.savedSession?.stateBase64, 'envelope:inbound-state');
+      expect(bridge.lastExportEnvelopeContext?['sessionId'], 'p_user-a_user-b');
+      expect(bridge.lastExportEnvelopeContext?['deviceId'], 'device-b');
+      expect(bridge.lastExportEnvelopeContext?['remoteUserId'], 'user-a');
+      expect(bridge.lastExportEnvelopeContext?['remoteDeviceId'], 'device-a');
+      expect(await metaStore.getRemoteUserId('p_user-a_user-b'), 'user-a');
+    });
+
+    test('gracefully imports legacy state blobs without a context envelope',
+        () async {
+      final sessionStore = _MemorySessionStore()
+        ..seedSession(
+          sessionId: 'p_user-a_user-b',
+          stateBase64: 'legacy-plain-state',
+          localDeviceId: 'device-b',
+          remoteUserId: 'user-a',
+          remoteDeviceId: 'device-a',
+        );
+      final bridge = _FakeE2eeBridge();
+      final manager = E2eeManager(
+        adapter: bridge,
+        api: _FakeE2eeApi(),
+        keyStore: _MemoryKeyStore(null),
+        sessionStore: sessionStore,
+        metaStore: E2eeMetaStore(
+          FakeSecureStoragePort({'e2ee_device_id': 'device-b'}),
+        ),
+        currentUserId: 'user-b',
+      );
+
+      final plaintext = await manager.decryptEnvelope(
+        sessionId: 'p_user-a_user-b',
+        envelope: {
+          'algorithm': 'x3dh-ratchet-v1',
+          'senderDeviceId': 'device-a',
+          'recipientDeviceId': 'device-b',
+          'sessionId': 'p_user-a_user-b',
+          'wire': 'wire-base64',
+        },
+      );
+
+      expect(plaintext, 'hello');
+      expect(bridge.lastRestoreEnvelopeContext?['envelopeBase64'],
+          'legacy-plain-state');
+      expect(
+          sessionStore.savedSession?.stateBase64, 'envelope:decrypted-state');
     });
   });
 }

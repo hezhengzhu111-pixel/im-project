@@ -150,7 +150,8 @@ async fn register_device(app: &axum::Router, token: &str) -> String {
             "signingIdentityKey": x25519_key(),
             "signedPreKey": x25519_key(),
             "signedPreKeySignature": ed25519_sig(),
-            "oneTimePreKeys": make_otp_keys(&["otp1"])
+            "oneTimePreKeys": make_otp_keys(&["otp1"]),
+            "oneTimePreKeySignatures": [{"id": 1, "signature": ed25519_sig()}]
         }),
     )
     .await;

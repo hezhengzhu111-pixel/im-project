@@ -1028,11 +1028,11 @@ mod tests {
             "decrypted must match after state restore"
         );
 
-        // --- Also test bincode roundtrip via try_export_state / core_restore_state ---
+        // --- Also test versioned export / restore roundtrip ---
         let (alice_state_after, _) =
             ratchet_encrypt(alice_state, b"before export".to_vec()).expect("encrypt failed");
-        let deserialized_state: im_e2ee_core::RatchetState =
-            bincode::deserialize(&alice_state_after).expect("deserialize state");
+        let deserialized_state =
+            core_restore_state(&alice_state_after).expect("restore state failed");
         let exported2 = try_export_state(&deserialized_state).expect("try_export_state failed");
         let _restored2 = core_restore_state(&exported2).expect("core_restore_state failed");
     }
@@ -1103,7 +1103,11 @@ mod tests {
             .decode(envelope_b64)
             .expect("decode envelope");
 
-        assert_eq!(envelope_bytes.first(), Some(&3u8), "envelope version must be 3");
+        assert_eq!(
+            envelope_bytes.first(),
+            Some(&3u8),
+            "envelope version must be 3"
+        );
         assert_eq!(envelope_bytes.len(), 1 + 16 + alice_state.len());
 
         let restore_config = serde_json::json!({
@@ -1118,7 +1122,9 @@ mod tests {
             .expect("restore_session_envelope failed");
         let restored_parsed: serde_json::Value =
             serde_json::from_str(&restored).expect("parse restored result");
-        let restored_state_b64 = restored_parsed["state"].as_str().expect("state is a string");
+        let restored_state_b64 = restored_parsed["state"]
+            .as_str()
+            .expect("state is a string");
         let restored_state_bytes = base64::engine::general_purpose::STANDARD
             .decode(restored_state_b64)
             .expect("decode restored state");

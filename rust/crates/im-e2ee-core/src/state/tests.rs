@@ -34,7 +34,10 @@ fn export_restore_roundtrip() -> Result<(), crate::errors::E2eeError> {
 
 #[test]
 fn restore_corrupted_data_fails() {
-    let result = restore_state(&[0xFFu8; 8]);
+    // Version 1 prefix with garbage payload must produce a deserialization error.
+    let mut corrupted = vec![super::STATE_VERSION];
+    corrupted.extend_from_slice(&[0xFFu8; 8]);
+    let result = restore_state(&corrupted);
     assert!(matches!(
         result,
         Err(crate::errors::E2eeError::StateDeserializationFailed)
@@ -246,6 +249,11 @@ fn restore_unsupported_version_fails() {
             result,
             Err(crate::errors::E2eeError::StateSerializationFailed(_))
         ),
-        "expected StateSerializationFailed for unsupported version, got {result:?}"
+        "expected StateSerializationFailed for unsupported version, got {}",
+        result
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "Ok".to_string())
     );
 }

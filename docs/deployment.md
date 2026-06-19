@@ -53,6 +53,32 @@ python scripts/imctl.py --profile prod build
 
 其他所有行为（如跳过数据库、跳过中间件、强制重建等）都应该在 profile 配置文件中设置，不作为命令行参数。
 
+## 最小依赖环境
+
+`python scripts/imctl.py up` 只需要宿主机具备以下工具即可完整部署核心服务：
+
+- `python3`（≥ 3.10）
+- `pip3` 或系统包管理器（用于安装 PyYAML）
+- `docker` 引擎
+- `docker compose` 插件（推荐）或独立的 `docker-compose`
+
+不需要在宿主机安装 Rust、Flutter、Node.js、Maven 或 MySQL 客户端，所有编译和数据库操作都在容器内完成。
+
+首次在干净的 Linux 服务器上部署：
+
+```sh
+# 1. 安装 Python 依赖（PyYAML 是唯一的非标准库依赖）
+pip3 install -r scripts/requirements.txt
+
+# 2. 检查环境是否就绪
+python scripts/imctl.py doctor
+
+# 3. 启动完整栈
+python scripts/imctl.py up
+```
+
+> 注意：默认 `local` profile 会在容器内在线构建业务镜像，因此服务器需要能够拉取 Docker 基础镜像以及访问 crates.io、Maven Central、pub.dev 等依赖仓库。如果服务器处于离线环境，请在联网机器上执行 `python scripts/imctl.py build` 生成镜像 tar，拷贝到服务器后使用 `docker load` 加载，并关闭 profile 中的 `build.docker`。
+
 ## 部署流程
 
 ### 本地开发环境
@@ -189,17 +215,16 @@ profile: local
 # 服务配置
 services:
   default:
-    - mysql8
-    - redis
-    - im-gateway
-    - im-service
-    - im-web
+    - im-server
+    - im-api-server
+    - im-frontend
+    - im-admin-server
 
   include_ai: false
 
 # 构建配置
 build:
-  docker: false
+  docker: true
   pull: false
   parallel: true
   profile: debug
@@ -216,6 +241,28 @@ health:
 ```
 
 ## 常见问题
+
+### 提示 `PyYAML is required`
+
+`scripts/imctl.py` 唯一依赖的非标准库是 PyYAML，安装后即可：
+
+```sh
+pip3 install -r scripts/requirements.txt
+```
+
+### 提示 `Docker Compose was not found`
+
+现代 Docker 安装通常会自带 `docker compose` 插件。如果缺失，请安装：
+
+```sh
+# Debian/Ubuntu
+apt-get install -y docker-compose-plugin
+
+# 或使用独立二进制
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+```
 
 ### 数据库重装后需要重新初始化
 

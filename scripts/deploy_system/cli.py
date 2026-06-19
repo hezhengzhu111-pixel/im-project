@@ -99,6 +99,66 @@ def _require_yes(args, message: str) -> None:
     raise SystemExit("Re-run with --yes to confirm.")
 
 
+def _run_doctor(env_file: str | Path | None = None) -> None:
+    """Check that the current machine can deploy the project.
+
+    Designed for minimal Linux servers that only have docker + python3.
+    Any missing dependency is reported with an actionable fix.
+    """
+    from deploy_utils import ensure_docker_environment, load_config, prepare_runtime_files
+
+    print("[DOCTOR] Checking deployment prerequisites...")
+
+    # 1. PyYAML (already required by imctl.py, but double-check here).
+    try:
+        import yaml  # noqa: F401
+        print("[DOCTOR] OK   PyYAML is available")
+    except ImportError:  # pragma: no cover
+        print("[DOCTOR] FAIL PyYAML is missing. Run: pip3 install -r scripts/requirements.txt")
+        raise SystemExit(1)
+
+    # 2. Runtime files can be generated (requires .env.example or existing env).
+    try:
+        prepare_runtime_files(env_file=env_file)
+        print("[DOCTOR] OK   Runtime files generated")
+    except SystemExit as exc:
+        print(f"[DOCTOR] FAIL Could not generate runtime files: {exc}")
+        raise
+
+    # 3. Docker + Docker Compose.
+    try:
+        ensure_docker_environment()
+        print("[DOCTOR] OK   Docker and Docker Compose are reachable")
+    except SystemExit as exc:
+        print(f"[DOCTOR] FAIL Docker environment: {exc}")
+        raise
+
+    # 4. Deployment config loads (validates env vars like passwords).
+    try:
+        config = load_config(env_file=env_file)
+        print(f"[DOCTOR] OK   Deployment config loaded ({relative(config.env_file)})")
+    except SystemExit as exc:
+        print(f"[DOCTOR] FAIL Deployment config: {exc}")
+        raise
+
+    # 5. Build contexts referenced by the generated compose exist.
+    compose = config.compose_file.read_text(encoding="utf-8")
+    missing_contexts: list[str] = []
+    for line in compose.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("context:"):
+            context = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+            if context.startswith("/") and not Path(context).exists():
+                missing_contexts.append(context)
+    if missing_contexts:
+        print("[DOCTOR] FAIL Build contexts do not exist:")
+        for ctx in missing_contexts:
+            print(f"  - {ctx}")
+        raise SystemExit(1)
+
+    print("[DOCTOR] All checks passed. The server is ready to deploy.")
+
+
 def _clean_docker(paths) -> None:
     """Clean Docker containers, volumes, and networks for the project."""
     import subprocess
@@ -242,9 +302,7 @@ def main(argv: list[str] | None = None) -> None:
     env_file = args.env_file
 
     if args.command == "doctor":
-        runtime = ensure_runtime(env_file)
-        print(f"[DOCTOR] runtime compose: {relative(runtime.config.compose_file)}")
-        print("[DOCTOR] Docker is reachable")
+        _run_doctor(env_file)
         return
 
     if args.command == "clean":

@@ -1,6 +1,7 @@
 FROM docker.m.daocloud.io/library/rust:1-bookworm AS builder
 WORKDIR /app
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+ENV CARGO_TARGET_DIR=/app/target
 COPY . .
 RUN --mount=type=cache,id=im-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=im-cargo-git,target=/usr/local/cargo/git,sharing=locked \

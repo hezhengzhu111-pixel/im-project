@@ -1,10 +1,13 @@
 FROM docker.m.daocloud.io/library/rust:1-bookworm AS builder
 WORKDIR /app
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+ENV CARGO_TARGET_DIR=/app/target
 COPY . .
-RUN cargo build --release -p im-admin-server \
-    && ls -la /build/cache/cargo-target/release/ \
-    && cp /build/cache/cargo-target/release/im-admin-server /tmp/im-admin-server
+RUN --mount=type=cache,id=im-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=im-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=im-admin-cargo-target,target=/app/target \
+    cargo build --release -p im-admin-server \
+    && cp /app/target/release/im-admin-server /tmp/im-admin-server
 
 FROM docker.m.daocloud.io/library/debian:bookworm-slim
 ARG IM_BUILD_NONCE

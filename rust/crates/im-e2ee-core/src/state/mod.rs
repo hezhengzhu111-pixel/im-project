@@ -316,7 +316,7 @@ pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, crate::errors::E2eeEr
     match bincode::deserialize(bytes) {
         Ok(state) => Ok(state),
         Err(_) => Err(crate::errors::E2eeError::StateSerializationFailed(format!(
-            "unsupported state version: {first}"
+            "deserialization failed: unsupported or corrupted state version {first}"
         ))),
     }
 }
