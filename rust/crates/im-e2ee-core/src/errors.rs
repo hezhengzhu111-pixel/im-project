@@ -39,8 +39,8 @@ pub enum E2eeError {
     MaxSkippedKeysExceeded,
 
     // === Serialization ===
-    #[error("ratchet state serialization failed")]
-    StateSerializationFailed,
+    #[error("ratchet state serialization failed: {0}")]
+    StateSerializationFailed(String),
     #[error("ratchet state deserialization failed: corrupted data")]
     StateDeserializationFailed,
 

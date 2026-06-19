@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS e2ee_one_time_pre_keys (
   device_id    VARCHAR(64) NOT NULL COMMENT '设备ID',
   pre_key_id   BIGINT NULL COMMENT 'client pre-key id',
   pre_key      TEXT NOT NULL COMMENT '一次性预公钥(Base64)',
+  pre_key_signature TEXT NULL COMMENT '一次性预公钥签名(Base64)',
   public_key   TEXT NULL COMMENT 'one-time public key',
   consumed     TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已消费: 0-否 1-是',
   claimed_at   DATETIME NULL COMMENT 'claim time',

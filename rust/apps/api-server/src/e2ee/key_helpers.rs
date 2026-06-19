@@ -58,10 +58,7 @@ pub(crate) fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError>
     )?;
 
     validate_pre_key_entries(&req.one_time_pre_keys)?;
-    validate_one_time_pre_key_signatures(
-        &req.one_time_pre_keys,
-        &req.one_time_pre_key_signatures,
-    )?;
+    validate_one_time_pre_key_signatures(&req.one_time_pre_keys, &req.one_time_pre_key_signatures)?;
 
     Ok(())
 }

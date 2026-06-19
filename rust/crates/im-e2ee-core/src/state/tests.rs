@@ -1,5 +1,6 @@
 use super::*;
 use crate::primitives::generate_x25519_keypair;
+use bincode;
 
 fn make_test_state() -> RatchetState {
     let kp = generate_x25519_keypair();
@@ -197,4 +198,54 @@ fn encode_header_nonce_at_offset_40() {
     let header = make_test_header();
     let encoded = encode_ratchet_header(&header);
     assert_eq!(encoded.get(40..52), Some(&header.nonce.0[..]));
+}
+
+#[test]
+fn exported_state_starts_with_version_byte() -> Result<(), crate::errors::E2eeError> {
+    let state = make_test_state();
+    let bytes = export_state(&state);
+    assert!(!bytes.is_empty());
+    assert_eq!(
+        bytes.first().copied(),
+        Some(super::STATE_VERSION),
+        "exported state must begin with the format version"
+    );
+    Ok(())
+}
+
+#[test]
+fn versioned_export_restore_roundtrip() -> Result<(), crate::errors::E2eeError> {
+    let state = make_test_state();
+    let bytes = try_export_state(&state)?;
+    let restored = restore_state(&bytes)?;
+    assert_eq!(restored.send_counter, state.send_counter);
+    assert_eq!(restored.receive_counter, state.receive_counter);
+    assert_eq!(restored.previous_counter, state.previous_counter);
+    Ok(())
+}
+
+#[test]
+fn restore_legacy_plain_bincode_state() -> Result<(), crate::errors::E2eeError> {
+    let state = make_test_state();
+    // Simulate a legacy state blob produced before STATE_VERSION was introduced.
+    let legacy_bytes = bincode::serialize(&state).map_err(|_| {
+        crate::errors::E2eeError::StateSerializationFailed("test serialize".to_string())
+    })?;
+    let restored = restore_state(&legacy_bytes)?;
+    assert_eq!(restored.send_counter, state.send_counter);
+    Ok(())
+}
+
+#[test]
+fn restore_unsupported_version_fails() {
+    let mut bad_bytes = vec![2u8]; // version 2 is not supported
+    bad_bytes.extend_from_slice(&[0xFFu8; 64]);
+    let result = restore_state(&bad_bytes);
+    assert!(
+        matches!(
+            result,
+            Err(crate::errors::E2eeError::StateSerializationFailed(_))
+        ),
+        "expected StateSerializationFailed for unsupported version, got {result:?}"
+    );
 }

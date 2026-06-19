@@ -2,6 +2,11 @@
 ///
 /// Platform-specific implementations (IndexedDB on web, SharedPreferences on
 /// desktop) must conform to this contract.
+///
+/// The [stateBase64] value stored and returned by implementations is expected
+/// to be a context-bound session envelope produced by [E2eeBridge.exportSessionEnvelope].
+/// Callers (typically [E2eeManager]) are responsible for wrapping and unwrapping
+/// the raw ratchet state via the bridge; the store persists the opaque envelope.
 abstract class E2eeSessionStore {
   Future<void> init();
 

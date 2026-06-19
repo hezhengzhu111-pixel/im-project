@@ -253,11 +253,27 @@ pub struct RatchetState {
 // State Persistence (bincode)
 // ============================================================================
 
-/// Serialize ratchet state to a byte vector via bincode.
+/// Current serialization format version for persisted ratchet state.
+///
+/// Version 1: a one-byte version prefix followed by a bincode-encoded
+/// `RatchetState`. Version 0 denotes the legacy plain-bincode format with no
+/// prefix and is supported as a fallback during import.
+pub const STATE_VERSION: u8 = 1;
+
+/// Serialize ratchet state to a byte vector.
+///
+/// The output is prefixed with [`STATE_VERSION`] so future schema changes can
+/// be detected during deserialization.
 ///
 /// Returns `StateSerializationFailed` instead of hiding serialization errors.
 pub fn try_export_state(state: &RatchetState) -> Result<Vec<u8>, crate::errors::E2eeError> {
-    bincode::serialize(state).map_err(|_| crate::errors::E2eeError::StateSerializationFailed)
+    let payload = bincode::serialize(state).map_err(|_| {
+        crate::errors::E2eeError::StateSerializationFailed("bincode serialize failed".to_string())
+    })?;
+    let mut out = Vec::with_capacity(payload.len().saturating_add(1));
+    out.push(STATE_VERSION);
+    out.extend_from_slice(&payload);
+    Ok(out)
 }
 
 /// Compatibility serializer that preserves the original documented signature.
@@ -274,14 +290,35 @@ pub fn export_state(state: &RatchetState) -> Vec<u8> {
     }
 }
 
-/// Deserialize ratchet state from bincode-encoded bytes.
+/// Deserialize ratchet state from versioned bincode-encoded bytes.
 ///
 /// # Errors
 ///
 /// Returns `StateDeserializationFailed` if the bytes are corrupted or
-/// do not represent a valid `RatchetState`.
+/// do not represent a valid `RatchetState` for the detected version.
+/// Returns `StateSerializationFailed` with a descriptive message when the
+/// version prefix indicates an unsupported format.
 pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, crate::errors::E2eeError> {
-    bincode::deserialize(bytes).map_err(|_| crate::errors::E2eeError::StateDeserializationFailed)
+    let first = bytes
+        .first()
+        .copied()
+        .ok_or(crate::errors::E2eeError::StateDeserializationFailed)?;
+
+    if first == STATE_VERSION {
+        let payload = bytes
+            .get(1..)
+            .ok_or(crate::errors::E2eeError::StateDeserializationFailed)?;
+        return bincode::deserialize(payload)
+            .map_err(|_| crate::errors::E2eeError::StateDeserializationFailed);
+    }
+
+    // Legacy fallback: plain bincode without a version prefix.
+    match bincode::deserialize(bytes) {
+        Ok(state) => Ok(state),
+        Err(_) => Err(crate::errors::E2eeError::StateSerializationFailed(format!(
+            "unsupported state version: {first}"
+        ))),
+    }
 }
 
 #[cfg(test)]

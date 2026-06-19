@@ -164,8 +164,7 @@ class E2eeManager {
       final existingPublicBundle =
           keyMaterial['public_bundle'] as Map<String, dynamic>;
       final existingPublicOpks = List<dynamic>.from(
-        existingPublicBundle['one_time_pre_keys'] as List<dynamic>? ??
-            const [],
+        existingPublicBundle['one_time_pre_keys'] as List<dynamic>? ?? const [],
       );
 
       final freshOtkPairs = List<dynamic>.from(
@@ -174,8 +173,7 @@ class E2eeManager {
       final freshPublicBundle =
           freshBundle['public_bundle'] as Map<String, dynamic>;
       final freshPublicOpks = List<dynamic>.from(
-        freshPublicBundle['one_time_pre_keys'] as List<dynamic>? ??
-            const [],
+        freshPublicBundle['one_time_pre_keys'] as List<dynamic>? ?? const [],
       );
 
       // The Rust bridge always numbers fresh OTKs from 1. Renumber them so
@@ -188,7 +186,7 @@ class E2eeManager {
       }
 
       Map<String, dynamic> renumberOtk(Map<String, dynamic> otk) {
-        final newId = idMapping[(otk)['id'] as int];
+        final newId = idMapping[otk['id'] as int];
         if (newId == null) return otk;
         final renamed = Map<String, dynamic>.from(otk);
         renamed['id'] = newId;
@@ -197,12 +195,16 @@ class E2eeManager {
 
       final renumberedOtkPairs =
           freshOtkPairs.cast<Map<String, dynamic>>().map(renumberOtk).toList();
-      final renumberedPublicOpks =
-          freshPublicOpks.cast<Map<String, dynamic>>().map(renumberOtk).toList();
+      final renumberedPublicOpks = freshPublicOpks
+          .cast<Map<String, dynamic>>()
+          .map(renumberOtk)
+          .toList();
 
       keyMaterial['otk_pairs'] = [...existingOtkPairs, ...renumberedOtkPairs];
-      existingPublicBundle['one_time_pre_keys'] =
-          [...existingPublicOpks, ...renumberedPublicOpks];
+      existingPublicBundle['one_time_pre_keys'] = [
+        ...existingPublicOpks,
+        ...renumberedPublicOpks
+      ];
 
       await keyStore.saveKeyMaterial(jsonEncode(keyMaterial));
       await keyStore.savePublicBundle(jsonEncode(existingPublicBundle));
@@ -217,7 +219,10 @@ class E2eeManager {
           await metaStore.getPublishedOtkIds(_deviceId);
       await metaStore.setPublishedOtkIds(
         _deviceId,
-        [...existingPublishedIds, ...renumberedPublicOpks.map((otk) => otk['id'] as int)],
+        [
+          ...existingPublishedIds,
+          ...renumberedPublicOpks.map((otk) => otk['id'] as int)
+        ],
       );
     } catch (e) {
       if (_isDeviceRegistrationRejected(e)) rethrow;
@@ -291,17 +296,25 @@ class E2eeManager {
             base64Encode(utf8.encode(jsonEncode(remoteBundleForFrb))),
       );
 
-      // Save session state as v3 envelope.
+      // Save session state as a context-bound envelope.
       final stateBase64 = outboundResult['state'] as String;
+      final envelopeBase64 = await _exportSessionState(
+        sessionId: sessionId,
+        localDeviceId: _deviceId,
+        remoteUserId: peerId,
+        remoteDeviceId: resolvedRemoteDeviceId,
+        stateBase64: stateBase64,
+      );
       await sessionStore.saveSession(
         sessionId: sessionId,
-        stateBase64: stateBase64,
+        stateBase64: envelopeBase64,
         localDeviceId: _deviceId,
         remoteUserId: peerId,
         remoteDeviceId: resolvedRemoteDeviceId,
         direction: 'outbound',
       );
       await metaStore.setRemoteDeviceId(sessionId, resolvedRemoteDeviceId);
+      await metaStore.setRemoteUserId(sessionId, peerId);
 
       // Track in memory.
       _loadedSessions.add(sessionId);
@@ -374,20 +387,28 @@ class E2eeManager {
         ) ??
         '';
     final handshake = _firstString(requestPayload, const ['handshake']) ?? '';
-    final senderUserId = _firstString(
-          requestPayload,
-          const [
-            'senderUserId',
-            'sender_user_id',
-            'requesterId',
-            'requester_id',
-          ],
-        ) ??
-        _extractPeerId(sessionId);
+    final String senderUserId;
+    try {
+      senderUserId = _firstString(
+            requestPayload,
+            const [
+              'senderUserId',
+              'sender_user_id',
+              'requesterId',
+              'requester_id',
+            ],
+          ) ??
+          _extractPeerId(sessionId);
+    } catch (_) {
+      await metaStore.setSessionStatus(sessionId, 'failed');
+      return false;
+    }
     final verifyPhrase =
         _firstString(requestPayload, const ['verifyPhrase', 'verify_phrase']);
 
-    if (senderDeviceId.isEmpty || targetDeviceId.isEmpty) {
+    if (senderDeviceId.isEmpty ||
+        targetDeviceId.isEmpty ||
+        senderUserId.isEmpty) {
       await metaStore.setSessionStatus(sessionId, 'failed');
       return false;
     }
@@ -442,17 +463,25 @@ class E2eeManager {
         await keyStore.markOneTimePreKeyConsumed(consumedOtkId);
       }
 
-      // Save session state as v3 envelope.
+      // Save session state as a context-bound envelope.
       final stateBase64 = inboundResult['state'] as String;
+      final envelopeBase64 = await _exportSessionState(
+        sessionId: sessionId,
+        localDeviceId: _deviceId,
+        remoteUserId: senderUserId,
+        remoteDeviceId: senderDeviceId,
+        stateBase64: stateBase64,
+      );
       await sessionStore.saveSession(
         sessionId: sessionId,
-        stateBase64: stateBase64,
+        stateBase64: envelopeBase64,
         localDeviceId: _deviceId,
         remoteUserId: senderUserId,
         remoteDeviceId: senderDeviceId,
         direction: 'inbound',
       );
       await metaStore.setRemoteDeviceId(sessionId, senderDeviceId);
+      await metaStore.setRemoteUserId(sessionId, senderUserId);
 
       // Track in memory.
       _loadedSessions.add(sessionId);
@@ -502,17 +531,24 @@ class E2eeManager {
 
     final remoteUserId = _extractPeerId(sessionId);
 
-    // Get stored session state.
-    final stateBase64 = await sessionStore.getSession(
+    // Get stored session state and unwrap the context-bound envelope.
+    final storedBase64 = await sessionStore.getSession(
       sessionId: sessionId,
       localDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: remoteDeviceId,
     );
 
-    if (stateBase64 == null) {
+    if (storedBase64 == null) {
       throw Exception('no E2EE session found for $sessionId');
     }
+    final stateBase64 = await _restoreSessionState(
+      sessionId: sessionId,
+      localDeviceId: senderDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: remoteDeviceId,
+      envelopeBase64: storedBase64,
+    );
 
     // Encrypt via FRB.
     final plaintextBase64 = base64Encode(utf8.encode(plaintext));
@@ -524,11 +560,18 @@ class E2eeManager {
       sessionId: sessionId,
     );
 
-    // Save updated session state as v3 envelope.
+    // Save updated session state as a context-bound envelope.
     final newStateBase64 = result['new_state'] as String;
+    final newEnvelopeBase64 = await _exportSessionState(
+      sessionId: sessionId,
+      localDeviceId: senderDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: remoteDeviceId,
+      stateBase64: newStateBase64,
+    );
     await sessionStore.saveSession(
       sessionId: sessionId,
-      stateBase64: newStateBase64,
+      stateBase64: newEnvelopeBase64,
       localDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: remoteDeviceId,
@@ -560,17 +603,24 @@ class E2eeManager {
     final localDeviceId = _deviceId;
     final remoteUserId = _extractPeerId(sessionId);
 
-    // Get stored session state.
-    final stateBase64 = await sessionStore.getSession(
+    // Get stored session state and unwrap the context-bound envelope.
+    final storedBase64 = await sessionStore.getSession(
       sessionId: sessionId,
       localDeviceId: localDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: senderDeviceId,
     );
 
-    if (stateBase64 == null) {
+    if (storedBase64 == null) {
       throw Exception('no E2EE session found for $sessionId');
     }
+    final stateBase64 = await _restoreSessionState(
+      sessionId: sessionId,
+      localDeviceId: localDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: senderDeviceId,
+      envelopeBase64: storedBase64,
+    );
 
     // Decrypt via FRB.
     final result = await adapter.decryptMessage(
@@ -578,11 +628,18 @@ class E2eeManager {
       envelope: normalizedEnvelope,
     );
 
-    // Save updated session state as v3 envelope.
+    // Save updated session state as a context-bound envelope.
     final newStateBase64 = result['new_state'] as String;
+    final newEnvelopeBase64 = await _exportSessionState(
+      sessionId: sessionId,
+      localDeviceId: localDeviceId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: senderDeviceId,
+      stateBase64: newStateBase64,
+    );
     await sessionStore.saveSession(
       sessionId: sessionId,
-      stateBase64: newStateBase64,
+      stateBase64: newEnvelopeBase64,
       localDeviceId: localDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: senderDeviceId,
@@ -806,9 +863,59 @@ class E2eeManager {
   /// Mirrors the format expected by the Rust server.
   static String privateSessionId(String currentUserId, String targetId) {
     if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
-    final first = currentUserId.compareTo(targetId) <= 0 ? currentUserId : targetId;
-    final second = currentUserId.compareTo(targetId) <= 0 ? targetId : currentUserId;
+    final first =
+        currentUserId.compareTo(targetId) <= 0 ? currentUserId : targetId;
+    final second =
+        currentUserId.compareTo(targetId) <= 0 ? targetId : currentUserId;
     return 'p_${first}_$second';
+  }
+
+  /// Wrap a raw ratchet state in a context-bound envelope.
+  Future<String> _exportSessionState({
+    required String sessionId,
+    required String localDeviceId,
+    required String remoteUserId,
+    required String remoteDeviceId,
+    required String stateBase64,
+  }) async {
+    return adapter.exportSessionEnvelope(
+      stateBase64: stateBase64,
+      userId: currentUserId?.trim() ?? '',
+      deviceId: localDeviceId,
+      sessionId: sessionId,
+      remoteUserId: remoteUserId,
+      remoteDeviceId: remoteDeviceId,
+    );
+  }
+
+  /// Unwrap a context-bound session envelope back to a raw ratchet state.
+  ///
+  /// Falls back to the raw blob for legacy state that predates context binding,
+  /// logging a warning so operators can identify stale clients.
+  Future<String> _restoreSessionState({
+    required String sessionId,
+    required String localDeviceId,
+    required String remoteUserId,
+    required String remoteDeviceId,
+    required String envelopeBase64,
+  }) async {
+    try {
+      return await adapter.restoreSessionEnvelope(
+        envelopeBase64: envelopeBase64,
+        userId: currentUserId?.trim() ?? '',
+        deviceId: localDeviceId,
+        sessionId: sessionId,
+        remoteUserId: remoteUserId,
+        remoteDeviceId: remoteDeviceId,
+      );
+    } catch (e) {
+      AppLogger.instance.warn(
+        'Legacy E2EE session state encountered for $sessionId; '
+        'importing without context binding.',
+        e,
+      );
+      return envelopeBase64;
+    }
   }
 
   /// Extract the peer user ID from a private session ID.

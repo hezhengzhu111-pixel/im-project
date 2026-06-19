@@ -24,7 +24,7 @@ pub(crate) const ED25519_SIGNATURE_BYTES: usize = 64;
 ///
 /// 包含设备公钥材料（identity key、signed pre-key、one-time pre-keys），
 /// 客户端上传的一次性预密钥条目（含 ID）。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreKeyEntry {
@@ -35,7 +35,7 @@ pub(crate) struct PreKeyEntry {
 /// 一次性预密钥签名条目。
 ///
 /// 客户端使用设备签名私钥对每个 OTK 公钥进行签名，服务端仅保存签名供请求方认证。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreKeySignatureEntry {

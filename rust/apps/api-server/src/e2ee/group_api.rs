@@ -457,9 +457,8 @@ pub async fn remove_member_sender_keys(
 
     // 若群已启用加密，先轮换 epoch：旧 epoch 的 key 不再被返回，
     // 从而被移除成员无法解密后续消息。
-    let _ =
-        rotate_group_epoch_if_encrypted(&state.db, group_id, identity.user_id, "member_remove")
-            .await?;
+    let _ = rotate_group_epoch_if_encrypted(&state.db, group_id, identity.user_id, "member_remove")
+        .await?;
 
     // 仅删除被移除成员作为发送者的记录；其他成员发给该成员的记录保留，
     // 由 epoch 轮换使其失效。

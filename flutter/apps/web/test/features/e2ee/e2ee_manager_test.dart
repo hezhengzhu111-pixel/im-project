@@ -257,7 +257,23 @@ void main() {
       expect(bridge.lastDecryptEnvelope?['sender_device_id'], 'device-a');
       expect(bridge.lastDecryptEnvelope?['recipient_device_id'], 'device-b');
       expect(bridge.lastDecryptEnvelope?['session_id'], 'p_user-a_user-b');
-      expect(sessionStore.savedSession?.stateBase64, 'decrypted-state');
+      expect(
+        bridge.lastRestoreEnvelopeContext?['envelopeBase64'],
+        'inbound-state',
+      );
+      expect(
+        bridge.lastRestoreEnvelopeContext?['remoteUserId'],
+        'user-a',
+      );
+      expect(
+        bridge.lastExportEnvelopeContext?['stateBase64'],
+        'decrypted-state',
+      );
+      expect(
+        bridge.lastExportEnvelopeContext?['remoteUserId'],
+        'user-a',
+      );
+      expect(sessionStore.savedSession?.stateBase64, 'envelope:decrypted-state');
     });
   });
 
@@ -329,6 +345,143 @@ void main() {
       expect(await metaStore.getRemoteDeviceId('p_user-a_user-b'), isNull);
     });
   });
+
+  group('E2eeManager OTK replenishment', () {
+    test('renumbers fresh OTK IDs to avoid collisions when server is low',
+        () async {
+      const existingCount = 5;
+      final existingOtkPairs = List<Map<String, dynamic>>.generate(
+        existingCount,
+        (i) => {'id': i + 1, 'key_pair_bincode': 'otk-${i + 1}'},
+      );
+      final existingPublicOpks = List<Map<String, dynamic>>.generate(
+        existingCount,
+        (i) => {'id': i + 1, 'key': 'pub-otk-${i + 1}'},
+      );
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': existingOtkPairs,
+          'public_bundle': {
+            'identity_key': 'identity-public',
+            'signing_key': 'signing-public',
+            'signed_pre_key': {'key': 'public-spk'},
+            'signed_pre_key_signature': 'signature',
+            'one_time_pre_keys': existingPublicOpks,
+          },
+        }),
+      );
+      const deviceId = 'device-x';
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({
+          'e2ee_device_id': deviceId,
+          'e2ee:otk_published:$deviceId': '1,2,3,4,5',
+          'e2ee:otk_max_published:$deviceId': '$existingCount',
+        }),
+      );
+      final api = _FakeE2eeApi()
+        ..opkStatuses[deviceId] = {'lowWatermark': true, 'count': 10};
+      final bridge = _FakeE2eeBridge();
+      final manager = E2eeManager(
+        adapter: bridge,
+        api: api,
+        keyStore: keyStore,
+        sessionStore: _MemorySessionStore(),
+        metaStore: metaStore,
+        currentUserId: 'user-a',
+      );
+
+      await manager.ensureDeviceRegistered();
+
+      expect(bridge.generatedKeyBundleCount, 1);
+      expect(api.refillOpkPayloads, hasLength(1));
+      final refillPayload = api.refillOpkPayloads.single;
+      expect(refillPayload['deviceId'], deviceId);
+
+      final uploadedOpks = (refillPayload['oneTimePreKeys'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      expect(uploadedOpks, hasLength(100));
+      expect(uploadedOpks.first['id'], existingCount + 1);
+      expect(uploadedOpks.last['id'], existingCount + uploadedOpks.length);
+
+      final keyMaterial =
+          jsonDecode(keyStore.keyMaterial!) as Map<String, dynamic>;
+      final storedOtkPairs = (keyMaterial['otk_pairs'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final storedIds = storedOtkPairs.map((o) => o['id'] as int).toList();
+      expect(storedIds.toSet(), hasLength(storedIds.length));
+      expect(
+          storedIds,
+          containsAll(List.generate(
+              existingCount + uploadedOpks.length, (i) => i + 1)));
+
+      final storedPublicBundle =
+          keyMaterial['public_bundle'] as Map<String, dynamic>;
+      final storedPublicOpks =
+          (storedPublicBundle['one_time_pre_keys'] as List<dynamic>)
+              .cast<Map<String, dynamic>>();
+      expect(storedPublicOpks.map((o) => o['id'] as int).toSet(),
+          storedIds.toSet());
+
+      expect(await metaStore.getMaxPublishedOtkId(deviceId),
+          existingCount + uploadedOpks.length);
+      expect(await metaStore.getPublishedOtkIds(deviceId),
+          hasLength(existingCount + uploadedOpks.length));
+    });
+  });
+
+  group('E2eeManager private session ID', () {
+    test('privateSessionId builds canonical p_ format', () {
+      expect(
+          E2eeManager.privateSessionId('user-a', 'user-b'), 'p_user-a_user-b');
+      expect(
+          E2eeManager.privateSessionId('user-b', 'user-a'), 'p_user-a_user-b');
+      expect(E2eeManager.privateSessionId('', 'user-b'), 'user-b');
+      expect(E2eeManager.privateSessionId('user-a', ''), '');
+    });
+
+    test('rejects legacy {user}_private_{target} session id', () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': [
+            {'id': 7, 'key_pair_bincode': 'otk-seven'},
+          ],
+          'public_bundle': {
+            'signed_pre_key': {'key': 'public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore();
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({'e2ee_device_id': 'device-b'}),
+      );
+      final manager = E2eeManager(
+        adapter: _FakeE2eeBridge(),
+        api: _FakeE2eeApi(),
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: metaStore,
+        currentUserId: 'user-b',
+      );
+
+      final accepted = await manager.respondToNegotiation(
+        'user-a_private_user-b',
+        {
+          'senderDeviceId': 'device-a',
+          'targetDeviceId': 'device-b',
+          'senderIdentityKey': 'sender-identity',
+          'handshake': _handshakeWithOtkId(7),
+        },
+      );
+
+      expect(accepted, isFalse);
+      expect(
+          await metaStore.getSessionStatus('user-a_private_user-b'), 'failed');
+    });
+  });
 }
 
 String _handshakeWithOtkId(int otkId) {
@@ -343,6 +496,8 @@ String _handshakeWithOtkId(int otkId) {
 class _FakeE2eeBridge implements E2eeBridge {
   String? lastLocalOtkPairBase64;
   Map<String, dynamic>? lastDecryptEnvelope;
+  Map<String, String>? lastExportEnvelopeContext;
+  Map<String, String>? lastRestoreEnvelopeContext;
   int generatedKeyBundleCount = 0;
 
   @override
@@ -399,8 +554,16 @@ class _FakeE2eeBridge implements E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    lastExportEnvelopeContext = {
+      'stateBase64': stateBase64,
+      'userId': userId,
+      'deviceId': deviceId,
+      'sessionId': sessionId,
+      'remoteUserId': remoteUserId,
+      'remoteDeviceId': remoteDeviceId,
+    };
+    return 'envelope:$stateBase64';
   }
 
   @override
@@ -466,8 +629,19 @@ class _FakeE2eeBridge implements E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    lastRestoreEnvelopeContext = {
+      'envelopeBase64': envelopeBase64,
+      'userId': userId,
+      'deviceId': deviceId,
+      'sessionId': sessionId,
+      'remoteUserId': remoteUserId,
+      'remoteDeviceId': remoteDeviceId,
+    };
+    if (envelopeBase64.startsWith('envelope:')) {
+      return envelopeBase64.substring(9);
+    }
+    return envelopeBase64;
   }
 
   @override

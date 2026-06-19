@@ -103,3 +103,9 @@ init.md
 .parcel-cache
 .eslintcache
 .stylelintcache
+.claude
+.github
+.idea
+.mimocode
+admin-console
+build

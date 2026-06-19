@@ -53,11 +53,7 @@ pub(crate) async fn send_private(
     let has_e2ee_payload = request.encrypted.unwrap_or(false)
         || request.e2ee_envelope.is_some()
         || request.e2ee_envelopes.is_some();
-    if has_e2ee_payload && !e2ee_enabled {
-        return Err(AppError::Conflict(
-            "e2ee session is not encrypted; refresh session status".to_string(),
-        ));
-    }
+    require_e2ee_payload_consistency(e2ee_enabled, has_e2ee_payload, false)?;
     let mut device_envelopes = Vec::new();
     if e2ee_enabled || has_e2ee_payload {
         device_envelopes =
@@ -225,12 +221,9 @@ pub(crate) async fn send_group(
     .await?;
     let conversation_id = keys::group_conversation_id(group_id);
     let e2ee_enabled = group_e2ee_enabled(db, group_id).await?;
-    if request.encrypted.unwrap_or(false) && !e2ee_enabled {
-        return Err(AppError::Conflict(
-            "group e2ee is not enabled; refresh group encryption status".to_string(),
-        ));
-    }
-    if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
+    let has_e2ee_payload = request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some();
+    require_e2ee_payload_consistency(e2ee_enabled, has_e2ee_payload, true)?;
+    if e2ee_enabled || has_e2ee_payload {
         let ty = MessageType::from_text(request.message_type.as_deref().unwrap_or("TEXT"));
         if !matches!(ty, MessageType::Text | MessageType::System) {
             return Err(AppError::BadRequest(
@@ -322,6 +315,31 @@ pub(crate) fn validate_send_input(
         }
     } else if media_url.is_none_or(|value| value.trim().is_empty()) {
         return Err(AppError::BadRequest("mediaUrl cannot be blank".to_string()));
+    }
+    Ok(())
+}
+
+/// 校验 E2EE 会话状态与消息载荷是否一致。
+///
+/// - 若会话已启用 E2EE，则必须携带 E2EE 载荷；
+/// - 若携带了 E2EE 载荷，但会话未启用 E2EE，则拒绝并提示刷新状态。
+pub(crate) fn require_e2ee_payload_consistency(
+    e2ee_enabled: bool,
+    has_e2ee_payload: bool,
+    is_group: bool,
+) -> Result<(), AppError> {
+    if e2ee_enabled && !has_e2ee_payload {
+        let scope = if is_group { "group" } else { "private" };
+        return Err(AppError::BadRequest(format!(
+            "e2ee payload required for encrypted {scope} session"
+        )));
+    }
+    if has_e2ee_payload && !e2ee_enabled {
+        return Err(AppError::Conflict(if is_group {
+            "group e2ee is not enabled; refresh group encryption status".to_string()
+        } else {
+            "e2ee session is not encrypted; refresh session status".to_string()
+        }));
     }
     Ok(())
 }

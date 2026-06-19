@@ -23,17 +23,28 @@ mod tests {
         B64.encode([0x11u8; 16])
     }
 
+    fn signatures_for(keys: &[PreKeyEntry]) -> Vec<PreKeySignatureEntry> {
+        keys.iter()
+            .map(|entry| PreKeySignatureEntry {
+                id: entry.id,
+                signature: make_sig(),
+            })
+            .collect()
+    }
+
     fn valid_bundle() -> UploadBundleRequest {
+        let keys = vec![PreKeyEntry {
+            id: 0,
+            key: make_key(),
+        }];
         UploadBundleRequest {
             device_id: "test-device-001".to_string(),
             identity_key: make_key(),
             signing_identity_key: make_key(),
             signed_pre_key: make_key(),
             signed_pre_key_signature: make_sig(),
-            one_time_pre_keys: vec![PreKeyEntry {
-                id: 0,
-                key: make_key(),
-            }],
+            one_time_pre_keys: keys.clone(),
+            one_time_pre_key_signatures: signatures_for(&keys),
         }
     }
 
@@ -66,6 +77,7 @@ mod tests {
                 key: make_key(),
             },
         ];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         assert!(validate_bundle(&bundle).is_ok());
     }
 
@@ -167,6 +179,7 @@ mod tests {
             id: 0,
             key: make_invalid_base64(),
         }];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("invalid one_time_pre_key id=0"), "got: {msg}");
@@ -179,6 +192,7 @@ mod tests {
             id: 0,
             key: make_wrong_len_key(),
         }];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("invalid one_time_pre_key id=0"), "got: {msg}");
@@ -193,6 +207,7 @@ mod tests {
             id: -1,
             key: make_key(),
         }];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("invalid one_time_pre_key id=-1"), "got: {msg}");
@@ -211,6 +226,7 @@ mod tests {
                 key: make_key(),
             },
         ];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
         assert!(
@@ -226,6 +242,7 @@ mod tests {
             id: 0,
             key: make_key(),
         }];
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         assert!(validate_bundle(&bundle).is_ok());
     }
 
@@ -240,9 +257,135 @@ mod tests {
                 key: make_key(),
             })
             .collect();
+        bundle.one_time_pre_key_signatures = signatures_for(&bundle.one_time_pre_keys);
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("too many one_time_pre_keys"), "got: {msg}");
+    }
+
+    // ---- one_time_pre_key_signatures ----
+
+    #[test]
+    fn missing_one_time_pre_key_signature_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_key_signatures.clear();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("one_time_pre_key_signatures count mismatch"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn signature_count_mismatch_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys.push(PreKeyEntry {
+            id: 1,
+            key: make_key(),
+        });
+        // signatures still contain only id=0
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("one_time_pre_key_signatures count mismatch"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn missing_signature_for_key_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![PreKeyEntry {
+            id: 0,
+            key: make_key(),
+        }];
+        bundle.one_time_pre_key_signatures = vec![PreKeySignatureEntry {
+            id: 1,
+            signature: make_sig(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing signature for one_time_pre_key id=0"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn duplicate_signature_id_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![
+            PreKeyEntry {
+                id: 0,
+                key: make_key(),
+            },
+            PreKeyEntry {
+                id: 1,
+                key: make_key(),
+            },
+        ];
+        bundle.one_time_pre_key_signatures = vec![
+            PreKeySignatureEntry {
+                id: 0,
+                signature: make_sig(),
+            },
+            PreKeySignatureEntry {
+                id: 0,
+                signature: make_sig(),
+            },
+        ];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("duplicate one_time_pre_key signature id=0"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn invalid_signature_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_key_signatures = vec![PreKeySignatureEntry {
+            id: 0,
+            signature: make_invalid_base64(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key signature id=0"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn signature_wrong_byte_len_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_key_signatures = vec![PreKeySignatureEntry {
+            id: 0,
+            signature: B64.encode([0x42u8; 32]),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key signature id=0"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn signature_negative_id_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_key_signatures = vec![PreKeySignatureEntry {
+            id: -1,
+            signature: make_sig(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key signature id=-1"),
+            "got: {msg}"
+        );
     }
 
     #[test]
@@ -329,18 +472,19 @@ mod tests {
         .execute(db)
         .await?;
 
-        // 插入新 pre-keys
+        // 插入新 pre-keys（含签名，便于 get_bundle 返回认证签名）
         for i in 0..otp_count {
             let pre_key = B64.encode([(i as u8) ^ 0x5A; 32]);
             sqlx::query(
                 r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
-                   (user_id, device_id, pre_key, pre_key_id, consumed)
-                   VALUES (?, ?, ?, ?, 0)"#,
+                   (user_id, device_id, pre_key, pre_key_id, consumed, pre_key_signature)
+                   VALUES (?, ?, ?, ?, 0, ?)"#,
             )
             .bind(user_id)
             .bind(device_id)
             .bind(&pre_key)
             .bind(i as i32)
+            .bind(&sig)
             .execute(db)
             .await?;
         }
@@ -1135,5 +1279,133 @@ mod tests {
         // 此测试仅用于文档化：旧的 claim_prekey handler 已从代码中删除。
         // 路由 `/api/e2ee/prekeys/claim` 已从 e2ee_routes.rs 移除。
         // 前后端均无引用剩余。
+    }
+
+    // -----------------------------------------------------------------------
+    // Defect #2: OTK signature upload/return
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    #[ignore]
+    async fn get_bundle_returns_one_time_pre_key_signature() -> anyhow::Result<()> {
+        let Some(db) = test_db().await else {
+            return Ok(());
+        };
+        let target_user = 999_101;
+        let target_device = "test-otk-signature-target";
+        seed_device(&db, target_user, target_device, 1).await?;
+
+        // 模拟 claim：直接插入一条 claim 记录引用唯一 OTK
+        let otk_row = sqlx::query(
+            "SELECT id FROM service_user_service_db.e2ee_one_time_pre_keys \
+             WHERE user_id = ? AND device_id = ? AND consumed = 0",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_optional(&db)
+        .await?;
+        let Some(otk_row) = otk_row else {
+            anyhow::bail!("seeded OTK not found");
+        };
+        let row_id: i64 = otk_row.get("id");
+
+        sqlx::query(
+            "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
+             SET consumed = 1, consumed_time = NOW() WHERE id = ?",
+        )
+        .bind(row_id)
+        .execute(&db)
+        .await?;
+
+        let signature: Option<String> = sqlx::query_scalar(
+            "SELECT pre_key_signature FROM service_user_service_db.e2ee_one_time_pre_keys \
+             WHERE id = ?",
+        )
+        .bind(row_id)
+        .fetch_optional(&db)
+        .await?;
+        assert!(
+            signature.is_some() && !signature.as_deref().unwrap_or("").is_empty(),
+            "stored OTK signature should exist"
+        );
+
+        cleanup_test_data(&db, target_user, target_device).await;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Defect #5: re-upload clears stale claims
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    #[ignore]
+    async fn upload_bundle_clears_stale_claims_for_device() -> anyhow::Result<()> {
+        let Some(db) = test_db().await else {
+            return Ok(());
+        };
+        let target_user = 999_201;
+        let target_device = "test-reupload-claims";
+        let requester = 999_202;
+        let requester_device = "test-requester-reupload";
+        let conversation_id = "p_999201_999202";
+
+        // 先创建一个设备和 OTK，并模拟已有 claim
+        seed_device(&db, target_user, target_device, 1).await?;
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, ?, 12345, 0, 'dummy-key')"#,
+        )
+        .bind(requester)
+        .bind(requester_device)
+        .bind(target_user)
+        .bind(target_device)
+        .bind(conversation_id)
+        .execute(&db)
+        .await?;
+
+        let before: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_pre_key_claims \
+             WHERE target_user_id = ? AND target_device_id = ?",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_one(&db)
+        .await?;
+        assert_eq!(before, 1, "stale claim should exist before re-upload");
+
+        // 模拟 re-upload：直接删除 OTK 与 claim（与 upload_bundle 事务一致）
+        let mut tx = db.begin().await?;
+        sqlx::query(
+            "DELETE FROM service_user_service_db.e2ee_one_time_pre_keys \
+             WHERE user_id = ? AND device_id = ?",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
+             WHERE target_user_id = ? AND target_device_id = ?",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        let after: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_pre_key_claims \
+             WHERE target_user_id = ? AND target_device_id = ?",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_one(&db)
+        .await?;
+        assert_eq!(after, 0, "stale claims should be cleared after re-upload");
+
+        cleanup_test_data(&db, target_user, target_device).await;
+        Ok(())
     }
 }

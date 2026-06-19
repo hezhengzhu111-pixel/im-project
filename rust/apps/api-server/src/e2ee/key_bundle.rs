@@ -304,10 +304,10 @@ pub(crate) async fn get_bundle(
                     let row_id: i64 = row.get("id");
                     let pre_key: String = row.get("pre_key");
                     let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
-                    let pre_key_signature: Option<String> =
-                        row.try_get::<Option<String>, _>("pre_key_signature")
-                            .ok()
-                            .flatten();
+                    let pre_key_signature: Option<String> = row
+                        .try_get::<Option<String>, _>("pre_key_signature")
+                        .ok()
+                        .flatten();
 
                     sqlx::query(
                         "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
@@ -414,7 +414,9 @@ pub(crate) async fn get_bundle(
                             continue;
                         }
                         otk_signature = otk_row
-                            .and_then(|row| row.try_get::<Option<String>, _>("pre_key_signature").ok())
+                            .and_then(|row| {
+                                row.try_get::<Option<String>, _>("pre_key_signature").ok()
+                            })
                             .flatten();
                     }
                 }

@@ -1,4 +1,4 @@
-﻿pub mod message_cache;
+pub mod message_cache;
 pub mod message_conversation;
 pub mod message_e2ee;
 pub mod message_helpers;
@@ -320,5 +320,54 @@ mod tests {
     fn e2ee_session_id_whitespace_only_rejected() {
         let result = e2ee_session_id_matches("  ", "p_1_2");
         assert!(result.is_err());
+    }
+
+    // ---------- require_e2ee_payload_consistency ----------
+
+    #[test]
+    fn e2ee_enabled_without_payload_rejected_private() {
+        let result = require_e2ee_payload_consistency(true, false, false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("e2ee payload required"));
+    }
+
+    #[test]
+    fn e2ee_enabled_without_payload_rejected_group() {
+        let result = require_e2ee_payload_consistency(true, false, true);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("e2ee payload required"));
+        assert!(msg.contains("group"));
+    }
+
+    #[test]
+    fn payload_without_e2ee_enabled_rejected_private() {
+        let result = require_e2ee_payload_consistency(false, true, false);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("not encrypted"));
+    }
+
+    #[test]
+    fn payload_without_e2ee_enabled_rejected_group() {
+        let result = require_e2ee_payload_consistency(false, true, true);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("group e2ee is not enabled"));
+    }
+
+    #[test]
+    fn e2ee_enabled_with_payload_is_ok() {
+        assert!(require_e2ee_payload_consistency(true, true, false).is_ok());
+        assert!(require_e2ee_payload_consistency(true, true, true).is_ok());
+    }
+
+    #[test]
+    fn plaintext_session_without_payload_is_ok() {
+        assert!(require_e2ee_payload_consistency(false, false, false).is_ok());
+        assert!(require_e2ee_payload_consistency(false, false, true).is_ok());
     }
 }

@@ -10,6 +10,7 @@ class E2eeMetaStore {
 
   static const _statusPrefix = 'e2ee:status:';
   static const _remoteDevicePrefix = 'e2ee:remote_device:';
+  static const _remoteUserPrefix = 'e2ee:remote_user:';
   static const _handshakePrefix = 'e2ee:initial_handshake:';
   static const _verifyPhrasePrefix = 'e2ee:verify_phrase:';
   static const _otkPublishedPrefix = 'e2ee:otk_published:';
@@ -30,6 +31,14 @@ class E2eeMetaStore {
 
   Future<void> setRemoteDeviceId(String sessionId, String deviceId) async {
     await _storage.write('$_remoteDevicePrefix$sessionId', deviceId);
+  }
+
+  Future<String?> getRemoteUserId(String sessionId) async {
+    return await _storage.read('$_remoteUserPrefix$sessionId');
+  }
+
+  Future<void> setRemoteUserId(String sessionId, String userId) async {
+    await _storage.write('$_remoteUserPrefix$sessionId', userId);
   }
 
   Future<String?> getPendingHandshake(String sessionId) async {
@@ -91,6 +100,7 @@ class E2eeMetaStore {
   Future<void> clearSession(String sessionId) async {
     await _storage.delete('$_statusPrefix$sessionId');
     await _storage.delete('$_remoteDevicePrefix$sessionId');
+    await _storage.delete('$_remoteUserPrefix$sessionId');
     await _storage.delete('$_handshakePrefix$sessionId');
     await _storage.delete('$_verifyPhrasePrefix$sessionId');
   }

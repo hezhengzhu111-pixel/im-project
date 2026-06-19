@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
@@ -18,6 +18,67 @@ const MAX_SESSION_ID_LEN: usize = 64;
 const MAX_KEY_FIELD_LEN: usize = 1000;
 #[allow(dead_code)]
 const MAX_PAYLOAD_LEN: usize = 50_000;
+const MAX_NEGOTIATION_PAYLOAD_LEN: usize = 16 * 1024;
+
+/// 校验 E2EE 协商请求的 `request_payload_json`。
+///
+/// 约束：
+/// - 总大小不超过 16 KiB；
+/// - 必须是合法 JSON，且顶层为对象；
+/// - X3DH 初始消息必须包含 `version`、`ephemeralPublicKey`、`ciphertext`；
+/// - 字符串字段不能为空。
+pub(crate) fn validate_request_payload_json(payload: Option<&str>) -> Result<(), AppError> {
+    let payload = match payload {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => return Ok(()),
+    };
+
+    if payload.len() > MAX_NEGOTIATION_PAYLOAD_LEN {
+        return Err(AppError::BadRequest(
+            "request_payload_json too large".to_string(),
+        ));
+    }
+
+    let value: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|_| AppError::BadRequest("request_payload_json is not valid JSON".to_string()))?;
+
+    let serde_json::Value::Object(map) = value else {
+        return Err(AppError::BadRequest(
+            "request_payload_json must be a JSON object".to_string(),
+        ));
+    };
+
+    for field in &["version", "ephemeralPublicKey", "ciphertext"] {
+        if !map.contains_key(*field) {
+            return Err(AppError::BadRequest(format!(
+                "request_payload_json missing required field '{field}'"
+            )));
+        }
+    }
+
+    for field in &["ephemeralPublicKey", "ciphertext"] {
+        match map.get(*field) {
+            Some(serde_json::Value::String(value)) if !value.trim().is_empty() => {}
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "request_payload_json field '{field}' must be a non-empty string"
+                )));
+            }
+        }
+    }
+
+    match map.get("version") {
+        Some(serde_json::Value::Number(_)) => {}
+        Some(serde_json::Value::String(value)) if !value.trim().is_empty() => {}
+        _ => {
+            return Err(AppError::BadRequest(
+                "request_payload_json field 'version' must be a non-empty scalar".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // 请求类型
@@ -47,14 +108,7 @@ pub(crate) async fn request_encryption(
     validate_session_id(&request.session_id)?;
     validate_optional_key(request.identity_key.as_deref(), "identity_key")?;
     validate_optional_key(request.signed_pre_key.as_deref(), "signed_pre_key")?;
-
-    if let Some(ref payload) = request.request_payload_json {
-        if payload.len() > MAX_PAYLOAD_LEN {
-            return Err(AppError::BadRequest(
-                "request_payload_json too large".to_string(),
-            ));
-        }
-    }
+    validate_request_payload_json(request.request_payload_json.as_deref())?;
 
     // 验证调用者是合法参与者 + 好友关系存在
     let peer_user_id =
@@ -566,4 +620,118 @@ pub(crate) async fn disable_encryption(
     }
 
     Ok(Json(ApiResponse::success("ok".to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_request_payload_json;
+
+    fn valid_payload() -> String {
+        serde_json::json!({
+            "version": 1,
+            "ephemeralPublicKey": "base64-ephemeral-key",
+            "ciphertext": "base64-ciphertext",
+            "nonce": "base64-nonce"
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn null_payload_is_allowed() {
+        assert!(validate_request_payload_json(None).is_ok());
+    }
+
+    #[test]
+    fn empty_payload_is_allowed() {
+        assert!(validate_request_payload_json(Some("")).is_ok());
+        assert!(validate_request_payload_json(Some("   ")).is_ok());
+    }
+
+    #[test]
+    fn valid_object_passes() {
+        assert!(validate_request_payload_json(Some(&valid_payload())).is_ok());
+    }
+
+    #[test]
+    fn oversized_payload_rejected() {
+        let huge = "a".repeat(16 * 1024 + 1);
+        let payload =
+            format!("{{\"version\":1,\"ephemeralPublicKey\":\"{huge}\",\"ciphertext\":\"x\"}}");
+        let result = validate_request_payload_json(Some(&payload));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("too large"));
+    }
+
+    #[test]
+    fn invalid_json_rejected() {
+        let result = validate_request_payload_json(Some("not-json"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not valid JSON"));
+    }
+
+    #[test]
+    fn non_object_top_level_rejected() {
+        for payload in &["\"string\"", "[1,2,3]", "42"] {
+            let result = validate_request_payload_json(Some(*payload));
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("JSON object"));
+        }
+    }
+
+    #[test]
+    fn missing_required_fields_rejected() {
+        let payload = serde_json::json!({
+            "version": 1,
+            "ephemeralPublicKey": "base64-ephemeral-key"
+        })
+        .to_string();
+        let result = validate_request_payload_json(Some(&payload));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("ciphertext"));
+    }
+
+    #[test]
+    fn empty_string_fields_rejected() {
+        let payload = serde_json::json!({
+            "version": 1,
+            "ephemeralPublicKey": "   ",
+            "ciphertext": "base64-ciphertext"
+        })
+        .to_string();
+        let result = validate_request_payload_json(Some(&payload));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("ephemeralPublicKey"));
+    }
+
+    #[test]
+    fn non_string_required_fields_rejected() {
+        let payload = serde_json::json!({
+            "version": 1,
+            "ephemeralPublicKey": 123,
+            "ciphertext": "base64-ciphertext"
+        })
+        .to_string();
+        let result = validate_request_payload_json(Some(&payload));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("ephemeralPublicKey"));
+    }
+
+    #[test]
+    fn invalid_version_rejected() {
+        let payload = serde_json::json!({
+            "version": "",
+            "ephemeralPublicKey": "base64-ephemeral-key",
+            "ciphertext": "base64-ciphertext"
+        })
+        .to_string();
+        let result = validate_request_payload_json(Some(&payload));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("version"));
+    }
 }

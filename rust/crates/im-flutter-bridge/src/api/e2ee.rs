@@ -451,8 +451,8 @@ pub fn x3dh_respond(
 /// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
 /// - `header_and_ciphertext`: 52-byte ratchet header || AES-GCM ciphertext (to send to peer).
 pub fn ratchet_encrypt(state_bytes: Vec<u8>, plaintext: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>)> {
-    let mut state: im_e2ee_core::RatchetState =
-        bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
+    let mut state =
+        core_restore_state(&state_bytes).context("failed to deserialize ratchet state")?;
 
     let (header, ciphertext) =
         core_ratchet_encrypt(&mut state, &plaintext).context("ratchet encryption failed")?;
@@ -480,8 +480,8 @@ pub fn ratchet_encrypt(state_bytes: Vec<u8>, plaintext: Vec<u8>) -> Result<(Vec<
 /// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
 /// - `plaintext`: The decrypted message bytes.
 pub fn ratchet_decrypt(state_bytes: Vec<u8>, ciphertext: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>)> {
-    let mut state: im_e2ee_core::RatchetState =
-        bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
+    let mut state =
+        core_restore_state(&state_bytes).context("failed to deserialize ratchet state")?;
 
     // Split header (52 bytes) from ciphertext.
     if ciphertext.len() < RATCHET_HEADER_LEN {
@@ -507,8 +507,7 @@ pub fn ratchet_decrypt(state_bytes: Vec<u8>, ciphertext: Vec<u8>) -> Result<(Vec
 /// Deserializes the state, then re-serializes it to ensure canonical format.
 /// Returns the validated, canonical bincode bytes.
 pub fn export_state(state_bytes: Vec<u8>) -> Result<Vec<u8>> {
-    let state: im_e2ee_core::RatchetState =
-        bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
+    let state = core_restore_state(&state_bytes).context("failed to deserialize ratchet state")?;
 
     try_export_state(&state).context("failed to re-export ratchet state")
 }
@@ -731,7 +730,6 @@ pub fn decrypt_message(config_json: String) -> Result<String> {
 /// Export session state with v3 envelope context binding.
 /// Input JSON: {"state": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
 /// Output JSON: {"envelope": "<base64>"}
-#[allow(dead_code)]
 pub fn export_session_envelope(config_json: String) -> Result<String> {
     let config: serde_json::Value = serde_json::from_str(&config_json)
         .context("failed to parse export_session_envelope config")?;
@@ -770,7 +768,6 @@ pub fn export_session_envelope(config_json: String) -> Result<String> {
 /// Restore session from v3 envelope, validating context binding.
 /// Input JSON: {"envelope": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
 /// Output JSON: {"state": "<base64>"} or error
-#[allow(dead_code)]
 pub fn restore_session_envelope(config_json: String) -> Result<String> {
     let config: serde_json::Value = serde_json::from_str(&config_json)
         .context("failed to parse restore_session_envelope config")?;
@@ -813,11 +810,13 @@ pub fn restore_session_envelope(config_json: String) -> Result<String> {
         anyhow::bail!("session context mismatch — possible cross-account restore attack");
     }
 
-    let _state: im_e2ee_core::RatchetState = bincode::deserialize(state_bytes)
+    let state = core_restore_state(state_bytes)
         .context("failed to deserialize ratchet state from envelope")?;
+    let canonical_state_bytes =
+        try_export_state(&state).context("failed to re-export ratchet state from envelope")?;
 
     let result = serde_json::json!({
-        "state": base64::engine::general_purpose::STANDARD.encode(state_bytes),
+        "state": base64::engine::general_purpose::STANDARD.encode(&canonical_state_bytes),
     });
 
     Ok(result.to_string())
@@ -1079,5 +1078,94 @@ mod tests {
             .expect("decode plaintext");
 
         assert_eq!(plaintext, b"hello across clients");
+    }
+
+    #[test]
+    fn test_export_restore_session_envelope_roundtrip() {
+        let (alice_state, _) = run_x3dh_handshake();
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+        let config = serde_json::json!({
+            "state": b64(&alice_state),
+            "user_id": "user-alice",
+            "device_id": "device-alice",
+            "session_id": "p_user-alice_user-bob",
+            "remote_user_id": "user-bob",
+            "remote_device_id": "device-bob",
+        });
+
+        let exported =
+            export_session_envelope(config.to_string()).expect("export_session_envelope failed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&exported).expect("parse exported envelope");
+        let envelope_b64 = parsed["envelope"].as_str().expect("envelope is a string");
+        let envelope_bytes = base64::engine::general_purpose::STANDARD
+            .decode(envelope_b64)
+            .expect("decode envelope");
+
+        assert_eq!(envelope_bytes.first(), Some(&3u8), "envelope version must be 3");
+        assert_eq!(envelope_bytes.len(), 1 + 16 + alice_state.len());
+
+        let restore_config = serde_json::json!({
+            "envelope": envelope_b64,
+            "user_id": "user-alice",
+            "device_id": "device-alice",
+            "session_id": "p_user-alice_user-bob",
+            "remote_user_id": "user-bob",
+            "remote_device_id": "device-bob",
+        });
+        let restored = restore_session_envelope(restore_config.to_string())
+            .expect("restore_session_envelope failed");
+        let restored_parsed: serde_json::Value =
+            serde_json::from_str(&restored).expect("parse restored result");
+        let restored_state_b64 = restored_parsed["state"].as_str().expect("state is a string");
+        let restored_state_bytes = base64::engine::general_purpose::STANDARD
+            .decode(restored_state_b64)
+            .expect("decode restored state");
+
+        // Restored state must still be usable for encryption.
+        let plaintext = b"context-bound state works";
+        let (_, ciphertext) = ratchet_encrypt(restored_state_bytes, plaintext.to_vec())
+            .expect("encrypt with restored state failed");
+        assert!(!ciphertext.is_empty());
+    }
+
+    #[test]
+    fn test_restore_session_envelope_rejects_wrong_context() {
+        let (alice_state, _) = run_x3dh_handshake();
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+        let config = serde_json::json!({
+            "state": b64(&alice_state),
+            "user_id": "user-alice",
+            "device_id": "device-alice",
+            "session_id": "p_user-alice_user-bob",
+            "remote_user_id": "user-bob",
+            "remote_device_id": "device-bob",
+        });
+        let exported =
+            export_session_envelope(config.to_string()).expect("export_session_envelope failed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&exported).expect("parse exported envelope");
+        let envelope_b64 = parsed["envelope"].as_str().expect("envelope is a string");
+
+        let wrong_config = serde_json::json!({
+            "envelope": envelope_b64,
+            "user_id": "user-alice",
+            "device_id": "device-alice",
+            "session_id": "p_user-alice_user-bob",
+            "remote_user_id": "user-attacker",
+            "remote_device_id": "device-bob",
+        });
+        let result = restore_session_envelope(wrong_config.to_string());
+        assert!(
+            result.is_err(),
+            "restoring with mismatched remote user must fail"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("context mismatch"),
+            "error should mention context mismatch, got: {err}"
+        );
     }
 }

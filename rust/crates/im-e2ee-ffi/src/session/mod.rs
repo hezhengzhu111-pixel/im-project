@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -31,7 +31,7 @@ pub enum SessionError {
 impl From<im_e2ee_core::E2eeError> for SessionError {
     fn from(e: im_e2ee_core::E2eeError) -> Self {
         match e {
-            im_e2ee_core::E2eeError::StateSerializationFailed
+            im_e2ee_core::E2eeError::StateSerializationFailed(_)
             | im_e2ee_core::E2eeError::StateDeserializationFailed => {
                 SessionError::InvalidStateData(e.to_string())
             }

@@ -745,7 +745,7 @@ fn from_e2ee_error_routes_state_errors_to_invalid_state_data() -> Result<(), Str
         }
     }
 
-    let e = im_e2ee_core::E2eeError::StateSerializationFailed;
+    let e = im_e2ee_core::E2eeError::StateSerializationFailed("test".to_string());
     let err = SessionError::from(e);
     match err {
         SessionError::InvalidStateData(msg) => {
