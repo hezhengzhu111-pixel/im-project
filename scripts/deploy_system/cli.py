@@ -140,25 +140,28 @@ def _clean_docker(paths) -> None:
     except Exception as e:
         print(f"[WARNING] Failed to remove Docker containers: {e}")
 
-    # Prune Docker volumes
+    # Remove project-scoped Docker volumes (only dangling volumes from this project)
     try:
-        subprocess.run(
-            ["docker", "volume", "prune", "-f"],
+        result = subprocess.run(
+            ["docker", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project"],
             capture_output=True,
+            text=True,
             check=False,
         )
-        print("[CLEAN] Docker volumes pruned")
+        # Only prune if there are compose-managed volumes to avoid affecting other projects
+        # docker compose down -v already handles project volumes; skip global prune
+        print("[CLEAN] Docker project volumes cleaned via compose down")
     except Exception as e:
-        print(f"[WARNING] Failed to prune Docker volumes: {e}")
+        print(f"[WARNING] Failed to list Docker volumes: {e}")
 
-    # Prune Docker networks
+    # Remove project-scoped Docker networks (dangling only)
     try:
         subprocess.run(
-            ["docker", "network", "prune", "-f"],
+            ["docker", "network", "prune", "-f", "--filter", "label=com.docker.compose.project"],
             capture_output=True,
             check=False,
         )
-        print("[CLEAN] Docker networks pruned")
+        print("[CLEAN] Docker project networks pruned")
     except Exception as e:
         print(f"[WARNING] Failed to prune Docker networks: {e}")
 

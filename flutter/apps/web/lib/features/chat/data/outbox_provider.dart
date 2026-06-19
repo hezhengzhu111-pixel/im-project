@@ -6,8 +6,8 @@ import 'message_api_provider.dart';
 import 'message_outbox.dart';
 import 'web_outbox_port.dart';
 
-/// Provider for the message outbox
-final messageOutboxProvider = Provider<MessageOutbox>((ref) {
+/// Provider for the message outbox (async initialization)
+final messageOutboxProvider = FutureProvider<MessageOutbox>((ref) async {
   final messageApi = ref.watch(messageApiProvider);
 
   final outbox = MessageOutbox(
@@ -16,8 +16,7 @@ final messageOutboxProvider = Provider<MessageOutbox>((ref) {
     isOnline: () => ref.read(networkStatusProvider).isOnline,
   );
 
-  // Initialize the outbox
-  outbox.initialize();
+  await outbox.initialize();
 
   // Listen for network restoration
   ref.listen(networkStatusProvider, (prev, next) {
@@ -32,19 +31,25 @@ final messageOutboxProvider = Provider<MessageOutbox>((ref) {
 
 /// Provider for pending message count
 final outboxPendingCountProvider = FutureProvider<int>((ref) async {
-  final outbox = ref.watch(messageOutboxProvider);
+  final outboxAsync = ref.watch(messageOutboxProvider);
+  final outbox = outboxAsync.valueOrNull;
+  if (outbox == null) return 0;
   return outbox.getPendingCount();
 });
 
 /// Provider for failed message count
 final outboxFailedCountProvider = FutureProvider<int>((ref) async {
-  final outbox = ref.watch(messageOutboxProvider);
+  final outboxAsync = ref.watch(messageOutboxProvider);
+  final outbox = outboxAsync.valueOrNull;
+  if (outbox == null) return 0;
   return outbox.getFailedCount();
 });
 
 /// Provider for outbox events stream
 final outboxEventsProvider = StreamProvider<OutboxEvent>((ref) {
-  final outbox = ref.watch(messageOutboxProvider);
+  final outboxAsync = ref.watch(messageOutboxProvider);
+  final outbox = outboxAsync.valueOrNull;
+  if (outbox == null) return const Stream.empty();
   return outbox.events;
 });
 

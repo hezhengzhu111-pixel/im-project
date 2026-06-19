@@ -7,6 +7,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Local TTL-based nonce cache for replay attack prevention.
  * Nonce TTL equals the max clock skew window (default 5 minutes).
+ *
+ * Note: This is a local in-memory cache. Multi-instance deployments
+ * should use a distributed cache (e.g. Redis SET NX PX) to prevent
+ * cross-instance replay attacks.
  */
 @Component
 public class NonceCache {
@@ -18,6 +22,8 @@ public class NonceCache {
 
     /**
      * Try to claim a nonce. Returns true if the nonce is fresh (not seen within TTL).
+     * When an expired nonce is reclaimed, its timestamp is atomically updated to
+     * prevent immediate reuse within the same TTL window.
      */
     public boolean tryClaim(String nonce, long ttlMs) {
         cleanup(ttlMs);
@@ -26,7 +32,17 @@ public class NonceCache {
         if (prev == null) {
             return true;
         }
-        return (now - prev) > ttlMs;
+        if ((now - prev) > ttlMs) {
+            // Nonce expired — atomically replace with fresh timestamp
+            boolean reclaimed = seen.compute(nonce, (key, existing) -> {
+                if (existing == null || (now - existing) > ttlMs) {
+                    return now;
+                }
+                return existing;
+            }) == now;
+            return reclaimed;
+        }
+        return false;
     }
 
     private void cleanup(long ttlMs) {

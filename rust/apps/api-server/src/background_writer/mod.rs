@@ -1,4 +1,4 @@
-﻿pub mod background_db;
+pub mod background_db;
 pub(crate) use background_db::*;
 
 use crate::background_task;
@@ -82,6 +82,10 @@ fn connect_and_consume(
         message_batch: Vec::new(),
         private_read_batch: Vec::new(),
         group_read_batch: Vec::new(),
+        message_ack_ids: Vec::new(),
+        private_read_ack_ids: Vec::new(),
+        group_read_ack_ids: Vec::new(),
+        flushed_ack_ids: Vec::new(),
         last_flush: Instant::now(),
     };
     redis_streams::ensure_group(&mut processor.event_redis, &stream_key, &group_id)?;
@@ -95,16 +99,40 @@ fn connect_and_consume(
             processor.config.writer_batch_size,
             processor.config.stream_consumer_block_ms,
         )?;
-        let mut ack_ids = Vec::with_capacity(events.len());
+        let mut immediate_ack_ids = Vec::with_capacity(events.len());
         for event_message in events {
             match serde_json::from_str::<ImEvent>(&event_message.payload) {
-                Ok(event) => handle.block_on(processor.process(event))?,
+                Ok(event) => {
+                    let batched = handle.block_on(processor.process(event, event_message.stream_id.clone()))?;
+                    if batched {
+                        // ACK deferred until successful flush to DB
+                    } else {
+                        immediate_ack_ids.push(event_message.stream_id);
+                    }
+                }
                 Err(error) => tracing::warn!(error = %error, "skip invalid event json"),
             }
-            ack_ids.push(event_message.stream_id);
         }
         handle.block_on(processor.flush_if_due())?;
-        redis_streams::ack(&mut processor.event_redis, &stream_key, &group_id, &ack_ids)?;
+        // ACK immediately-processed events (recalls/deletes)
+        if !immediate_ack_ids.is_empty() {
+            redis_streams::ack(
+                &mut processor.event_redis,
+                &stream_key,
+                &group_id,
+                &immediate_ack_ids,
+            )?;
+        }
+        // ACK events whose batches were successfully flushed to DB
+        let flushed_ack_ids = processor.take_flushed_ack_ids();
+        if !flushed_ack_ids.is_empty() {
+            redis_streams::ack(
+                &mut processor.event_redis,
+                &stream_key,
+                &group_id,
+                &flushed_ack_ids,
+            )?;
+        }
     }
 }
 
@@ -116,6 +144,10 @@ struct Processor {
     message_batch: Vec<PendingMessageWrite>,
     private_read_batch: Vec<PrivateReadCursor>,
     group_read_batch: Vec<GroupReadCursor>,
+    message_ack_ids: Vec<String>,
+    private_read_ack_ids: Vec<String>,
+    group_read_ack_ids: Vec<String>,
+    flushed_ack_ids: Vec<String>,
     last_flush: Instant,
 }
 
@@ -132,7 +164,12 @@ fn connect_hot_redis_connections(urls: &[String]) -> anyhow::Result<Vec<redis::C
 }
 
 impl Processor {
-    async fn process(&mut self, event: ImEvent) -> anyhow::Result<()> {
+    fn take_flushed_ack_ids(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.flushed_ack_ids)
+    }
+
+    /// Returns `true` if the event was batched (ACK deferred until flush).
+    async fn process(&mut self, event: ImEvent, stream_id: String) -> anyhow::Result<bool> {
         match event.event_type {
             ImEventType::MessageCreated => {
                 if let Some(message) = event.payload {
@@ -140,20 +177,23 @@ impl Processor {
                         message,
                         device_envelopes: event.device_envelopes.unwrap_or_default(),
                     });
+                    self.message_ack_ids.push(stream_id);
                     if self.message_batch.len() >= self.config.writer_batch_size
                         && self.flush_messages().await?
                     {
                         self.last_flush = Instant::now();
                     }
+                    return Ok(true);
                 }
             }
             ImEventType::MessageRead => {
-                self.enqueue_read(event);
+                self.enqueue_read(event, stream_id);
                 if self.read_batch_len() >= self.config.writer_batch_size
                     && self.flush_read_cursors().await?
                 {
                     self.last_flush = Instant::now();
                 }
+                return Ok(true);
             }
             ImEventType::MessageRecalled | ImEventType::MessageDeleted => {
                 self.flush_pending().await?;
@@ -162,7 +202,7 @@ impl Processor {
             ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {}
             ImEventType::MomentNew | ImEventType::MomentLike | ImEventType::MomentComment => {}
         }
-        Ok(())
+        Ok(false)
     }
 
     async fn flush_if_due(&mut self) -> anyhow::Result<()> {
@@ -220,6 +260,7 @@ impl Processor {
         insert_message_device_envelopes(&mut tx, &device_envelopes).await?;
         tx.commit().await?;
         self.message_batch.clear();
+        self.flushed_ack_ids.append(&mut self.message_ack_ids);
         tracing::debug!(count, "batch inserted messages");
         observability::writer_flush(
             "messages",
@@ -283,6 +324,8 @@ impl Processor {
         tx.commit().await?;
         self.private_read_batch.clear();
         self.group_read_batch.clear();
+        self.flushed_ack_ids.append(&mut self.private_read_ack_ids);
+        self.flushed_ack_ids.append(&mut self.group_read_ack_ids);
         tracing::debug!(
             private_count = private.len(),
             group_count = group.len(),
@@ -322,7 +365,7 @@ impl Processor {
         Ok(())
     }
 
-    fn enqueue_read(&mut self, event: ImEvent) {
+    fn enqueue_read(&mut self, event: ImEvent, stream_id: String) {
         let Some(receipt) = event.read_receipt else {
             return;
         };
@@ -340,6 +383,7 @@ impl Processor {
                 last_read_seq: receipt.last_read_seq.unwrap_or_default(),
                 last_read_message_id: receipt.last_read_message_id.as_deref().and_then(parse_i64),
             });
+            self.group_read_ack_ids.push(stream_id);
             return;
         }
 
@@ -358,6 +402,7 @@ impl Processor {
             peer_user_id: peer_id,
             read_at,
         });
+        self.private_read_ack_ids.push(stream_id);
     }
 }
 

@@ -198,7 +198,7 @@ class MessageOutbox {
   static const _maxRetries = 5;
   static const _retryDelay = Duration(seconds: 5);
 
-  Database? _db;
+  Future<Database>? _dbFuture;
   final _eventsController = StreamController<OutboxEvent>.broadcast();
   Timer? _retryTimer;
   bool _isRetrying = false;
@@ -207,9 +207,8 @@ class MessageOutbox {
   /// Stream of outbox events
   Stream<OutboxEvent> get events => _eventsController.stream;
 
-  /// Initialize the outbox database
-  Future<void> initialize() async {
-    _db = await _idbFactory.open(
+  Future<Database> _db() {
+    return _dbFuture ??= _idbFactory.open(
       _dbName,
       version: _dbVersion,
       onUpgradeNeeded: (e) {
@@ -219,7 +218,11 @@ class MessageOutbox {
         }
       },
     );
+  }
 
+  /// Initialize the outbox database
+  Future<void> initialize() async {
+    await _db();
     // Process any pending messages on startup
     await _processPendingMessages();
   }
@@ -291,28 +294,32 @@ class MessageOutbox {
   }
 
   Future<void> _saveToDb(OutboxMessage message) async {
-    final txn = _db!.transaction(_storeName, idbModeReadWrite);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadWrite);
     final store = txn.objectStore(_storeName);
     await store.put(message.toMap());
     await txn.completed;
   }
 
   Future<void> _updateInDb(OutboxMessage message) async {
-    final txn = _db!.transaction(_storeName, idbModeReadWrite);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadWrite);
     final store = txn.objectStore(_storeName);
     await store.put(message.toMap());
     await txn.completed;
   }
 
   Future<void> _deleteFromDb(String id) async {
-    final txn = _db!.transaction(_storeName, idbModeReadWrite);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadWrite);
     final store = txn.objectStore(_storeName);
     await store.delete(id);
     await txn.completed;
   }
 
   Future<OutboxMessage?> _getByClientMessageId(String clientMessageId) async {
-    final txn = _db!.transaction(_storeName, idbModeReadOnly);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadOnly);
     final store = txn.objectStore(_storeName);
     OutboxMessage? result;
 
@@ -329,7 +336,8 @@ class MessageOutbox {
   }
 
   Future<List<OutboxMessage>> _getPendingMessages() async {
-    final txn = _db!.transaction(_storeName, idbModeReadOnly);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadOnly);
     final store = txn.objectStore(_storeName);
     final results = <OutboxMessage>[];
 
@@ -485,7 +493,8 @@ class MessageOutbox {
 
   /// Retry all failed messages
   Future<void> retryAllFailed() async {
-    final txn = _db!.transaction(_storeName, idbModeReadWrite);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadWrite);
     final store = txn.objectStore(_storeName);
 
     await store.openCursor(autoAdvance: true).forEach((cursor) {
@@ -516,7 +525,8 @@ class MessageOutbox {
   }
 
   Future<int> getFailedCount() async {
-    final txn = _db!.transaction(_storeName, idbModeReadOnly);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadOnly);
     final store = txn.objectStore(_storeName);
     var count = 0;
 
@@ -531,7 +541,8 @@ class MessageOutbox {
   }
 
   Future<void> clearAll() async {
-    final txn = _db!.transaction(_storeName, idbModeReadWrite);
+    final db = await _db();
+    final txn = db.transaction(_storeName, idbModeReadWrite);
     final store = txn.objectStore(_storeName);
     await store.clear();
     await txn.completed;

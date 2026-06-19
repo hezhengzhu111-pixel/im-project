@@ -1,4 +1,4 @@
-﻿use super::{FNV_OFFSET_BASIS, FNV_PRIME};
+use super::{FNV_OFFSET_BASIS, FNV_PRIME};
 use crate::error::AppError;
 use im_common::event::{ImEvent, ImEventType, MessageDto};
 use im_common::{keys, time};
@@ -80,7 +80,7 @@ pub(crate) async fn write_private_message_hot(
     let client_key = message
         .client_message_id
         .as_deref()
-        .map(|client_id| keys::client_message_key(sender_id, client_id))
+        .map(|client_id| keys::client_message_key(sender_id, conversation_id, client_id))
         .unwrap_or_else(|| format!("im:client:none:{message_id}"));
     let pending_member = pending_event_member(&event.event_id, conversation_id);
     let script = Script::new(
@@ -155,7 +155,7 @@ pub(crate) async fn write_group_message_hot(
     let client_key = message
         .client_message_id
         .as_deref()
-        .map(|client_id| keys::client_message_key(sender_id, client_id))
+        .map(|client_id| keys::client_message_key(sender_id, conversation_id, client_id))
         .unwrap_or_else(|| format!("im:client:none:{message_id}"));
     let pending_member = pending_event_member(&event.event_id, conversation_id);
     let script = Script::new(

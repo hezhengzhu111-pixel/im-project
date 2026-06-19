@@ -1,4 +1,4 @@
-﻿use crate::auth::{identity_from_headers, is_gateway_whitelist};
+use crate::auth::{identity_from_headers, is_gateway_whitelist};
 use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::route;
@@ -12,7 +12,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use im_common::auth::{sign_gateway_headers, Identity};
-use redis::{aio::ConnectionManager, AsyncCommands};
+use redis::aio::ConnectionManager;
 use reqwest::Client;
 use serde_json::json;
 use sqlx::MySqlPool;
@@ -118,9 +118,12 @@ async fn identity_from_ws_ticket(
 
     let payload: Option<String> = {
         let mut redis = state.redis_manager.clone();
-        redis
-            .get(format!("{}{}", WS_TICKET_KEY_PREFIX, ticket))
-            .await?
+        redis::Script::new(
+            "local payload = redis.call('GET', KEYS[1]); if not payload then return nil end; redis.call('DEL', KEYS[1]); return payload",
+        )
+        .key(format!("{}{}", WS_TICKET_KEY_PREFIX, ticket))
+        .invoke_async(&mut redis)
+        .await?
     };
     let Some(payload) = payload else {
         return Err(AppError::Unauthorized(
