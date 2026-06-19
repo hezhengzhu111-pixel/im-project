@@ -12,7 +12,7 @@ services:
 
 # 构建配置
 build:
-  docker: false
+  docker: true
   pull: false
   parallel: true
   profile: debug
