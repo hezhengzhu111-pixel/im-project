@@ -34,10 +34,10 @@ Future<void> main() async {
   // Build config from compile-time environment variables (same defaults as
   // appConfigProvider) so we can construct web adapters before the
   // ProviderScope is created.
-  // 使用相对路径，通过 nginx 代理访问 API
+  // API端点已包含 /api 前缀，baseUrl 设为空字符串避免重复
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: '/api',
+    defaultValue: '',
   );
   const wsBase = String.fromEnvironment(
     'WS_BASE_URL',
