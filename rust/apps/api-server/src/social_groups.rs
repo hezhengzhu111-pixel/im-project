@@ -243,19 +243,11 @@ pub(crate) async fn leave_group(
     .execute(&mut *tx)
     .await?;
 
-    // 清理该用户相关的 sender keys（作为发送者和接收者）
+    // 清理该用户作为发送者的 sender keys；作为接收者的记录由 epoch 轮换失效，
+    // 避免破坏其他成员的状态。
     sqlx::query(
         "DELETE FROM service_user_service_db.e2ee_sender_keys \
          WHERE group_id = ? AND sender_id = ?",
-    )
-    .bind(group_id)
-    .bind(identity.user_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "DELETE FROM service_user_service_db.e2ee_sender_keys \
-         WHERE group_id = ? AND recipient_id = ?",
     )
     .bind(group_id)
     .bind(identity.user_id)

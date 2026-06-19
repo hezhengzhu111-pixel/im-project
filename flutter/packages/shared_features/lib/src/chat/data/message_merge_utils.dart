@@ -11,41 +11,20 @@ List<Message> mergeMessagesChronologically(
   List<Message> existing,
   List<Message> incoming,
 ) {
-  // Build a map from canonical keys to Message objects.
-  // Canonical key is the server id if available, otherwise clientMessageId.
-  final merged = <String, Message>{};
-  // Track which keys point to the same logical message for deduplication.
-  final keyToCanonical = <String, String>{};
-
-  // Add existing messages first.
-  for (final msg in existing) {
-    _addMessageToMap(merged, keyToCanonical, msg);
-  }
-
-  // Merge incoming messages.
-  for (final msg in incoming) {
-    final canonicalKey = _findCanonicalKey(merged, keyToCanonical, msg);
-    if (canonicalKey != null && merged.containsKey(canonicalKey)) {
-      // Merge with existing message.
-      final existingMsg = merged[canonicalKey]!;
-      final mergedMsg = _mergeTwoMessages(existingMsg, msg);
-      // Remove old keys and add merged message with fresh keys.
-      _removeAllKeysForMessage(merged, keyToCanonical, existingMsg);
-      _addMessageToMap(merged, keyToCanonical, mergedMsg);
-    } else {
-      // New message, add it.
-      _addMessageToMap(merged, keyToCanonical, msg);
-    }
-  }
-
-  // Convert to list, deduplicate by object identity, and sort by sendTime.
-  final seen = <Message>{};
   final result = <Message>[];
-  for (final msg in merged.values) {
-    if (seen.add(msg)) {
+  for (final msg in [...existing, ...incoming]) {
+    final index = result.indexWhere((candidate) {
+      return _sameLogicalMessage(candidate, msg) ||
+          _looksLikeLocalAck(candidate, msg) ||
+          _looksLikeLocalAck(msg, candidate);
+    });
+    if (index == -1) {
       result.add(msg);
+    } else {
+      result[index] = _mergeTwoMessages(result[index], msg);
     }
   }
+
   result.sort((a, b) {
     final timeA = DateTime.tryParse(a.sendTime) ?? DateTime(2000);
     final timeB = DateTime.tryParse(b.sendTime) ?? DateTime(2000);
@@ -55,79 +34,53 @@ List<Message> mergeMessagesChronologically(
   return result;
 }
 
-/// Finds the canonical key for a message, or null if it's a new message.
-String? _findCanonicalKey(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  // Check by server id first.
-  if (msg.id.isNotEmpty && !msg.id.startsWith('local_')) {
-    if (keyToCanonical.containsKey(msg.id)) {
-      return keyToCanonical[msg.id];
-    }
-    if (merged.containsKey(msg.id)) {
-      return msg.id;
-    }
-  }
-
-  // Check by clientMessageId.
-  if (msg.clientMessageId != null && msg.clientMessageId!.isNotEmpty) {
-    if (keyToCanonical.containsKey(msg.clientMessageId!)) {
-      return keyToCanonical[msg.clientMessageId!];
-    }
-    if (merged.containsKey(msg.clientMessageId!)) {
-      return msg.clientMessageId;
-    }
-  }
-
-  return null;
+bool _sameLogicalMessage(Message left, Message right) {
+  final leftKeys = _messageIdentityKeys(left);
+  if (leftKeys.isEmpty) return false;
+  return _messageIdentityKeys(right).any(leftKeys.contains);
 }
 
-/// Adds a message to the map with all its keys.
-void _addMessageToMap(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  // Use server id as canonical key if available, otherwise clientMessageId.
-  final canonicalKey = (msg.id.isNotEmpty && !msg.id.startsWith('local_'))
-      ? msg.id
-      : (msg.clientMessageId ?? msg.id);
-
-  // Add under server id.
+Set<String> _messageIdentityKeys(Message msg) {
+  final keys = <String>{};
   if (msg.id.isNotEmpty) {
-    merged[msg.id] = msg;
-    keyToCanonical[msg.id] = canonicalKey;
+    keys.add(msg.id);
   }
-
-  // Add under clientMessageId.
-  if (msg.clientMessageId != null && msg.clientMessageId!.isNotEmpty) {
-    merged[msg.clientMessageId!] = msg;
-    keyToCanonical[msg.clientMessageId!] = canonicalKey;
+  final messageId = msg.messageId?.trim();
+  if (messageId != null && messageId.isNotEmpty) {
+    keys.add(messageId);
   }
+  final clientMessageId = msg.clientMessageId?.trim();
+  if (clientMessageId != null && clientMessageId.isNotEmpty) {
+    keys.add(clientMessageId);
+  }
+  return keys;
 }
 
-/// Removes all keys that pointed to a message.
-void _removeAllKeysForMessage(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  final keysToRemove = <String>[];
+bool _looksLikeLocalAck(Message local, Message ack) {
+  if (!_isLocalOrPending(local) || _isLocalOrPending(ack)) return false;
+  if (local.senderId != ack.senderId) return false;
+  if (local.isGroupChat != ack.isGroupChat) return false;
+  if (local.messageType != ack.messageType) return false;
+  if ((local.groupId ?? '') != (ack.groupId ?? '')) return false;
+  if ((local.receiverId ?? '') != (ack.receiverId ?? '')) return false;
+  if (local.content != ack.content) return false;
+  if ((local.mediaUrl ?? '') != (ack.mediaUrl ?? '')) return false;
+  if ((local.mediaName ?? '') != (ack.mediaName ?? '')) return false;
+  if ((local.thumbnailUrl ?? '') != (ack.thumbnailUrl ?? '')) return false;
+  if (local.mediaSize != ack.mediaSize) return false;
+  if (local.duration != ack.duration) return false;
 
-  // Find all keys that point to this message.
-  for (final entry in keyToCanonical.entries) {
-    if (entry.value == msg.id || entry.value == msg.clientMessageId) {
-      keysToRemove.add(entry.key);
-    }
-  }
+  final localTime = DateTime.tryParse(local.sendTime);
+  final ackTime = DateTime.tryParse(ack.sendTime);
+  if (localTime == null || ackTime == null) return false;
+  return ackTime.difference(localTime).abs() <= const Duration(minutes: 2);
+}
 
-  // Remove them.
-  for (final key in keysToRemove) {
-    merged.remove(key);
-    keyToCanonical.remove(key);
-  }
+bool _isLocalOrPending(Message msg) {
+  final status = msg.status.toUpperCase();
+  return msg.id.startsWith('local_') ||
+      status == 'SENDING' ||
+      status == 'PENDING';
 }
 
 /// Merges two messages, preferring non-empty values from the incoming message.

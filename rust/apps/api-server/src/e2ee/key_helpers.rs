@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::error::AppError;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -58,6 +58,10 @@ pub(crate) fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError>
     )?;
 
     validate_pre_key_entries(&req.one_time_pre_keys)?;
+    validate_one_time_pre_key_signatures(
+        &req.one_time_pre_keys,
+        &req.one_time_pre_key_signatures,
+    )?;
 
     Ok(())
 }
@@ -90,6 +94,54 @@ pub(crate) fn validate_pre_key_entries(entries: &[PreKeyEntry]) -> Result<(), Ap
         )?;
     }
     Ok(())
+}
+
+/// 校验每个 OTK 都有且仅有一个对应签名，且签名为合法 Ed25519 64 字节 Base64。
+///
+/// 返回 id -> signature 的映射，供 handler 写入数据库。
+pub(crate) fn validate_one_time_pre_key_signatures(
+    keys: &[PreKeyEntry],
+    signatures: &[PreKeySignatureEntry],
+) -> Result<HashMap<i32, String>, AppError> {
+    if signatures.len() != keys.len() {
+        return Err(AppError::BadRequest(
+            "one_time_pre_key_signatures count mismatch".to_string(),
+        ));
+    }
+
+    let mut seen_ids: HashSet<i32> = HashSet::with_capacity(signatures.len());
+    let mut by_id: HashMap<i32, String> = HashMap::with_capacity(signatures.len());
+    for sig in signatures {
+        if sig.id < 0 {
+            return Err(AppError::BadRequest(format!(
+                "invalid one_time_pre_key signature id={}",
+                sig.id
+            )));
+        }
+        if !seen_ids.insert(sig.id) {
+            return Err(AppError::BadRequest(format!(
+                "duplicate one_time_pre_key signature id={}",
+                sig.id
+            )));
+        }
+        decode_base64_exact_len(
+            &format!("one_time_pre_key signature id={}", sig.id),
+            &sig.signature,
+            ED25519_SIGNATURE_BYTES,
+        )?;
+        by_id.insert(sig.id, sig.signature.clone());
+    }
+
+    for entry in keys {
+        if !by_id.contains_key(&entry.id) {
+            return Err(AppError::BadRequest(format!(
+                "missing signature for one_time_pre_key id={}",
+                entry.id
+            )));
+        }
+    }
+
+    Ok(by_id)
 }
 
 pub(crate) fn format_datetime(dt: chrono::NaiveDateTime) -> String {

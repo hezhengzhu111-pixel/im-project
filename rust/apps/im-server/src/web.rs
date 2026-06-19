@@ -1,3 +1,4 @@
+use crate::config::AppConfig;
 use crate::dto::{
     ApiResponse, HealthResponse, InternalPushBatchRequest, InternalPushBatchResult,
     InternalPushRequest, ReadyResponse,
@@ -178,7 +179,7 @@ async fn websocket(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    let ticket = match resolve_ticket(&headers, &query, &service) {
+    let ticket = match resolve_ticket(&headers, &query, service.config()) {
         TicketResolution::Ticket(ticket) => ticket,
         TicketResolution::RejectedQueryTicket => {
             tracing::warn!(
@@ -247,7 +248,7 @@ async fn websocket(
     let mut response = ws
         .on_upgrade(move |socket| handle_socket(socket, service_for_socket, user_id, username))
         .into_response();
-    if let Ok(cookie) = clear_ws_ticket_cookie(&headers, &service) {
+    if let Ok(cookie) = clear_ws_ticket_cookie(&headers, service.config()) {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
     response
@@ -401,6 +402,7 @@ fn send_ws_message(sender: &mpsc::Sender<Message>, message: Message, context: &'
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum TicketResolution {
     Ticket(String),
     RejectedQueryTicket,
@@ -410,16 +412,16 @@ enum TicketResolution {
 fn resolve_ticket(
     headers: &HeaderMap,
     query: &HashMap<String, String>,
-    service: &ImService,
+    config: &AppConfig,
 ) -> TicketResolution {
-    if let Some(ticket) = cookie_value(headers, &service.config().ws_ticket_cookie_name) {
+    if let Some(ticket) = cookie_value(headers, &config.ws_ticket_cookie_name) {
         return TicketResolution::Ticket(ticket);
     }
     let query_ticket = query
         .get("ticket")
         .map(|value| value.trim())
         .filter(|value| !value.is_empty());
-    if query_ticket.is_some() && !service.config().allow_query_ticket {
+    if query_ticket.is_some() && !config.allow_query_ticket {
         return TicketResolution::RejectedQueryTicket;
     }
     query_ticket
@@ -439,15 +441,15 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 
 fn clear_ws_ticket_cookie(
     headers: &HeaderMap,
-    service: &ImService,
+    config: &AppConfig,
 ) -> Result<HeaderValue, AppError> {
-    let secure = resolve_secure(headers, &service.config().ws_ticket_cookie_secure);
+    let secure = resolve_secure(headers, &config.ws_ticket_cookie_secure);
     let secure_attr = if secure { "; Secure" } else { "" };
     HeaderValue::from_str(&format!(
         "{}=; Max-Age=0; Path={}; HttpOnly; SameSite={}{}",
-        service.config().ws_ticket_cookie_name,
-        normalize_cookie_path(&service.config().ws_ticket_cookie_path),
-        normalize_same_site(&service.config().ws_ticket_cookie_same_site),
+        config.ws_ticket_cookie_name,
+        normalize_cookie_path(&config.ws_ticket_cookie_path),
+        normalize_same_site(&config.ws_ticket_cookie_same_site),
         secure_attr
     ))
     .map_err(|err| AppError::BadRequest(format!("invalid cookie header: {}", err)))
@@ -515,5 +517,152 @@ mod tests {
     #[allow(dead_code)]
     fn _service_for_type_check(config: Arc<AppConfig>, redis: ConnectionManager) -> ImService {
         ImService::new(config, redis)
+    }
+}
+
+#[cfg(test)]
+mod web_extra_tests {
+    use super::*;
+    use crate::config::AppConfig;
+    use axum::http::HeaderValue;
+    use std::sync::Arc;
+
+    fn dummy_config() -> Arc<AppConfig> {
+        Arc::new(AppConfig {
+            port: 8083,
+            route_redis_url: "redis://127.0.0.1:6379/0".to_string(),
+            auth_service_url: "http://127.0.0.1:8084".to_string(),
+            internal_secret: "im-internal-secret-im-internal-secret-im-internal-secret-im"
+                .to_string(),
+            internal_max_skew_ms: 300_000,
+            gateway_user_id_header: "X-User-Id".to_string(),
+            gateway_username_header: "X-Username".to_string(),
+            gateway_auth_secret:
+                "im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret".to_string(),
+            gateway_auth_max_skew_ms: 300_000,
+            instance_id: "test:8083".to_string(),
+            internal_http_url: "http://test:8083".to_string(),
+            internal_ws_url: "ws://test:8083".to_string(),
+            server_registry_key_prefix: "im:server:".to_string(),
+            server_lease_ttl_seconds: 15,
+            server_renew_interval_ms: 3_000,
+            route_users_key: "im:route:users".to_string(),
+            route_lease_ttl_ms: 120_000,
+            route_renew_interval_ms: 30_000,
+            session_heartbeat_timeout_ms: 90_000,
+            session_cleanup_interval_ms: 30_000,
+            presence_channel: "im:presence:broadcast".to_string(),
+            allow_query_ticket: true,
+            ws_ticket_cookie_name: "IM_WS_TICKET".to_string(),
+            ws_ticket_cookie_path: "/websocket".to_string(),
+            ws_ticket_cookie_same_site: "Lax".to_string(),
+            ws_ticket_cookie_secure: "auto".to_string(),
+            max_payload_length: 8 * 1024,
+            invalid_payload_threshold: 3,
+            websocket_outbound_queue_size: 1024,
+        })
+    }
+
+    fn disabled_query_ticket_config() -> Arc<AppConfig> {
+        let mut config = (*dummy_config()).clone();
+        config.allow_query_ticket = false;
+        Arc::new(config)
+    }
+
+    #[test]
+    fn resolve_ticket_prefers_cookie() {
+        let config = dummy_config();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("IM_WS_TICKET=cookie-ticket"),
+        );
+        let mut query = HashMap::new();
+        query.insert("ticket".to_string(), "query-ticket".to_string());
+        assert_eq!(
+            resolve_ticket(&headers, &query, &config),
+            TicketResolution::Ticket("cookie-ticket".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_ticket_allows_query_ticket_when_enabled() {
+        let config = dummy_config();
+        let headers = HeaderMap::new();
+        let mut query = HashMap::new();
+        query.insert("ticket".to_string(), "query-ticket".to_string());
+        assert_eq!(
+            resolve_ticket(&headers, &query, &config),
+            TicketResolution::Ticket("query-ticket".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_ticket_rejects_query_ticket_when_disabled() {
+        let config = disabled_query_ticket_config();
+        let headers = HeaderMap::new();
+        let mut query = HashMap::new();
+        query.insert("ticket".to_string(), "query-ticket".to_string());
+        assert_eq!(
+            resolve_ticket(&headers, &query, &config),
+            TicketResolution::RejectedQueryTicket
+        );
+    }
+
+    #[test]
+    fn resolve_ticket_missing_when_no_ticket() {
+        let config = dummy_config();
+        assert_eq!(
+            resolve_ticket(&HeaderMap::new(), &HashMap::new(), &config),
+            TicketResolution::Missing
+        );
+    }
+
+    #[test]
+    fn resolve_ticket_ignores_empty_query_ticket() {
+        let config = dummy_config();
+        let headers = HeaderMap::new();
+        let mut query = HashMap::new();
+        query.insert("ticket".to_string(), "   ".to_string());
+        assert_eq!(
+            resolve_ticket(&headers, &query, &config),
+            TicketResolution::Missing
+        );
+    }
+
+    #[test]
+    fn clear_ws_ticket_cookie_builds_header() {
+        let config = dummy_config();
+        let cookie = clear_ws_ticket_cookie(&HeaderMap::new(), &config).unwrap();
+        let value = cookie.to_str().unwrap();
+        assert!(value.starts_with("IM_WS_TICKET=; Max-Age=0"));
+        assert!(value.contains("Path=/websocket"));
+        assert!(value.contains("HttpOnly"));
+        assert!(value.contains("SameSite=Lax"));
+    }
+
+    #[test]
+    fn clear_ws_ticket_cookie_adds_secure_for_https() {
+        let config = dummy_config();
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-Proto", HeaderValue::from_static("https"));
+        let cookie = clear_ws_ticket_cookie(&headers, &config).unwrap();
+        assert!(cookie.to_str().unwrap().contains("Secure"));
+    }
+
+    #[test]
+    fn normalize_cookie_path_keeps_leading_slash() {
+        assert_eq!(normalize_cookie_path("/custom"), "/custom");
+    }
+
+    #[test]
+    fn normalize_cookie_path_defaults_missing_slash() {
+        assert_eq!(normalize_cookie_path("websocket"), "/websocket");
+    }
+
+    #[test]
+    fn normalize_same_site_defaults_to_lax() {
+        assert_eq!(normalize_same_site(""), "Lax");
+        assert_eq!(normalize_same_site("  "), "Lax");
     }
 }

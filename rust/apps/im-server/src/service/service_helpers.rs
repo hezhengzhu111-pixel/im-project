@@ -85,12 +85,13 @@ pub(crate) fn spawn_detached(future: impl Future<Output = ()> + Send + 'static) 
 
 #[cfg(test)]
 mod tests {
-    use super::{deliver_envelope_to_sessions, serialize_ws_envelope, SessionEntry};
+    use super::*;
     use axum::extract::ws::Message;
     use serde_json::json;
     use std::error::Error;
-    use std::sync::atomic::AtomicI64;
-    use std::sync::Arc;
+    use std::panic::catch_unwind;
+    use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+    use std::sync::{Arc, RwLock};
     use tokio::sync::{mpsc, watch};
 
     #[test]
@@ -150,5 +151,117 @@ mod tests {
             return Err("all sessions should receive the shared serialized envelope".into());
         }
         Ok(())
+    }
+
+    #[test]
+    fn normalize_id_trims_and_rejects_empty() {
+        assert_eq!(normalize_id("  42  "), Some("42".to_string()));
+        assert_eq!(normalize_id("42"), Some("42".to_string()));
+        assert_eq!(normalize_id(""), None);
+        assert_eq!(normalize_id("   "), None);
+    }
+
+    #[test]
+    fn read_lock_recovers_from_poisoned_write_lock() {
+        let lock = RwLock::new(42);
+        let _ = catch_unwind(|| {
+            let _guard = lock.write().expect("write lock");
+            panic!("intentional poison");
+        });
+        assert_eq!(*read_lock(&lock, "test"), 42);
+    }
+
+    #[test]
+    fn write_lock_recovers_from_poisoned_write_lock() {
+        let lock = RwLock::new("value".to_string());
+        let _ = catch_unwind(|| {
+            let _guard = lock.write().expect("write lock");
+            panic!("intentional poison");
+        });
+        write_lock(&lock, "test").push_str("-recovered");
+        assert_eq!(read_lock(&lock, "test").as_str(), "value-recovered");
+    }
+
+    #[tokio::test]
+    async fn send_close_enqueues_close_frame() {
+        let (sender, mut receiver) = mpsc::channel(2);
+        let (shutdown, _) = watch::channel(false);
+        let entry = Arc::new(SessionEntry {
+            session_id: "s1".to_string(),
+            user_id: "1".to_string(),
+            sender,
+            shutdown,
+            last_heartbeat_ms: AtomicI64::new(0),
+        });
+
+        send_close(&entry);
+
+        assert!(
+            matches!(receiver.recv().await, Some(Message::Close(None))),
+            "close frame should be enqueued"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_close_is_noop_when_receiver_dropped() {
+        let (sender, receiver) = mpsc::channel(2);
+        drop(receiver);
+        let (shutdown, _) = watch::channel(false);
+        let entry = Arc::new(SessionEntry {
+            session_id: "s2".to_string(),
+            user_id: "1".to_string(),
+            sender,
+            shutdown,
+            last_heartbeat_ms: AtomicI64::new(0),
+        });
+
+        send_close(&entry);
+    }
+
+    #[test]
+    fn deliver_envelope_to_empty_sessions_returns_false() {
+        let envelope = serialize_ws_envelope("MESSAGE", &json!({})).expect("envelope");
+        let mut slow = Vec::new();
+        assert!(!deliver_envelope_to_sessions(&[], &envelope, &mut slow));
+        assert!(slow.is_empty());
+    }
+
+    #[tokio::test]
+    async fn deliver_envelope_marks_full_channel_as_slow() {
+        let (sender, _receiver) = mpsc::channel(1);
+        sender
+            .try_send(Message::Text("filler".to_string()))
+            .expect("pre-fill channel");
+        let (shutdown, _) = watch::channel(false);
+        let sessions = vec![Arc::new(SessionEntry {
+            session_id: "slow".to_string(),
+            user_id: "1".to_string(),
+            sender,
+            shutdown,
+            last_heartbeat_ms: AtomicI64::new(0),
+        })];
+        let envelope = serialize_ws_envelope("MESSAGE", &json!({})).expect("envelope");
+        let mut slow = Vec::new();
+
+        assert!(!deliver_envelope_to_sessions(
+            &sessions, &envelope, &mut slow
+        ));
+        assert_eq!(slow, vec!["slow".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn spawn_detached_runs_future() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let flag_moved = flag.clone();
+        spawn_detached(async move {
+            flag_moved.store(true, Ordering::SeqCst);
+        });
+        for _ in 0..50 {
+            if flag.load(Ordering::SeqCst) {
+                break;
+            }
+            sleep(Duration::from_millis(5)).await;
+        }
+        assert!(flag.load(Ordering::SeqCst));
     }
 }

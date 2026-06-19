@@ -108,6 +108,54 @@ void main() {
   });
 
   group('E2eeManager initiator flow', () {
+    test('re-registers when locally cached device is rejected by server',
+        () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'stale-identity-bincode',
+          'signed_pre_key_pair_bincode': 'stale-spk-bincode',
+          'otk_pairs': const [],
+          'public_bundle': {
+            'identity_key': 'stale-identity-public',
+            'signed_pre_key': {'key': 'stale-public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore()
+        ..seedSession(
+          sessionId: 'p_user-a_user-b',
+          stateBase64: 'old-state',
+          localDeviceId: 'stale-device',
+          remoteUserId: 'user-b',
+          remoteDeviceId: 'device-b',
+        );
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({'e2ee_device_id': 'stale-device'}),
+      );
+      final api = _FakeE2eeApi()
+        ..rejectHeartbeatForDeviceIds.add('stale-device');
+      final bridge = _FakeE2eeBridge();
+      final manager = E2eeManager(
+        adapter: bridge,
+        api: api,
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: metaStore,
+        currentUserId: 'user-a',
+      );
+
+      final deviceId = await manager.ensureDeviceRegistered();
+
+      expect(deviceId, isNot('stale-device'));
+      expect(api.heartbeatDeviceIds, ['stale-device']);
+      expect(api.uploadedBundles, hasLength(1));
+      expect(api.uploadedBundles.single['deviceId'], deviceId);
+      expect(keyStore.clearAllCount, 1);
+      expect(sessionStore.clearAllCount, 1);
+      expect(sessionStore.sessions, isEmpty);
+      expect(bridge.generatedKeyBundleCount, 1);
+    });
+
     test('includes senderUserId in pending and server request payloads',
         () async {
       final keyStore = _MemoryKeyStore(
@@ -295,6 +343,7 @@ String _handshakeWithOtkId(int otkId) {
 class _FakeE2eeBridge implements E2eeBridge {
   String? lastLocalOtkPairBase64;
   Map<String, dynamic>? lastDecryptEnvelope;
+  int generatedKeyBundleCount = 0;
 
   @override
   Future<Map<String, dynamic>> createInboundSession({
@@ -365,8 +414,32 @@ class _FakeE2eeBridge implements E2eeBridge {
   }
 
   @override
-  Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount) {
-    throw UnimplementedError();
+  Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount) async {
+    generatedKeyBundleCount++;
+    return {
+      'identity_key_pair_bincode': 'fresh-identity-bincode',
+      'signed_pre_key_pair_bincode': 'fresh-spk-bincode',
+      'otk_pairs': List.generate(
+        otkCount,
+        (index) => {
+          'id': index + 1,
+          'key_pair_bincode': 'fresh-otk-pair-${index + 1}',
+        },
+      ),
+      'public_bundle': {
+        'identity_key': 'fresh-identity-public',
+        'signing_key': 'fresh-signing-public',
+        'signed_pre_key': {'key': 'fresh-public-spk'},
+        'signed_pre_key_signature': 'fresh-spk-signature',
+        'one_time_pre_keys': List.generate(
+          otkCount,
+          (index) => {
+            'id': index + 1,
+            'key': 'fresh-public-otk-${index + 1}',
+          },
+        ),
+      },
+    };
   }
 
   @override
@@ -428,10 +501,14 @@ class _FakeE2eeApi extends E2eeApi {
   final acceptedSessionIds = <String>[];
   final disabledSessionIds = <String>[];
   final heartbeatDeviceIds = <String>[];
+  final rejectHeartbeatForDeviceIds = <String>{};
   final sessionStatuses = <String, String>{};
   final devicesByUser = <String, List<Map<String, dynamic>>>{};
   final bundlesByUserAndDevice = <String, Map<String, dynamic>>{};
   final requestPayloads = <String>[];
+  final uploadedBundles = <Map<String, dynamic>>[];
+  final opkStatuses = <String, Map<String, dynamic>>{};
+  final refillOpkPayloads = <Map<String, dynamic>>[];
 
   @override
   Future<void> acceptEncryption({
@@ -444,11 +521,24 @@ class _FakeE2eeApi extends E2eeApi {
   @override
   Future<void> heartbeatDevice(String deviceId) async {
     heartbeatDeviceIds.add(deviceId);
+    if (rejectHeartbeatForDeviceIds.contains(deviceId)) {
+      throw Exception('status code of 403: device does not belong to user');
+    }
+  }
+
+  @override
+  Future<void> uploadBundle(Map<String, dynamic> bundleData) async {
+    uploadedBundles.add(Map<String, dynamic>.from(bundleData));
   }
 
   @override
   Future<Map<String, dynamic>> getOpkStatus(String deviceId) async {
-    return {'lowWatermark': false, 'count': 100};
+    return opkStatuses[deviceId] ?? {'lowWatermark': false, 'count': 100};
+  }
+
+  @override
+  Future<void> refillOpk(Map<String, dynamic> opkData) async {
+    refillOpkPayloads.add(Map<String, dynamic>.from(opkData));
   }
 
   @override
@@ -506,6 +596,9 @@ class _MemoryKeyStore extends E2eeKeyStore {
   _MemoryKeyStore(this.keyMaterial);
 
   String? keyMaterial;
+  String? deviceId;
+  String? publicBundle;
+  int clearAllCount = 0;
   final consumedOtkIds = <int>[];
 
   @override
@@ -513,6 +606,45 @@ class _MemoryKeyStore extends E2eeKeyStore {
 
   @override
   Future<String?> getKeyMaterial() async => keyMaterial;
+
+  @override
+  Future<void> saveKeyMaterial(String base64Bundle) async {
+    keyMaterial = base64Bundle;
+  }
+
+  @override
+  Future<void> saveDeviceId(String deviceId) async {
+    this.deviceId = deviceId;
+  }
+
+  @override
+  Future<String?> getDeviceId() async => deviceId;
+
+  @override
+  Future<void> savePublicBundle(String bundleJson) async {
+    publicBundle = bundleJson;
+  }
+
+  @override
+  Future<String?> getPublicBundle() async => publicBundle;
+
+  @override
+  Future<void> clearKeyMaterial() async {
+    keyMaterial = null;
+    publicBundle = null;
+  }
+
+  @override
+  Future<void> clearAll() async {
+    clearAllCount++;
+    keyMaterial = null;
+    deviceId = null;
+    publicBundle = null;
+    consumedOtkIds.clear();
+  }
+
+  @override
+  void dispose() {}
 
   @override
   Future<void> markOneTimePreKeyConsumed(int oneTimePreKeyId) async {
@@ -530,6 +662,7 @@ class _MemorySessionStore extends E2eeSessionStore {
   _SavedSession? savedSession;
   final sessions = <String, _SavedSession>{};
   final deletedSessionIds = <String>[];
+  int clearAllCount = 0;
 
   @override
   Future<void> init() async {}
@@ -604,6 +737,16 @@ class _MemorySessionStore extends E2eeSessionStore {
     deletedSessionIds.add(sessionId);
     sessions.remove(sessionId);
   }
+
+  @override
+  Future<void> clearAll() async {
+    clearAllCount++;
+    savedSession = null;
+    sessions.clear();
+  }
+
+  @override
+  void dispose() {}
 }
 
 class _SavedSession {

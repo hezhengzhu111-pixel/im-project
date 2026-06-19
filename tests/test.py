@@ -20,6 +20,22 @@ from workspace import ensure_work_workspace, setup_isolated_env
 
 PYTHON = sys.executable
 TEST_REPORT_DIR = ROOT / "build" / "reports" / "test"
+DOMAINS_DIR = TESTS_DIR / "domains"
+
+# Domain test entry points
+doMAIN_RUNNERS = {
+    "auth": DOMAINS_DIR / "auth" / "runner.py",
+    "user": DOMAINS_DIR / "user" / "runner.py",
+    "message": DOMAINS_DIR / "message_private" / "runner.py",
+    "message-private": DOMAINS_DIR / "message_private" / "runner.py",
+    "message-group": DOMAINS_DIR / "message_group" / "runner.py",
+    "social": DOMAINS_DIR / "social" / "runner.py",
+    "moments": DOMAINS_DIR / "moments" / "runner.py",
+    "file": DOMAINS_DIR / "file" / "runner.py",
+    "push": DOMAINS_DIR / "push" / "runner.py",
+    "e2ee": DOMAINS_DIR / "e2ee" / "runner.py",
+    "websocket": DOMAINS_DIR / "websocket" / "runner.py",
+}
 
 # Use build/work isolated workspaces instead of source directories
 RUST_WORK_DIR = ROOT / "build" / "work" / "rust"
@@ -158,6 +174,21 @@ def rust_bridge_steps(*, continue_on_error: bool = False) -> list[StepResult]:
     return results
 
 
+def domain_steps(command: str, args: argparse.Namespace) -> list[StepResult]:
+    """Run a domain-specific test runner."""
+    runner = doMAIN_RUNNERS.get(command)
+    if runner is None or not runner.exists():
+        return [skip_step(f"Domain {command}", f"runner not found: {runner}", critical=True)]
+    cmd = [PYTHON, str(runner), "--base-url", args.api_base]
+    if args.ws_base:
+        cmd.extend(["--ws-base", args.ws_base])
+    if args.db_url:
+        cmd.extend(["--db-url", args.db_url])
+    if args.continue_on_error:
+        cmd.append("--continue-on-error")
+    return [run_step(f"Domain {command}", cmd, cwd=ROOT, timeout=1800)]
+
+
 def flutter_steps(*, coverage: bool = False, continue_on_error: bool = False) -> list[StepResult]:
     results: list[StepResult] = []
 
@@ -269,14 +300,35 @@ def dispatch(args: argparse.Namespace) -> list[StepResult]:
         return e2ee_rust_steps(continue_on_error=args.continue_on_error)
     if args.command == "rust-bridge":
         return rust_bridge_steps(continue_on_error=args.continue_on_error)
+    if args.command in doMAIN_RUNNERS:
+        return domain_steps(args.command, args)
+    if args.command == "domains":
+        return all_domain_steps(args)
     raise AssertionError(f"unknown command: {args.command}")
+
+
+def all_domain_steps(args: argparse.Namespace) -> list[StepResult]:
+    """Run all domain test runners sequentially."""
+    results: list[StepResult] = []
+    for name in sorted(doMAIN_RUNNERS):
+        results.extend(domain_steps(name, args))
+        if results[-1].status == "FAIL" and not args.continue_on_error:
+            return results
+    return results
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["pr-fast", "main-full", "gray-release", "gray-signoff", "rust", "flutter", "coverage", "manifest", "sit", "e2ee-rust", "rust-bridge"],
+        choices=[
+            "pr-fast", "main-full", "gray-release", "gray-signoff",
+            "rust", "flutter", "coverage", "manifest", "sit",
+            "e2ee-rust", "rust-bridge",
+            "auth", "user", "message", "message-private", "message-group",
+            "social", "moments", "file", "push", "e2ee", "websocket",
+            "domains",
+        ],
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable summary.")
     parser.add_argument(

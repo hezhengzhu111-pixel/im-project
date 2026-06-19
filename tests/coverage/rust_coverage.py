@@ -18,7 +18,8 @@ RUST_ROOT = ROOT / "rust"
 OUT_DIR = ROOT / "build" / "reports" / "coverage" / "rust"
 THRESHOLDS = {
     "overall": 65.0,
-    "api-server": 60.0,
+    "api-server": 65.0,
+    "im-server": 55.0,
     "im-common": 75.0,
     "im-e2ee-core": 85.0,
     "im-e2ee-ffi": 75.0,
@@ -26,6 +27,7 @@ THRESHOLDS = {
 }
 MODULE_MARKERS = {
     "api-server": "apps/api-server/",
+    "im-server": "apps/im-server/",
     "im-common": "crates/im-common/",
     "im-e2ee-core": "crates/im-e2ee-core/",
     "im-e2ee-ffi": "crates/im-e2ee-ffi/",

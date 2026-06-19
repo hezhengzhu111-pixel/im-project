@@ -36,7 +36,7 @@ from runtime_paths import (
 )
 
 SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY")
-DEFAULT_APP_SERVICES = ("im-server", "im-api-server", "im-frontend")
+DEFAULT_APP_SERVICES = ("im-server", "im-api-server", "im-frontend", "im-admin-server")
 OPTIONAL_APP_SERVICES = ("im-spring-ai",)
 ONE_SHOT_SERVICES = frozenset({"im-files-init", "im-db-migrate"})
 DEFAULT_PROJECT_NAME = "sit"
@@ -345,6 +345,7 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.rust_root / "Cargo.toml",
         config.rust_root / "apps" / "api-server" / "Dockerfile",
         config.rust_root / "apps" / "im-server" / "Dockerfile",
+        config.rust_root / "apps" / "admin-server" / "Dockerfile",
         config.backend_root / "spring-ai" / "Dockerfile",
         config.frontend_root / "pubspec.yaml",
         config.frontend_root / "Dockerfile",

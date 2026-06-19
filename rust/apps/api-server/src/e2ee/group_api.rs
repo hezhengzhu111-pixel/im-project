@@ -243,7 +243,8 @@ pub async fn enable_group_encryption(
     .execute(&mut *tx)
     .await?;
 
-    // 批量插入加密后的 Sender Key
+    // 批量插入加密后的 Sender Key。
+    // 计数器采用单向棘轮：重复推送时递增，不重置为 0。
     for entry in &request.sender_keys {
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_sender_keys
@@ -251,7 +252,7 @@ pub async fn enable_group_encryption(
                VALUES (?, ?, ?, ?, ?, ?, 0)
                ON DUPLICATE KEY UPDATE
                  encrypted_sender_key = VALUES(encrypted_sender_key),
-                 counter = 0"#,
+                 counter = counter + 1"#,
         )
         .bind(group_id)
         .bind(identity.user_id)
@@ -343,14 +344,14 @@ pub async fn push_sender_key(
         .await?
         .ok_or_else(|| AppError::Conflict("group e2ee epoch missing".to_string()))?;
 
-    // 插入 Sender Key
+    // 插入 Sender Key；重复推送时计数器递增，不重置。
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_sender_keys
            (group_id, sender_id, device_id, recipient_id, epoch, encrypted_sender_key, counter)
            VALUES (?, ?, ?, ?, ?, ?, 0)
            ON DUPLICATE KEY UPDATE
              encrypted_sender_key = VALUES(encrypted_sender_key),
-             counter = 0"#,
+             counter = counter + 1"#,
     )
     .bind(group_id)
     .bind(identity.user_id)
@@ -382,14 +383,32 @@ pub async fn get_my_sender_keys(
     // 校验当前用户是群组有效成员
     access_control::ensure_group_member(&state.db, group_id, identity.user_id).await?;
 
+    // 只返回当前 epoch 的 Sender Key，使客户端能感知轮换并重新推送。
+    let current_epoch = current_group_epoch(&state.db, group_id).await?;
+    let current_epoch = match current_epoch {
+        Some(epoch) => epoch,
+        None => {
+            // 兼容旧数据：若 epoch 表缺失，则从该群已有 key 中取最大 epoch。
+            sqlx::query_scalar(
+                "SELECT MAX(epoch) FROM service_user_service_db.e2ee_sender_keys WHERE group_id = ?",
+            )
+            .bind(group_id)
+            .fetch_optional(&state.db)
+            .await?
+            .flatten()
+            .unwrap_or(1)
+        }
+    };
+
     let rows = sqlx::query(
         r#"SELECT sender_id, device_id, epoch, encrypted_sender_key, counter
            FROM service_user_service_db.e2ee_sender_keys
-           WHERE group_id = ? AND recipient_id = ?
-           ORDER BY epoch DESC, sender_id ASC"#,
+           WHERE group_id = ? AND recipient_id = ? AND epoch = ?
+           ORDER BY sender_id ASC"#,
     )
     .bind(group_id)
     .bind(identity.user_id)
+    .bind(current_epoch)
     .fetch_all(&state.db)
     .await?;
 
@@ -436,12 +455,19 @@ pub async fn remove_member_sender_keys(
         access_control::ensure_group_admin(&state.db, group_id, identity.user_id).await?;
     }
 
+    // 若群已启用加密，先轮换 epoch：旧 epoch 的 key 不再被返回，
+    // 从而被移除成员无法解密后续消息。
+    let _ =
+        rotate_group_epoch_if_encrypted(&state.db, group_id, identity.user_id, "member_remove")
+            .await?;
+
+    // 仅删除被移除成员作为发送者的记录；其他成员发给该成员的记录保留，
+    // 由 epoch 轮换使其失效。
     sqlx::query(
         "DELETE FROM service_user_service_db.e2ee_sender_keys \
-         WHERE group_id = ? AND (sender_id = ? OR recipient_id = ?)",
+         WHERE group_id = ? AND sender_id = ?",
     )
     .bind(group_id)
-    .bind(user_id)
     .bind(user_id)
     .execute(&state.db)
     .await?;

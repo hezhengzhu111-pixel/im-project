@@ -62,7 +62,10 @@ mod keys_tests {
 
     #[test]
     fn client_message_key_format() {
-        assert_eq!(keys::client_message_key(1, "p_1_2", "abc"), "im:client:1:p_1_2:abc");
+        assert_eq!(
+            keys::client_message_key(1, "p_1_2", "abc"),
+            "im:client:1:p_1_2:abc"
+        );
     }
 
     #[test]

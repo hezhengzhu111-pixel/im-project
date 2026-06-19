@@ -1,6 +1,13 @@
+#![forbid(unsafe_code)]
+
 #[cfg(test)]
 mod tests {
     use crate::auth_api::*;
+    use crate::auth_helpers::internal_signature_headers;
+    use crate::auth_internal::validate_internal_signature;
+    use crate::auth_ws::{
+        invalid_ws_ticket, parse_ws_ticket_payload, resolve_ws_ticket_cookie_secure,
+    };
     use crate::config::AppConfig;
     use axum::http::{header, HeaderMap, HeaderValue};
 
@@ -275,6 +282,131 @@ mod tests {
             !result.remember_me,
             "remember_me should be false by default"
         );
+        Ok(())
+    }
+
+    // ---- WebSocket ticket helpers ----
+
+    #[test]
+    fn parse_ws_ticket_payload_valid() {
+        let result = parse_ws_ticket_payload("42\nalice");
+        assert_eq!(result, Some((42, "alice".to_string())));
+    }
+
+    #[test]
+    fn parse_ws_ticket_payload_missing_delimiter() {
+        assert_eq!(parse_ws_ticket_payload("42"), None);
+    }
+
+    #[test]
+    fn parse_ws_ticket_payload_invalid_user_id() {
+        assert_eq!(parse_ws_ticket_payload("not_a_number\nalice"), None);
+    }
+
+    #[test]
+    fn invalid_ws_ticket_has_expected_shape() {
+        let result = invalid_ws_ticket("ticket is required");
+        assert!(!result.valid);
+        assert_eq!(result.status.as_deref(), Some("INVALID"));
+        assert_eq!(result.error.as_deref(), Some("ticket is required"));
+    }
+
+    #[test]
+    fn resolve_ws_ticket_cookie_secure_true() {
+        let mut config = config_with_secure("true");
+        config.ws_ticket_cookie_secure = "true".to_string();
+        assert!(resolve_ws_ticket_cookie_secure(&config));
+    }
+
+    #[test]
+    fn resolve_ws_ticket_cookie_secure_false() {
+        let mut config = config_with_secure("false");
+        config.ws_ticket_cookie_secure = "false".to_string();
+        assert!(!resolve_ws_ticket_cookie_secure(&config));
+    }
+
+    #[test]
+    fn resolve_ws_ticket_cookie_secure_case_insensitive() {
+        let mut config = config_with_secure("false");
+        config.ws_ticket_cookie_secure = " TRUE ".to_string();
+        assert!(resolve_ws_ticket_cookie_secure(&config));
+    }
+
+    // ---- Internal HMAC signature ----
+
+    fn config_with_internal_secret(secret: &str) -> AppConfig {
+        let mut config = config_with_secure("false");
+        config.internal_secret = secret.to_string();
+        config.internal_max_skew_ms = 300_000;
+        config
+    }
+
+    #[test]
+    fn internal_signature_headers_round_trip() -> anyhow::Result<()> {
+        let config = config_with_internal_secret("test-secret-key-32bytes-long!!!");
+        let body = br#"{"userId":1,"username":"alice"}"#;
+        let headers = internal_signature_headers("POST", "/api/internal/token", body, &config)?;
+        validate_internal_signature(&headers, "POST", "/api/internal/token", body, &config)?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_internal_signature_missing_headers_fails() {
+        let config = config_with_internal_secret("test-secret-key-32bytes-long!!!");
+        let headers = HeaderMap::new();
+        let result =
+            validate_internal_signature(&headers, "POST", "/api/internal/token", b"", &config);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("INTERNAL_AUTH_REJECTED"));
+    }
+
+    #[test]
+    fn validate_internal_signature_wrong_secret_fails() {
+        let config_a = config_with_internal_secret("secret-a-32bytes-long!!!!!!!!!");
+        let config_b = config_with_internal_secret("secret-b-32bytes-long!!!!!!!!!");
+        let body = b"payload";
+        let headers = internal_signature_headers("POST", "/api/test", body, &config_a).unwrap();
+        let result = validate_internal_signature(&headers, "POST", "/api/test", body, &config_b);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_internal_signature_method_case_normalized() -> anyhow::Result<()> {
+        let config = config_with_internal_secret("test-secret-key-32bytes-long!!!");
+        let body = b"{}";
+        let headers = internal_signature_headers("post", "/api/test", body, &config)?;
+        validate_internal_signature(&headers, "POST", "/api/test", body, &config)?;
+        Ok(())
+    }
+
+    #[test]
+    fn internal_signature_rejects_expired_timestamp() -> anyhow::Result<()> {
+        let config = config_with_internal_secret("test-secret-key-32bytes-long!!!");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Internal-Timestamp",
+            HeaderValue::from_str(&(im_common::time::now_ms() - 400_000).to_string())?,
+        );
+        headers.insert("X-Internal-Nonce", HeaderValue::from_static("nonce"));
+        headers.insert("X-Internal-Signature", HeaderValue::from_static("sig"));
+        let result = validate_internal_signature(&headers, "POST", "/api/test", b"", &config);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // ---- Refresh token shape ----
+
+    #[test]
+    fn refresh_token_has_expected_type_and_claims() -> anyhow::Result<()> {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 7, "bob", "refresh", "jti-refresh", false)?;
+        let parsed = parse_token(Some(&token), secret, false);
+        assert!(parsed.valid);
+        assert_eq!(parsed.user_id, Some(7));
+        assert_eq!(parsed.token_type.as_deref(), Some("refresh"));
+        assert_eq!(parsed.jti.as_deref(), Some("jti-refresh"));
+        assert!(!parsed.remember_me);
         Ok(())
     }
 }

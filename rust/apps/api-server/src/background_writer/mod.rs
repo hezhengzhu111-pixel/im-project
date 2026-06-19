@@ -103,7 +103,8 @@ fn connect_and_consume(
         for event_message in events {
             match serde_json::from_str::<ImEvent>(&event_message.payload) {
                 Ok(event) => {
-                    let batched = handle.block_on(processor.process(event, event_message.stream_id.clone()))?;
+                    let batched = handle
+                        .block_on(processor.process(event, event_message.stream_id.clone()))?;
                     if batched {
                         // ACK deferred until successful flush to DB
                     } else {

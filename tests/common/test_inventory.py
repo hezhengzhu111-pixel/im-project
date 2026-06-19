@@ -15,6 +15,7 @@ from gate_common import ROOT
 
 REPORT_DIR = ROOT / "build" / "reports" / "manifest"
 ROUTE_DIR = ROOT / "rust" / "apps" / "api-server" / "src" / "routes"
+IM_SERVER_ROUTE_FILE = ROOT / "rust" / "apps" / "im-server" / "src" / "web.rs"
 ENDPOINT_FILE = ROOT / "flutter" / "packages" / "core" / "lib" / "src" / "contracts" / "api_endpoints.dart"
 APP_ROUTERS = {
     "web": ROOT / "flutter" / "apps" / "web" / "lib" / "core" / "router" / "app_router.dart",
@@ -228,6 +229,43 @@ def dynamic_path_variants(path: str) -> list[str]:
     ]
 
 
+def im_server_route_manifest(index: list[tuple[Path, str]]) -> list[ManifestItem]:
+    items: list[ManifestItem] = []
+    if not IM_SERVER_ROUTE_FILE.exists():
+        return items
+    text = read_text(IM_SERVER_ROUTE_FILE)
+    for path, route_body in ROUTE_RE.findall(text):
+        methods = METHOD_RE.findall(route_body)
+        if not methods:
+            continue
+        for method, handler in methods:
+            test_file, test_name = find_evidence(
+                [*dynamic_path_variants(path), handler.rsplit("::", 1)[-1]],
+                index,
+            )
+            status = "covered" if test_file else "missing"
+            reason = ""
+            if "/internal/" in path and status == "missing":
+                status = "allowed_missing"
+                reason = "internal service-to-service route"
+            items.append(
+                ManifestItem(
+                    kind="im_server_route",
+                    name=f"{method.upper()} {path}",
+                    file=str(IM_SERVER_ROUTE_FILE.relative_to(ROOT)),
+                    path=path,
+                    method=method.upper(),
+                    handler=handler,
+                    category="internal" if "/internal/" in path else "websocket",
+                    test_file=test_file,
+                    test_name=test_name,
+                    status=status,
+                    reason=reason,
+                )
+            )
+    return items
+
+
 def route_manifest(index: list[tuple[Path, str]]) -> list[ManifestItem]:
     items: list[ManifestItem] = []
     for route_file in sorted(ROUTE_DIR.glob("*.rs")):
@@ -388,6 +426,7 @@ def generate() -> dict[str, list[dict[str, str]]]:
     index = build_test_index()
     sections = {
         "backend_routes": route_manifest(index),
+        "im_server_routes": im_server_route_manifest(index),
         "frontend_endpoints": endpoint_manifest(index),
         "frontend_page_routes": page_manifest(index),
         "public_api": public_api_manifest(index),

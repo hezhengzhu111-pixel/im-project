@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
@@ -76,17 +76,40 @@ pub(crate) async fn upload_bundle(
     .execute(&mut *tx)
     .await?;
 
-    // 批量插入新的一次性预密钥
+    // 同时清除该设备已有的 pre-key claim，防止重新上传后旧 claim 引用不存在的 OTK。
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
+         WHERE target_user_id = ? AND target_device_id = ?",
+    )
+    .bind(user_id)
+    .bind(device_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let signatures_by_id: HashMap<i32, String> = request
+        .one_time_pre_key_signatures
+        .iter()
+        .map(|sig| (sig.id, sig.signature.clone()))
+        .collect();
+
+    // 批量插入新的一次性预密钥（含签名）
     for entry in &request.one_time_pre_keys {
+        let signature = signatures_by_id.get(&entry.id).ok_or_else(|| {
+            AppError::BadRequest(format!(
+                "missing signature for one_time_pre_key id={}",
+                entry.id
+            ))
+        })?;
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
-               (user_id, device_id, pre_key, pre_key_id, consumed)
-               VALUES (?, ?, ?, ?, 0)"#,
+               (user_id, device_id, pre_key, pre_key_id, consumed, pre_key_signature)
+               VALUES (?, ?, ?, ?, 0, ?)"#,
         )
         .bind(user_id)
         .bind(device_id)
         .bind(&entry.key)
         .bind(entry.id)
+        .bind(signature)
         .execute(&mut *tx)
         .await?;
     }
@@ -166,6 +189,7 @@ pub(crate) async fn get_bundle(
         signed_pre_key_signature: signed_pre_key_signature.clone(),
         one_time_pre_key: None,
         one_time_pre_key_id: None,
+        one_time_pre_key_signature: None,
         opk_fallback: false,
     };
 
@@ -264,7 +288,8 @@ pub(crate) async fn get_bundle(
             Ok(_) => {
                 // INSERT 成功：当前请求拥有 claim 权，尝试消费一个 one-time pre-key
                 let otp_row = sqlx::query(
-                    r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
+                    r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id,
+                          pre_key_signature
                    FROM service_user_service_db.e2ee_one_time_pre_keys
                    WHERE user_id = ? AND device_id = ? AND consumed = 0
                    LIMIT 1
@@ -279,6 +304,10 @@ pub(crate) async fn get_bundle(
                     let row_id: i64 = row.get("id");
                     let pre_key: String = row.get("pre_key");
                     let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
+                    let pre_key_signature: Option<String> =
+                        row.try_get::<Option<String>, _>("pre_key_signature")
+                            .ok()
+                            .flatten();
 
                     sqlx::query(
                         "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
@@ -314,6 +343,7 @@ pub(crate) async fn get_bundle(
                     let mut dto = base_dto;
                     dto.one_time_pre_key = Some(pre_key);
                     dto.one_time_pre_key_id = pre_key_id;
+                    dto.one_time_pre_key_signature = pre_key_signature;
                     return Ok(Json(ApiResponse::success(dto)));
                 } else {
                     // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
@@ -346,19 +376,19 @@ pub(crate) async fn get_bundle(
                 // 检查已有 claim 的 OTK 是否已被消耗（例如被 respondToNegotiation 消费后
                 // 重新发起协商时，旧 claim 引用的 OTK 已不存在于本地）——如果是则删除旧
                 // claim 并重试，让下一次 INSERT 创建新 claim 消费新 OTK
+                let mut otk_signature: Option<String> = None;
                 if let Some(ref claim_row) = claim {
                     let otk_row_id: Option<i64> = claim_row.get("one_time_pre_key_row_id");
                     if let Some(row_id) = otk_row_id {
-                        let still_valid = sqlx::query(
-                            "SELECT id FROM service_user_service_db.e2ee_one_time_pre_keys \
+                        let otk_row = sqlx::query(
+                            "SELECT pre_key_signature FROM service_user_service_db.e2ee_one_time_pre_keys \
                          WHERE id = ?",
                         )
                         .bind(row_id)
                         .fetch_optional(&state.db)
-                        .await?
-                        .is_some();
+                        .await?;
 
-                        if !still_valid {
+                        if otk_row.is_none() {
                             tracing::info!(
                                 requester_user_id = %identity.user_id,
                                 target_user_id = %target_user_id,
@@ -383,6 +413,9 @@ pub(crate) async fn get_bundle(
                             // 旧 claim 已删除，重试循环——INSERT 将成功创建新 claim
                             continue;
                         }
+                        otk_signature = otk_row
+                            .and_then(|row| row.try_get::<Option<String>, _>("pre_key_signature").ok())
+                            .flatten();
                     }
                 }
 
@@ -390,6 +423,7 @@ pub(crate) async fn get_bundle(
                 if let Some(claim) = claim {
                     dto.one_time_pre_key = claim.get("one_time_pre_key");
                     dto.one_time_pre_key_id = claim.get("one_time_pre_key_id");
+                    dto.one_time_pre_key_signature = otk_signature;
                     dto.opk_fallback = dto.one_time_pre_key.is_none();
                 }
                 return Ok(Json(ApiResponse::success(dto)));
@@ -446,18 +480,29 @@ pub(crate) async fn refill_opk(
     }
     ensure_device_belongs_to_user(&state.db, &request.device_id, identity.user_id).await?;
     validate_pre_key_entries(&request.one_time_pre_keys)?;
+    let signatures_by_id = validate_one_time_pre_key_signatures(
+        &request.one_time_pre_keys,
+        &request.one_time_pre_key_signatures,
+    )?;
 
     let mut tx = state.db.begin().await?;
     for entry in &request.one_time_pre_keys {
+        let signature = signatures_by_id.get(&entry.id).ok_or_else(|| {
+            AppError::BadRequest(format!(
+                "missing signature for one_time_pre_key id={}",
+                entry.id
+            ))
+        })?;
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
-               (user_id, device_id, pre_key, pre_key_id, consumed)
-               VALUES (?, ?, ?, ?, 0)"#,
+               (user_id, device_id, pre_key, pre_key_id, consumed, pre_key_signature)
+               VALUES (?, ?, ?, ?, 0, ?)"#,
         )
         .bind(identity.user_id)
         .bind(&request.device_id)
         .bind(&entry.key)
         .bind(entry.id)
+        .bind(signature)
         .execute(&mut *tx)
         .await?;
     }

@@ -42,7 +42,11 @@ pub fn event_key(event_id: &str) -> String {
     format!("im:event:{event_id}")
 }
 
-pub fn client_message_key(sender_id: i64, conversation_id: &str, client_message_id: &str) -> String {
+pub fn client_message_key(
+    sender_id: i64,
+    conversation_id: &str,
+    client_message_id: &str,
+) -> String {
     format!("im:client:{sender_id}:{conversation_id}:{client_message_id}")
 }
 

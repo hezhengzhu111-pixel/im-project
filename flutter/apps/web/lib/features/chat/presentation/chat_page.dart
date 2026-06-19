@@ -375,12 +375,45 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         .read(chatStateProvider.notifier)
         .initiateEncryptionForSession(session.id);
     ref.invalidate(e2eeSessionStatusProvider(e2eeSessionId));
+    if (started) {
+      unawaited(_refreshEncryptionStatusUntilSettled(e2eeSessionId));
+    }
     if (!started && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Failed to start encryption negotiation.'),
         ),
       );
+    }
+  }
+
+  Future<void> _refreshEncryptionStatusUntilSettled(
+    String e2eeSessionId,
+  ) async {
+    const delays = [
+      Duration(milliseconds: 500),
+      Duration(milliseconds: 700),
+      Duration(seconds: 1),
+      Duration(seconds: 1),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+    ];
+
+    for (final delay in delays) {
+      await Future.delayed(delay);
+      if (!mounted) return;
+
+      final synced = await ref
+          .read(chatStateProvider.notifier)
+          .syncEncryptionStatus(e2eeSessionId);
+      if (!mounted) return;
+
+      ref.invalidate(e2eeSessionStatusProvider(e2eeSessionId));
+      if (synced == 'encrypted' ||
+          synced == 'plaintext' ||
+          synced == 'failed') {
+        return;
+      }
     }
   }
 

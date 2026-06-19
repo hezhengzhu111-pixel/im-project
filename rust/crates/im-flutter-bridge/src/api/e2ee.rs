@@ -1,4 +1,4 @@
-﻿use anyhow::{Context, Result};
+use anyhow::{Context, Result};
 use base64::Engine as _;
 use im_e2ee_core::x3dh::{generate_key_bundle_with_count, x3dh_initiate as core_x3dh_initiate};
 use im_e2ee_core::{
@@ -1060,7 +1060,7 @@ mod tests {
             .decode(wire_b64)
             .expect("decode wire");
 
-        assert_eq!(wire.get(0), Some(&0));
+        assert_eq!(wire.first(), Some(&0));
         assert_eq!(wire.get(1), Some(&0));
         assert_eq!(wire.get(2), Some(&0));
         assert_eq!(wire.get(3), Some(&52));

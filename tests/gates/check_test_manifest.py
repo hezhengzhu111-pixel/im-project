@@ -17,7 +17,7 @@ from test_inventory import generate, write_markdown
 
 
 REPORT_DIR = ROOT / "build" / "reports" / "manifest"
-CRITICAL_SECTIONS = {"backend_routes", "frontend_endpoints", "frontend_page_routes", "public_api"}
+CRITICAL_SECTIONS = {"backend_routes", "im_server_routes", "frontend_endpoints", "frontend_page_routes", "public_api"}
 ALLOWED_MISSING_CATEGORIES = {
     "generated",
     "bootstrap",
@@ -30,6 +30,12 @@ ALLOWED_MISSING = {
     ("backend_routes", "POST /api/auth/internal/token"),
     ("backend_routes", "GET /api/auth/internal/user-resource/:user_id"),
     ("backend_routes", "POST /api/auth/internal/revoke-user-tokens/:user_id"),
+    ("im_server_routes", "POST /api/im/offline/:user_id"),
+    ("im_server_routes", "POST /api/im/heartbeat/:user_id"),
+    ("im_server_routes", "POST /api/im/heartbeat"),
+    ("im_server_routes", "POST /api/im/online-status"),
+    ("im_server_routes", "POST /api/im/internal/push"),
+    ("im_server_routes", "POST /api/im/internal/push/batch"),
     ("frontend_endpoints", "AdminEndpoints.logs"),
 }
 LEGACY_API_RE = re.compile(r"['\"]/(?:user|message|friend|group|file|moments|push|ai|keys|e2ee)(?:/|['\"])", re.IGNORECASE)

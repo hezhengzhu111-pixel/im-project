@@ -1,7 +1,10 @@
-﻿#[cfg(test)]
+#![forbid(unsafe_code)]
+
+#[cfg(test)]
 mod message_helpers_tests {
     use crate::message::message_e2ee;
     use crate::message::message_helpers;
+    use crate::message::message_types::{ConversationDto, GroupConversationSource};
 
     #[test]
     fn group_unread_count_positive() {
@@ -210,6 +213,213 @@ mod message_helpers_tests {
     #[test]
     fn decode_base64url_invalid_rejected() {
         let result = message_e2ee::decode_base64url("!!!not-valid!!!");
+        assert!(result.is_err());
+    }
+
+    fn sample_private_message(sender_id: i64, receiver_id: i64) -> im_common::event::MessageDto {
+        im_common::event::MessageDto {
+            id: "1".to_string(),
+            message_id: "1".to_string(),
+            client_message_id: None,
+            sender_id: sender_id.to_string(),
+            sender_name: None,
+            sender_avatar: None,
+            receiver_id: Some(receiver_id.to_string()),
+            receiver_name: None,
+            group_id: None,
+            conversation_seq: Some(5),
+            group_name: None,
+            group_avatar: None,
+            is_group_chat: false,
+            is_group: false,
+            message_type: "TEXT".to_string(),
+            content: Some("hello".to_string()),
+            media_url: None,
+            media_size: None,
+            media_name: None,
+            thumbnail_url: None,
+            duration: None,
+            location_info: None,
+            status: "SENT".to_string(),
+            reply_to_message_id: None,
+            created_time: "2024-01-01T00:00:00Z".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_time: None,
+            updated_at: None,
+            is_ai_generated: None,
+            ai_provider: None,
+            ai_model: None,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
+            e2ee_envelope: None,
+        }
+    }
+
+    fn sample_group_message(sender_id: i64, group_id: i64) -> im_common::event::MessageDto {
+        im_common::event::MessageDto {
+            id: "2".to_string(),
+            message_id: "2".to_string(),
+            client_message_id: None,
+            sender_id: sender_id.to_string(),
+            sender_name: Some("Alice".to_string()),
+            sender_avatar: None,
+            receiver_id: None,
+            receiver_name: None,
+            group_id: Some(group_id.to_string()),
+            conversation_seq: Some(7),
+            group_name: Some("Family".to_string()),
+            group_avatar: Some("/g.jpg".to_string()),
+            is_group_chat: true,
+            is_group: true,
+            message_type: "TEXT".to_string(),
+            content: Some("hi group".to_string()),
+            media_url: None,
+            media_size: None,
+            media_name: None,
+            thumbnail_url: None,
+            duration: None,
+            location_info: None,
+            status: "SENT".to_string(),
+            reply_to_message_id: None,
+            created_time: "2024-01-01T00:00:00Z".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_time: None,
+            updated_at: None,
+            is_ai_generated: None,
+            ai_provider: None,
+            ai_model: None,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
+            e2ee_envelope: None,
+        }
+    }
+
+    #[test]
+    fn extract_peer_id_when_user_is_sender() {
+        let message = sample_private_message(1, 2);
+        let peer = message_helpers::extract_peer_id(1, &message);
+        assert_eq!(peer, Some(2));
+    }
+
+    #[test]
+    fn extract_peer_id_when_user_is_receiver() {
+        let message = sample_private_message(1, 2);
+        let peer = message_helpers::extract_peer_id(2, &message);
+        assert_eq!(peer, Some(1));
+    }
+
+    #[test]
+    fn extract_peer_id_none_for_group() {
+        let message = sample_group_message(1, 20);
+        let peer = message_helpers::extract_peer_id(2, &message);
+        assert_eq!(peer, None);
+    }
+
+    #[test]
+    fn dedup_conversations_removes_duplicates() {
+        let mut conversations = vec![
+            ConversationDto {
+                conversation_id: "1".to_string(),
+                conversation_type: 1,
+                target_id: "1".to_string(),
+                conversation_name: "A".to_string(),
+                conversation_avatar: None,
+                last_message: "m1".to_string(),
+                last_message_type: "TEXT".to_string(),
+                last_message_sender_id: None,
+                last_message_sender_name: None,
+                last_message_time: None,
+                unread_count: 1,
+                is_online: false,
+                is_pinned: false,
+                is_muted: false,
+            },
+            ConversationDto {
+                conversation_id: "1".to_string(),
+                conversation_type: 1,
+                target_id: "1".to_string(),
+                conversation_name: "B".to_string(),
+                conversation_avatar: None,
+                last_message: "m2".to_string(),
+                last_message_type: "TEXT".to_string(),
+                last_message_sender_id: None,
+                last_message_sender_name: None,
+                last_message_time: None,
+                unread_count: 2,
+                is_online: false,
+                is_pinned: false,
+                is_muted: false,
+            },
+            ConversationDto {
+                conversation_id: "2".to_string(),
+                conversation_type: 1,
+                target_id: "2".to_string(),
+                conversation_name: "C".to_string(),
+                conversation_avatar: None,
+                last_message: "m3".to_string(),
+                last_message_type: "TEXT".to_string(),
+                last_message_sender_id: None,
+                last_message_sender_name: None,
+                last_message_time: None,
+                unread_count: 3,
+                is_online: false,
+                is_pinned: false,
+                is_muted: false,
+            },
+        ];
+        message_helpers::dedup_conversations(&mut conversations);
+        assert_eq!(conversations.len(), 2);
+        assert_eq!(conversations[0].conversation_id, "1");
+        assert_eq!(conversations[1].conversation_id, "2");
+    }
+
+    #[test]
+    fn group_conversation_from_message_maps_fields() {
+        let message = sample_group_message(1, 42);
+        let source = GroupConversationSource {
+            group_id: 42,
+            name: "Family".to_string(),
+            avatar: Some("/g.jpg".to_string()),
+        };
+        let conv = message_helpers::group_conversation_from_message(source, message, 3);
+        assert_eq!(conv.conversation_id, "42");
+        assert_eq!(conv.conversation_type, 2);
+        assert_eq!(conv.target_id, "42");
+        assert_eq!(conv.conversation_name, "Family");
+        assert_eq!(conv.conversation_avatar, Some("/g.jpg".to_string()));
+        assert_eq!(conv.last_message, "hi group");
+        assert_eq!(conv.unread_count, 3);
+    }
+
+    #[test]
+    fn parse_conversation_target_rejects_same_user() {
+        let result = message_helpers::parse_conversation_target(1, "1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_conversation_target_private_with_underscore() {
+        let target = message_helpers::parse_conversation_target(2, "p_1_2").unwrap();
+        assert_eq!(target.peer_id, Some(1));
+        assert_eq!(target.group_id, None);
+        assert_eq!(target.conversation_id, "p_1_2");
+    }
+
+    #[test]
+    fn parse_db_scope_rejects_mixed_format() {
+        let result = message_helpers::parse_db_scope("p_1_2_3");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_db_scope_rejects_non_numeric_group() {
+        let result = message_helpers::parse_db_scope("g_abc");
         assert!(result.is_err());
     }
 }

@@ -189,4 +189,33 @@ void main() {
       expect(notifier.state.error, isNotNull);
     });
   });
+
+  group('ChatNotifier.syncEncryptionStatus', () {
+    late FakeHttpClientPort http;
+    late MessageApi messageApi;
+    late _FakeWsClient ws;
+    late ChatNotifier notifier;
+
+    setUp(() {
+      http = FakeHttpClientPort();
+      messageApi = MessageApi(http);
+      ws = _FakeWsClient();
+      notifier = ChatNotifier(
+        messageApi,
+        MessagePipeline(),
+        ws,
+        () => 'u1',
+      );
+    });
+
+    tearDown(() {
+      notifier.dispose();
+      ws.dispose();
+    });
+
+    test('syncEncryptionStatus returns null when E2EE is not available', () async {
+      final result = await notifier.syncEncryptionStatus('session-1');
+      expect(result, isNull);
+    });
+  });
 }

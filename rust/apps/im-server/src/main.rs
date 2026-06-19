@@ -1,4 +1,4 @@
-﻿#![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 #![deny(unused_must_use)]
 #![cfg_attr(not(test), deny(clippy::as_conversions))]
 #![cfg_attr(not(test), deny(clippy::expect_used))]
@@ -7,28 +7,10 @@
 #![deny(clippy::todo)]
 #![deny(clippy::unimplemented)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
-#![cfg_attr(
-    test,
-    allow(
-        clippy::as_conversions,
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::items_after_test_module,
-        clippy::unwrap_used
-    )
-)]
 
-mod clients;
-mod config;
-mod dto;
-mod error;
-mod route;
-mod security;
-mod service;
-mod web;
-
-use crate::config::AppConfig;
-use crate::service::ImService;
+use im_server::config::AppConfig;
+use im_server::service::ImService;
+use im_server::web;
 use redis::aio::ConnectionManager;
 use std::net::SocketAddr;
 use std::sync::Arc;

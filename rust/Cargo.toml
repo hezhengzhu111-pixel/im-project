@@ -1,4 +1,4 @@
-﻿[workspace]
+[workspace]
 members = [
     "crates/im-common",
     "crates/im-e2ee-core",
@@ -7,6 +7,7 @@ members = [
     "crates/im-flutter-bridge",
     "apps/api-server",
     "apps/im-server",
+    "apps/admin-server",
 ]
 resolver = "2"
 

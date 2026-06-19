@@ -22,6 +22,7 @@ import 'core/di/platform_providers.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';
+import 'features/auth/presentation/auth_providers.dart' as web_auth;
 import 'features/e2ee/data/e2ee_providers.dart';
 
 Future<void> main() async {
@@ -88,6 +89,16 @@ Future<void> main() async {
       }),
       e2eeSessionStoreProvider.overrideWith((ref) {
         return ref.watch(webE2eeSessionStoreProvider);
+      }),
+      e2eeManagerProvider.overrideWith((ref) {
+        return E2eeManager(
+          adapter: ref.watch(e2eeAdapterProvider),
+          api: ref.watch(e2eeApiProvider),
+          keyStore: ref.watch(e2eeKeyStoreProvider),
+          sessionStore: ref.watch(e2eeSessionStoreProvider),
+          metaStore: ref.watch(e2eeMetaStoreProvider),
+          currentUserId: ref.watch(web_auth.currentUserIdProvider),
+        );
       }),
       // Shared feature packages read the im_core_flutter provider set.
       core_flutter.filePickerPortProvider.overrideWithValue(filePicker),

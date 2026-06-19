@@ -57,6 +57,8 @@ mod local_cache_tests;
 mod observability_tests;
 #[cfg(test)]
 mod social_helpers_tests;
+#[cfg(test)]
+mod user_helpers_tests;
 
 pub mod background_publisher;
 pub mod background_task;

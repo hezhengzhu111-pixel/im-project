@@ -457,6 +457,54 @@ services:
     networks:
       - im-network
 
+  im-admin-server:
+    image: im-project-sit/im-admin-server:latest
+    build:
+      context: ../../rust
+      dockerfile: apps/admin-server/Dockerfile
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
+    depends_on:
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-api-server:
+        condition: service_started
+    environment:
+      TZ: Asia/Shanghai
+      RUST_LOG: "${ADMIN_SERVER_RUST_LOG:-info}"
+      # Server
+      ADMIN_SERVER_PORT: "9090"
+      # Direct database connections (read-only queries)
+      ADMIN_USER_DB_URL: "mysql://root:${MYSQL_ROOT_PASSWORD}@im-mysql:3306/service_user_service_db"
+      ADMIN_GROUP_DB_URL: "mysql://root:${MYSQL_ROOT_PASSWORD}@im-mysql:3306/service_group_service_db"
+      ADMIN_FILE_DB_URL: "mysql://root:${MYSQL_ROOT_PASSWORD}@im-mysql:3306/service_file_service_db"
+      ADMIN_IM_SERVER_DB_URL: "mysql://root:${MYSQL_ROOT_PASSWORD}@im-mysql:3306/service_im_server_db"
+      ADMIN_DB_MAX_CONNECTIONS: "${ADMIN_DB_MAX_CONNECTIONS:-16}"
+      # Redis (shared with im-server for route registry)
+      ADMIN_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      ADMIN_ROUTE_USERS_KEY: "im:route:users"
+      ADMIN_SERVER_REGISTRY_KEY_PREFIX: "im:server:"
+      # JWT for local Spring Boot authentication
+      ADMIN_JWT_SECRET: "${ADMIN_JWT_SECRET:-admin-jwt-secret-admin-jwt-secret-admin-jwt-secret-admin-jwt}"
+      # Forward write operations to api-server
+      ADMIN_API_SERVER_URL: "http://im-api-server:8082"
+      ADMIN_IM_SERVER_URL: "http://im-server:8083"
+      # Internal signature for api-server calls
+      ADMIN_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
+    ports:
+      - "${ADMIN_SERVER_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - im-network
+
   im-spring-ai:
     image: im-project-sit/im-spring-ai:latest
     build:

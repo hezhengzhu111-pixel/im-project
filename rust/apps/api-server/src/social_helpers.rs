@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::error::AppError;
 use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
 use crate::local_cache;
@@ -46,6 +46,14 @@ pub(crate) fn friendship_from_row(row: &sqlx::mysql::MySqlRow) -> FriendshipDto 
     }
 }
 
+pub(crate) fn friend_request_status_str(status: i32) -> &'static str {
+    match status {
+        1 => "ACCEPTED",
+        2 => "REJECTED",
+        _ => "PENDING",
+    }
+}
+
 pub(crate) fn friend_request_from_row(row: &sqlx::mysql::MySqlRow) -> FriendRequestDto {
     let id: i64 = row.get("id");
     let applicant_id: i64 = row.get("applicant_id");
@@ -68,12 +76,7 @@ pub(crate) fn friend_request_from_row(row: &sqlx::mysql::MySqlRow) -> FriendRequ
         target_nickname: row.try_get("target_nickname").ok().flatten(),
         target_avatar: row.try_get("target_avatar").ok().flatten(),
         reason: row.try_get("apply_reason").ok().flatten(),
-        status: match status {
-            1 => "ACCEPTED",
-            2 => "REJECTED",
-            _ => "PENDING",
-        }
-        .to_string(),
+        status: friend_request_status_str(status).to_string(),
         create_time: apply_time.and_utc().to_rfc3339(),
         update_time: handle_time.map(|value| value.and_utc().to_rfc3339()),
     }

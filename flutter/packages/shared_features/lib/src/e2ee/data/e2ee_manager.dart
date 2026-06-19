@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import 'e2ee_api.dart';
 import 'e2ee_key_store.dart';
 import 'e2ee_meta_store.dart';
@@ -75,49 +76,76 @@ class E2eeManager {
     final existingKeys = await keyStore.getKeyMaterial();
 
     if (existingKeys == null) {
-      // Generate fresh key bundle via FRB.
-      final bundleJson = await adapter.generateKeyBundleJson(_otkCount);
-
-      // Store full key material (JSON) in local storage.
-      await keyStore.saveKeyMaterial(jsonEncode(bundleJson));
-      await keyStore.saveDeviceId(_deviceId);
-
-      // Extract and store the public bundle separately for quick access.
-      final publicBundle = bundleJson['public_bundle'] as Map<String, dynamic>;
-      await keyStore.savePublicBundle(jsonEncode(publicBundle));
-
-      // Upload public bundle to server.
-      final otkPairs = bundleJson['otk_pairs'] as List<dynamic>;
-      final publishedIds = otkPairs
-          .map((otk) => (otk as Map<String, dynamic>)['id'] as int)
-          .toList();
-
-      await api.uploadBundle({
-        'deviceId': _deviceId,
-        'identityKey': publicBundle['identity_key'],
-        'signingIdentityKey': publicBundle['signing_key'],
-        'signedPreKey':
-            (publicBundle['signed_pre_key'] as Map<String, dynamic>)['key'],
-        'signedPreKeySignature': publicBundle['signed_pre_key_signature'],
-        'oneTimePreKeys': publicBundle['one_time_pre_keys'],
-      });
-
-      await metaStore.setPublishedOtkIds(_deviceId, publishedIds);
-
-      // New key material invalidates all existing sessions.
-      await sessionStore.clearAll();
+      await _registerFreshDevice(resetDeviceId: false);
     } else {
       // Device already registered -- heartbeat + OTK replenishment.
       try {
         await api.heartbeatDevice(_deviceId);
-      } catch (_) {
-        // Heartbeat failure is non-fatal; continue with local state.
+      } catch (e) {
+        if (_isDeviceRegistrationRejected(e)) {
+          await _registerFreshDevice(resetDeviceId: true);
+          return _deviceId;
+        }
+        // Transient heartbeat failures are non-fatal; continue with local state.
       }
 
-      await _refillOpkIfServerLow(existingKeys);
+      try {
+        await _refillOpkIfServerLow(existingKeys);
+      } catch (e) {
+        if (_isDeviceRegistrationRejected(e)) {
+          await _registerFreshDevice(resetDeviceId: true);
+          return _deviceId;
+        }
+        // OPK replenishment failure is non-fatal; the server will use SPK fallback.
+      }
     }
 
     return _deviceId;
+  }
+
+  Future<void> _registerFreshDevice({required bool resetDeviceId}) async {
+    if (resetDeviceId) {
+      await keyStore.clearAll();
+      await metaStore.clearDeviceId();
+      _deviceId = await metaStore.getOrCreateDeviceId();
+      _loadedSessions.clear();
+    }
+
+    // Generate fresh key bundle via FRB.
+    final bundleJson = await adapter.generateKeyBundleJson(_otkCount);
+
+    // Store full key material (JSON) in local storage.
+    await keyStore.saveKeyMaterial(jsonEncode(bundleJson));
+    await keyStore.saveDeviceId(_deviceId);
+
+    // Extract and store the public bundle separately for quick access.
+    final publicBundle = bundleJson['public_bundle'] as Map<String, dynamic>;
+    await keyStore.savePublicBundle(jsonEncode(publicBundle));
+
+    // Upload public bundle to server.
+    final otkPairs = bundleJson['otk_pairs'] as List<dynamic>;
+    final publishedIds = otkPairs
+        .map((otk) => (otk as Map<String, dynamic>)['id'] as int)
+        .toList();
+
+    await api.uploadBundle({
+      'deviceId': _deviceId,
+      'identityKey': publicBundle['identity_key'],
+      'signingIdentityKey': publicBundle['signing_key'],
+      'signedPreKey':
+          (publicBundle['signed_pre_key'] as Map<String, dynamic>)['key'],
+      'signedPreKeySignature': publicBundle['signed_pre_key_signature'],
+      'oneTimePreKeys': publicBundle['one_time_pre_keys'],
+    });
+
+    await metaStore.setPublishedOtkIds(_deviceId, publishedIds);
+    await metaStore.setMaxPublishedOtkId(
+      _deviceId,
+      publishedIds.reduce((a, b) => a > b ? a : b),
+    );
+
+    // New key material invalidates all existing sessions.
+    await sessionStore.clearAll();
   }
 
   Future<void> _refillOpkIfServerLow(String existingKeys) async {
@@ -129,34 +157,84 @@ class E2eeManager {
 
       final keyMaterial = jsonDecode(existingKeys) as Map<String, dynamic>;
       final freshBundle = await adapter.generateKeyBundleJson(_otkCount);
+
       final existingOtkPairs = List<dynamic>.from(
         keyMaterial['otk_pairs'] as List<dynamic>? ?? const [],
       );
+      final existingPublicBundle =
+          keyMaterial['public_bundle'] as Map<String, dynamic>;
+      final existingPublicOpks = List<dynamic>.from(
+        existingPublicBundle['one_time_pre_keys'] as List<dynamic>? ??
+            const [],
+      );
+
       final freshOtkPairs = List<dynamic>.from(
         freshBundle['otk_pairs'] as List<dynamic>? ?? const [],
       );
-      keyMaterial['otk_pairs'] = [...existingOtkPairs, ...freshOtkPairs];
-
-      final publicBundle = keyMaterial['public_bundle'] as Map<String, dynamic>;
       final freshPublicBundle =
           freshBundle['public_bundle'] as Map<String, dynamic>;
-      final freshPublicOpks =
-          freshPublicBundle['one_time_pre_keys'] as List<dynamic>? ?? const [];
+      final freshPublicOpks = List<dynamic>.from(
+        freshPublicBundle['one_time_pre_keys'] as List<dynamic>? ??
+            const [],
+      );
+
+      // The Rust bridge always numbers fresh OTKs from 1. Renumber them so
+      // they continue after the highest ID already published for this device.
+      final maxPublishedId = await metaStore.getMaxPublishedOtkId(_deviceId);
+      final idMapping = <int, int>{};
+      for (var i = 0; i < freshOtkPairs.length; i++) {
+        final oldId = (freshOtkPairs[i] as Map<String, dynamic>)['id'] as int;
+        idMapping[oldId] = maxPublishedId + 1 + i;
+      }
+
+      Map<String, dynamic> renumberOtk(Map<String, dynamic> otk) {
+        final newId = idMapping[(otk)['id'] as int];
+        if (newId == null) return otk;
+        final renamed = Map<String, dynamic>.from(otk);
+        renamed['id'] = newId;
+        return renamed;
+      }
+
+      final renumberedOtkPairs =
+          freshOtkPairs.cast<Map<String, dynamic>>().map(renumberOtk).toList();
+      final renumberedPublicOpks =
+          freshPublicOpks.cast<Map<String, dynamic>>().map(renumberOtk).toList();
+
+      keyMaterial['otk_pairs'] = [...existingOtkPairs, ...renumberedOtkPairs];
+      existingPublicBundle['one_time_pre_keys'] =
+          [...existingPublicOpks, ...renumberedPublicOpks];
 
       await keyStore.saveKeyMaterial(jsonEncode(keyMaterial));
-      await keyStore.savePublicBundle(jsonEncode(publicBundle));
+      await keyStore.savePublicBundle(jsonEncode(existingPublicBundle));
       await api.refillOpk({
         'deviceId': _deviceId,
-        'oneTimePreKeys': freshPublicOpks,
+        'oneTimePreKeys': renumberedPublicOpks,
       });
 
-      final newOtkIds = freshOtkPairs
-          .map((otk) => (otk as Map<String, dynamic>)['id'] as int)
-          .toList();
-      await metaStore.setPublishedOtkIds(_deviceId, newOtkIds);
-    } catch (_) {
-      // OPK replenishment failure is non-fatal; the server will mark SPK fallback.
+      final newMaxId = maxPublishedId + freshOtkPairs.length;
+      await metaStore.setMaxPublishedOtkId(_deviceId, newMaxId);
+      final existingPublishedIds =
+          await metaStore.getPublishedOtkIds(_deviceId);
+      await metaStore.setPublishedOtkIds(
+        _deviceId,
+        [...existingPublishedIds, ...renumberedPublicOpks.map((otk) => otk['id'] as int)],
+      );
+    } catch (e) {
+      if (_isDeviceRegistrationRejected(e)) rethrow;
     }
+  }
+
+  bool _isDeviceRegistrationRejected(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('status code of 403') ||
+        text.contains('status=403') ||
+        text.contains(' 403') ||
+        text.contains('forbidden') ||
+        text.contains('status code of 404') ||
+        text.contains('status=404') ||
+        text.contains(' 404') ||
+        text.contains('device not found') ||
+        text.contains('device does not belong');
   }
 
   // ---------------------------------------------------------------------------
@@ -264,7 +342,9 @@ class E2eeManager {
 
       await metaStore.setSessionStatus(sessionId, 'negotiating');
       return true;
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to initiate E2EE negotiation', e, st, 'e2ee');
       await metaStore.clearPendingHandshake(sessionId);
       await metaStore.setSessionStatus(sessionId, 'failed');
       return false;
@@ -720,22 +800,36 @@ class E2eeManager {
     _loadedSessions.remove(sessionId);
   }
 
-  /// Extract the peer user ID from a session ID.
+  /// Builds the canonical E2EE private session ID from two user IDs.
   ///
-  /// Supported private session ID formats:
-  /// - `{userId}_private_{targetId}`
-  /// - `p_{id_a}_{id_b}`
+  /// Format: `p_<smaller_id>_<larger_id>` using string ordering.
+  /// Mirrors the format expected by the Rust server.
+  static String privateSessionId(String currentUserId, String targetId) {
+    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    final first = currentUserId.compareTo(targetId) <= 0 ? currentUserId : targetId;
+    final second = currentUserId.compareTo(targetId) <= 0 ? targetId : currentUserId;
+    return 'p_${first}_$second';
+  }
+
+  /// Extract the peer user ID from a private session ID.
+  ///
+  /// Only the canonical `p_{id_a}_{id_b}` format is supported; the legacy
+  /// `{userId}_private_{targetId}` format has been removed.
   String _extractPeerId(String sessionId) {
-    final parts = sessionId.startsWith('p_')
-        ? sessionId.substring(2).split('_')
-        : sessionId.split('_private_');
-    if (parts.length == 2) {
-      if (currentUserId == null) {
-        throw StateError('currentUserId is null, cannot determine peer');
-      }
-      return parts[0] == currentUserId ? parts[1] : parts[0];
+    if (!sessionId.startsWith('p_')) {
+      throw FormatException(
+        'E2EE private session id must use p_{id_a}_{id_b} format',
+        sessionId,
+      );
     }
-    throw FormatException('invalid E2EE private session id', sessionId);
+    final parts = sessionId.substring(2).split('_');
+    if (parts.length != 2) {
+      throw FormatException('invalid E2EE private session id', sessionId);
+    }
+    if (currentUserId == null) {
+      throw StateError('currentUserId is null, cannot determine peer');
+    }
+    return parts[0] == currentUserId ? parts[1] : parts[0];
   }
 
   /// Generate a 6-digit verify phrase.

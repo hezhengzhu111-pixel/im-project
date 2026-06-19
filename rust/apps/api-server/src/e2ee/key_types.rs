@@ -32,6 +32,17 @@ pub(crate) struct PreKeyEntry {
     pub key: String,
 }
 
+/// 一次性预密钥签名条目。
+///
+/// 客户端使用设备签名私钥对每个 OTK 公钥进行签名，服务端仅保存签名供请求方认证。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PreKeySignatureEntry {
+    pub id: i32,
+    pub signature: String,
+}
+
 /// 服务端仅保存公钥/密文材料，不保存任何私钥。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +53,7 @@ pub(crate) struct UploadBundleRequest {
     pub signed_pre_key: String,
     pub signed_pre_key_signature: String,
     pub one_time_pre_keys: Vec<PreKeyEntry>,
+    pub one_time_pre_key_signatures: Vec<PreKeySignatureEntry>,
 }
 
 /// PreKey Bundle 响应 DTO。
@@ -61,6 +73,8 @@ pub(crate) struct PreKeyBundleDto {
     pub one_time_pre_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub one_time_pre_key_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub one_time_pre_key_signature: Option<String>,
     pub opk_fallback: bool,
 }
 
@@ -81,6 +95,7 @@ pub(crate) struct OpkStatusDto {
 pub(crate) struct RefillOpkRequest {
     pub device_id: String,
     pub one_time_pre_keys: Vec<PreKeyEntry>,
+    pub one_time_pre_key_signatures: Vec<PreKeySignatureEntry>,
 }
 
 /// 设备公开信息 DTO。

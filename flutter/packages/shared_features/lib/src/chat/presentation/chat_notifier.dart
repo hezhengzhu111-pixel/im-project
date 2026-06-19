@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
+import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import 'chat_state.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
@@ -34,6 +35,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
         super(const ChatState()) {
     _subscribeToWs();
     _subscribeToOutbox();
+    unawaited(_warmUpE2eeDeviceRegistration());
+    _startE2eePendingPolling();
   }
 
   final MessageApi _messageApi;
@@ -53,12 +56,40 @@ class ChatNotifier extends StateNotifier<ChatState> {
   StreamSubscription? _wsSubscription;
   StreamSubscription? _wsStateSubscription;
   StreamSubscription? _outboxSubscription;
+  Timer? _e2eePendingPollTimer;
+  bool _e2eePendingPollInFlight = false;
   final Set<String> _inFlightSendFingerprints = <String>{};
 
   bool get _e2eeAvailable => _e2eeManager != null && _e2eeMetaStore != null;
 
   Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
       Map.unmodifiable(state.pendingNegotiations);
+
+  Future<void> _warmUpE2eeDeviceRegistration() async {
+    if (!_e2eeAvailable) return;
+    try {
+      await _e2eeManager!.ensureDeviceRegistered();
+    } catch (e, st) {
+      AppLogger.instance.warn('E2EE device registration warm-up failed', e, st);
+    }
+  }
+
+  void _startE2eePendingPolling() {
+    if (!_e2eeAvailable) return;
+    _e2eePendingPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(_pollPendingNegotiations());
+    });
+  }
+
+  Future<void> _pollPendingNegotiations() async {
+    if (_e2eePendingPollInFlight) return;
+    _e2eePendingPollInFlight = true;
+    try {
+      await loadPendingNegotiations();
+    } finally {
+      _e2eePendingPollInFlight = false;
+    }
+  }
 
   E2eeNegotiationEvent? get pendingNegotiation =>
       activePendingNegotiation ??
@@ -452,7 +483,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
-      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
+      final existingMessages = state.messages[sessionKey] ?? <Message>[];
+      final sortedHistory =
+          _mergeMessagesChronologically(existingMessages, history);
       final messages = _e2eeAvailable
           ? await _decryptLoadedMessages(sortedHistory)
           : sortedHistory;
@@ -481,7 +514,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
-      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
+      final existingMessages = state.messages[sessionKey] ?? <Message>[];
+      final sortedHistory =
+          _mergeMessagesChronologically(existingMessages, history);
       final messages = _e2eeAvailable
           ? await _decryptLoadedMessages(sortedHistory)
           : sortedHistory;
@@ -593,46 +628,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   List<Message> _mergeMessagesChronologically(
       List<Message> existing, List<Message> incoming) {
-    final merged = <String, Message>{};
-    for (final msg in existing) {
-      merged[msg.id] = msg;
-      if (msg.clientMessageId != null) merged[msg.clientMessageId!] = msg;
-    }
-    for (final msg in incoming) {
-      final existingMsg = merged[msg.id] ??
-          (msg.clientMessageId != null ? merged[msg.clientMessageId!] : null);
-      if (existingMsg != null) {
-        final mergedMsg = existingMsg.copyWith(
-          content: msg.content.isNotEmpty ? msg.content : existingMsg.content,
-          status: msg.status.isNotEmpty ? msg.status : existingMsg.status,
-          mediaUrl: msg.mediaUrl ?? existingMsg.mediaUrl,
-          mediaSize: msg.mediaSize ?? existingMsg.mediaSize,
-          mediaName: msg.mediaName ?? existingMsg.mediaName,
-          thumbnailUrl: msg.thumbnailUrl ?? existingMsg.thumbnailUrl,
-          duration: msg.duration ?? existingMsg.duration,
-          extra: msg.extra ?? existingMsg.extra,
-          mentionedUserIds:
-              msg.mentionedUserIds ?? existingMsg.mentionedUserIds,
-          encrypted: msg.encrypted ?? existingMsg.encrypted,
-          e2eeDeviceId: msg.e2eeDeviceId ?? existingMsg.e2eeDeviceId,
-          e2eeEnvelope: msg.e2eeEnvelope ?? existingMsg.e2eeEnvelope,
-          decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
-        );
-        merged[msg.id] = mergedMsg;
-        if (msg.clientMessageId != null)
-          merged[msg.clientMessageId!] = mergedMsg;
-      } else {
-        merged[msg.id] = msg;
-        if (msg.clientMessageId != null) merged[msg.clientMessageId!] = msg;
-      }
-    }
-    final result = merged.values.toList();
-    result.sort((a, b) {
-      final timeA = DateTime.tryParse(a.sendTime) ?? DateTime(2000);
-      final timeB = DateTime.tryParse(b.sendTime) ?? DateTime(2000);
-      return timeA.compareTo(timeB);
-    });
-    return result;
+    return mergeMessagesChronologically(existing, incoming);
   }
 
   Future<MessageConfig> _ensureMessageConfig() async {
@@ -1824,6 +1820,25 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  Future<String?> syncEncryptionStatus(String e2eeSessionId) async {
+    if (!_e2eeAvailable || e2eeSessionId.isEmpty) return null;
+
+    try {
+      final synced = await _e2eeManager!.syncSessionStatus(e2eeSessionId);
+      if (synced == 'plaintext') {
+        _removePendingNegotiation(e2eeSessionId);
+      } else if (synced == 'encrypted') {
+        _removePendingNegotiation(e2eeSessionId);
+        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
+      }
+      return synced;
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to sync E2EE session status', e, st, 'e2ee');
+      return null;
+    }
+  }
+
   Future<bool> acceptPendingNegotiation(String sessionId) async {
     if (!_e2eeAvailable) return false;
     final event = state.pendingNegotiations[sessionId];
@@ -1922,13 +1937,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final localStatus = await _e2eeMetaStore!.getSessionStatus(e2eeSessionId);
       if (localStatus == 'plaintext') continue;
 
-      final synced = await _e2eeManager!.syncSessionStatus(e2eeSessionId);
-      if (synced == 'plaintext') {
-        _removePendingNegotiation(e2eeSessionId);
-      } else if (synced == 'encrypted') {
-        _removePendingNegotiation(e2eeSessionId);
-        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
-      }
+      await syncEncryptionStatus(e2eeSessionId);
     }
   }
 
@@ -1937,6 +1946,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _wsSubscription?.cancel();
     _wsStateSubscription?.cancel();
     _outboxSubscription?.cancel();
+    _e2eePendingPollTimer?.cancel();
     super.dispose();
   }
 }

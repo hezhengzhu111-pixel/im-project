@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 use crate::error::AppError;
 use crate::observability;
 use chrono::{DateTime, Utc};
@@ -107,6 +107,9 @@ pub(crate) fn dedup_conversations(conversations: &mut Vec<ConversationDto>) {
 }
 
 pub(crate) fn extract_peer_id(user_id: i64, message: &MessageDto) -> Option<i64> {
+    if message.is_group_chat {
+        return None;
+    }
     if message.sender_id == user_id.to_string() {
         message
             .receiver_id
@@ -192,6 +195,11 @@ pub(crate) fn parse_conversation_target(
             .parse()
             .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?
     };
+    if peer_id == user_id {
+        return Err(AppError::BadRequest(
+            "cannot create conversation with yourself".to_string(),
+        ));
+    }
     Ok(ConversationTarget {
         conversation_id: keys::private_conversation_id(user_id, peer_id),
         frontend_conversation_id: keys::private_conversation_id(user_id, peer_id)

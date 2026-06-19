@@ -60,6 +60,65 @@ void main() {
       expect(result[0].status, 'SENT');
     });
 
+    test('deduplicates local pending message with server ack missing client id',
+        () {
+      final localMsg = Message(
+        id: 'local_123',
+        senderId: 'user1',
+        receiverId: 'user2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'Hello',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'SENDING',
+        clientMessageId: 'local_123',
+      );
+      final serverMsg = Message(
+        id: '1001',
+        senderId: 'user1',
+        receiverId: 'user2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'Hello',
+        sendTime: '2024-01-01T00:00:01Z',
+        status: 'SENT',
+      );
+
+      final result = mergeMessagesChronologically([localMsg], [serverMsg]);
+
+      expect(result.length, 1);
+      expect(result[0].id, '1001');
+      expect(result[0].clientMessageId, 'local_123');
+      expect(result[0].status, 'SENT');
+    });
+
+    test('does not collapse intentional identical sent messages', () {
+      final first = Message(
+        id: '1001',
+        senderId: 'user1',
+        receiverId: 'user2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'Hello',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'SENT',
+      );
+      final second = Message(
+        id: '1002',
+        senderId: 'user1',
+        receiverId: 'user2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'Hello',
+        sendTime: '2024-01-01T00:00:01Z',
+        status: 'SENT',
+      );
+
+      final result = mergeMessagesChronologically([first], [second]);
+
+      expect(result.length, 2);
+    });
+
     test('preserves all fields during merge', () {
       final existing = Message(
         id: '1',

@@ -211,6 +211,19 @@ impl WorkerPool {
 }
 
 impl WorkerPool {
+    fn local() -> Self {
+        Self {
+            state: Rc::new(PoolState {
+                callback: Closure::new(|_| {}),
+                workers: RefCell::new(Vec::new()),
+            }),
+            script_src: String::new(),
+            worker_js_preamble: String::new(),
+            wasm_bindgen_name: "wasm_bindgen".to_owned(),
+            run_locally: true,
+        }
+    }
+
     /// Executes `f` in a web worker.
     ///
     /// This pool manages a set of web workers to draw from, and `f` will be
@@ -264,22 +277,10 @@ impl PoolState {
 
 impl Default for WorkerPool {
     fn default() -> Self {
-        Self::new(None, None, None, None).unwrap_or_else(|e| {
-            crate::for_generated::web_utils::js_console_log(&format!(
-                "Failed to create WorkerPool; falling back to local wasm execution: {:?}",
-                e
-            ));
-            Self {
-                state: Rc::new(PoolState {
-                    callback: Closure::new(|_| {}),
-                    workers: RefCell::new(Vec::new()),
-                }),
-                script_src: String::new(),
-                worker_js_preamble: String::new(),
-                wasm_bindgen_name: "wasm_bindgen".to_owned(),
-                run_locally: true,
-            }
-        })
+        // The web build currently serves the generated wasm with a JS Memory
+        // object that Chromium cannot clone into a Worker. Avoid the noisy
+        // create-fail-fallback path and use FRB's local wasm execution path.
+        Self::local()
     }
 }
 

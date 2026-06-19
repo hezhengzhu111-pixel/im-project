@@ -36,12 +36,14 @@ SERVICE_ALIASES = {
     "ai": "im-spring-ai",
     "spring-ai": "im-spring-ai",
     "im-spring-ai": "im-spring-ai",
+    "admin": "im-admin-server",
+    "admin-server": "im-admin-server",
 }
 
 SERVICE_GROUPS = {
     "all": [*DEFAULT_APP_SERVICES, *OPTIONAL_APP_SERVICES],
     "default": list(DEFAULT_APP_SERVICES),
-    "backend": ["im-server", "im-api-server"],
+    "backend": ["im-server", "im-api-server", "im-admin-server"],
     "core": ["im-server", "im-api-server"],
 }
 
