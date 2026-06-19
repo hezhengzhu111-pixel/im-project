@@ -180,6 +180,10 @@ class E2eeManager {
 
     try {
       await ensureDeviceRegistered();
+      final senderUserId = currentUserId?.trim() ?? '';
+      if (senderUserId.isEmpty) {
+        throw StateError('currentUserId is required to initiate E2EE');
+      }
       final localKeys = await _getLocalKeyMaterial();
       final targetDevice = await _newestRemoteDevice(peerId);
       final remoteDeviceId = targetDevice['deviceId'] as String;
@@ -233,6 +237,7 @@ class E2eeManager {
       final identityKey = (localKeys['public_bundle']
           as Map<String, dynamic>)['identity_key'] as String;
       final handshakePayload = jsonEncode({
+        'senderUserId': senderUserId,
         'senderIdentityKey': identityKey,
         'handshake': handshake,
         'senderDeviceId': _deviceId,
@@ -248,6 +253,7 @@ class E2eeManager {
         identityKey: identityKey,
         signedPreKey: signedPreKey['key'] as String,
         requestPayloadJson: jsonEncode({
+          'senderUserId': senderUserId,
           'senderIdentityKey': identityKey,
           'handshake': handshake,
           'senderDeviceId': _deviceId,
@@ -276,13 +282,30 @@ class E2eeManager {
   ) async {
     await init();
 
-    final senderDeviceId = requestPayload['senderDeviceId'] as String? ?? '';
-    final targetDeviceId = requestPayload['targetDeviceId'] as String? ?? '';
-    final senderIdentityKey =
-        requestPayload['senderIdentityKey'] as String? ?? '';
-    final handshake = requestPayload['handshake'] as String? ?? '';
-    final senderUserId = requestPayload['senderUserId'] as String? ?? '';
-    final verifyPhrase = requestPayload['verifyPhrase'] as String?;
+    final senderDeviceId = _firstString(
+            requestPayload, const ['senderDeviceId', 'sender_device_id']) ??
+        '';
+    final targetDeviceId = _firstString(
+            requestPayload, const ['targetDeviceId', 'target_device_id']) ??
+        '';
+    final senderIdentityKey = _firstString(
+          requestPayload,
+          const ['senderIdentityKey', 'sender_identity_key'],
+        ) ??
+        '';
+    final handshake = _firstString(requestPayload, const ['handshake']) ?? '';
+    final senderUserId = _firstString(
+          requestPayload,
+          const [
+            'senderUserId',
+            'sender_user_id',
+            'requesterId',
+            'requester_id',
+          ],
+        ) ??
+        _extractPeerId(sessionId);
+    final verifyPhrase =
+        _firstString(requestPayload, const ['verifyPhrase', 'verify_phrase']);
 
     if (senderDeviceId.isEmpty || targetDeviceId.isEmpty) {
       await metaStore.setSessionStatus(sessionId, 'failed');
@@ -445,7 +468,15 @@ class E2eeManager {
   }) async {
     await init();
 
-    final senderDeviceId = envelope['sender_device_id'] as String? ?? '';
+    final normalizedEnvelope = _normalizeEnvelopeForRust(envelope);
+    final senderDeviceId = _firstString(
+          normalizedEnvelope,
+          const ['sender_device_id', 'senderDeviceId'],
+        ) ??
+        '';
+    if (senderDeviceId.isEmpty) {
+      throw FormatException('E2EE envelope missing sender device id');
+    }
     final localDeviceId = _deviceId;
     final remoteUserId = _extractPeerId(sessionId);
 
@@ -464,7 +495,7 @@ class E2eeManager {
     // Decrypt via FRB.
     final result = await adapter.decryptMessage(
       stateBase64: stateBase64,
-      envelope: envelope,
+      envelope: normalizedEnvelope,
     );
 
     // Save updated session state as v3 envelope.
@@ -603,6 +634,41 @@ class E2eeManager {
       throw Exception('local E2EE key material not found');
     }
     return jsonDecode(raw) as Map<String, dynamic>;
+  }
+
+  String? _firstString(Map<String, dynamic> source, Iterable<String> keys) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+      final text = value is String ? value.trim() : value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _normalizeEnvelopeForRust(
+      Map<String, dynamic> envelope) {
+    final normalized = Map<String, dynamic>.from(envelope);
+
+    void copyAlias(String target, Iterable<String> aliases) {
+      if (normalized[target] != null) return;
+      for (final alias in aliases) {
+        final value = envelope[alias];
+        if (value != null) {
+          normalized[target] = value;
+          return;
+        }
+      }
+    }
+
+    copyAlias('algorithm', const ['alg']);
+    copyAlias('sender_device_id', const ['senderDeviceId']);
+    copyAlias('recipient_device_id', const ['recipientDeviceId']);
+    copyAlias('recipient_device_ids', const ['recipientDeviceIds']);
+    copyAlias('recipient_user_id', const ['recipientUserId']);
+    copyAlias('session_id', const ['sessionId']);
+    copyAlias('key_version', const ['keyVersion']);
+    return normalized;
   }
 
   /// Build the PreKeyBundleFetch JSON expected by the FRB bridge.

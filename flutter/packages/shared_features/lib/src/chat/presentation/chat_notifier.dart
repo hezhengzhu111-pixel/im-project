@@ -53,6 +53,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   StreamSubscription? _wsSubscription;
   StreamSubscription? _wsStateSubscription;
   StreamSubscription? _outboxSubscription;
+  final Set<String> _inFlightSendFingerprints = <String>{};
 
   bool get _e2eeAvailable => _e2eeManager != null && _e2eeMetaStore != null;
 
@@ -179,6 +180,40 @@ class ChatNotifier extends StateNotifier<ChatState> {
     await _outbox!.retryAllFailed(_sendOutboxMessage);
   }
 
+  String _sendFingerprint({
+    required String sessionKey,
+    required String messageType,
+    required String content,
+    String? mediaUrl,
+    String? mediaName,
+    int? mediaSize,
+    String? thumbnailUrl,
+    int? duration,
+  }) {
+    return jsonEncode([
+      _normalizeIncomingSessionKey(sessionKey),
+      messageType.toUpperCase(),
+      content,
+      mediaUrl ?? '',
+      mediaName ?? '',
+      mediaSize,
+      thumbnailUrl ?? '',
+      duration,
+    ]);
+  }
+
+  bool _beginInFlightSend(String fingerprint) {
+    if (_inFlightSendFingerprints.contains(fingerprint)) {
+      return false;
+    }
+    _inFlightSendFingerprints.add(fingerprint);
+    return true;
+  }
+
+  void _endInFlightSend(String fingerprint) {
+    _inFlightSendFingerprints.remove(fingerprint);
+  }
+
   Future<Message?> _sendOutboxMessage(OutboxMessage outboxMsg) async {
     if (outboxMsg.isEncrypted) {
       final envelope = _tryGetEnvelopeForOutbox(outboxMsg);
@@ -192,7 +227,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         receiverId: outboxMsg.receiverId,
         clientMessageId: outboxMsg.clientMessageId,
         messageType: outboxMsg.messageType,
-        e2eeEnvelope: envelope,
+        e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(envelope),
         e2eeDeviceId: outboxMsg.e2eeDeviceId!,
         mediaUrl: outboxMsg.mediaUrl,
         mediaName: outboxMsg.mediaName,
@@ -400,7 +435,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void setActiveSession(String? sessionId) {
     final normalized =
         sessionId == null ? null : _normalizeIncomingSessionKey(sessionId);
-    state = state.copyWith(activeSessionId: normalized);
+    state = state.copyWith(
+      activeSessionId: normalized,
+      sessions: normalized == null
+          ? state.sessions
+          : _sessionsWithClearedUnread(normalized),
+    );
     if (normalized != null) {
       markRead(normalized);
     }
@@ -412,8 +452,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
-      final messages =
-          _e2eeAvailable ? await _decryptLoadedMessages(history) : history;
+      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
+      final messages = _e2eeAvailable
+          ? await _decryptLoadedMessages(sortedHistory)
+          : sortedHistory;
       _ensureE2eeSessionKeyInMessages(messages);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -439,8 +481,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
-      final messages =
-          _e2eeAvailable ? await _decryptLoadedMessages(history) : history;
+      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
+      final messages = _e2eeAvailable
+          ? await _decryptLoadedMessages(sortedHistory)
+          : sortedHistory;
       _ensureE2eeSessionKeyInMessages(messages);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -666,100 +710,161 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
     final sessionKey = _sessionKeyForPrivateTarget(receiverId);
     final e2eeSessionId = _e2eeSessionIdForPrivateTarget(receiverId);
-
-    // Check E2EE session status before sending.
-    String e2eeStatus = 'plaintext';
-    if (_e2eeAvailable) {
-      try {
-        e2eeStatus = await _e2eeMetaStore!.getSessionStatus(e2eeSessionId);
-      } catch (_) {}
-    }
-
-    if (_e2eeAvailable &&
-        (e2eeStatus == 'negotiating' || e2eeStatus == 'encrypted')) {
-      final syncedStatus = await _e2eeManager!.syncSessionStatus(e2eeSessionId);
-      if (e2eeStatus == 'encrypted' && syncedStatus == 'plaintext') {
-        state = state.copyWith(error: 'e2ee_session_disabled');
-        _removePendingNegotiation(e2eeSessionId);
-        return null;
-      }
-      e2eeStatus = syncedStatus;
-    }
-
-    if (_e2eeAvailable && e2eeStatus == 'negotiating') {
-      state = state.copyWith(error: 'e2ee_not_ready');
-      return null;
-    }
-    if (_e2eeAvailable && e2eeStatus == 'failed') {
-      await _e2eeMetaStore!.setSessionStatus(e2eeSessionId, 'plaintext');
-      e2eeStatus = 'plaintext';
-    }
-
-    // Prepare the pending message with plaintext for local display.
-    final pendingMessage = Message(
-      id: cid,
-      senderId: currentUid,
-      receiverId: receiverId,
-      isGroupChat: false,
+    final sendFingerprint = _sendFingerprint(
+      sessionKey: sessionKey,
       messageType: messageType,
       content: content,
-      sendTime: DateTime.now().toIso8601String(),
-      status: 'SENDING',
-      clientMessageId: cid,
-      encrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
-      decryptStatus:
-          (_e2eeAvailable && e2eeStatus == 'encrypted') ? 'skipped_own' : null,
       mediaUrl: mediaUrl,
       mediaName: mediaName,
       mediaSize: mediaSize,
       thumbnailUrl: thumbnailUrl,
       duration: duration,
     );
-    addMessage(sessionKey, pendingMessage);
-
-    Map<String, dynamic>? encryptedEnvelope;
-    String? encryptedDeviceId;
+    if (!_beginInFlightSend(sendFingerprint)) return null;
 
     try {
-      Message serverMessage;
-      if (_e2eeAvailable && e2eeStatus == 'encrypted') {
-        final e2eeManager = _e2eeManager!;
-        final senderDeviceId = await _e2eeMetaStore!.getOrCreateDeviceId();
-        final recipientDeviceId =
-            await _e2eeMetaStore!.getRemoteDeviceId(e2eeSessionId);
-        if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
-          throw Exception('remote device ID not found for session');
+      // Check E2EE session status before sending.
+      String e2eeStatus = 'plaintext';
+      if (_e2eeAvailable) {
+        try {
+          e2eeStatus = await _e2eeMetaStore!.getSessionStatus(e2eeSessionId);
+        } catch (_) {}
+      }
+
+      if (_e2eeAvailable &&
+          (e2eeStatus == 'negotiating' || e2eeStatus == 'encrypted')) {
+        final syncedStatus =
+            await _e2eeManager!.syncSessionStatus(e2eeSessionId);
+        if (e2eeStatus == 'encrypted' && syncedStatus == 'plaintext') {
+          state = state.copyWith(error: 'e2ee_session_disabled');
+          _removePendingNegotiation(e2eeSessionId);
+          return null;
+        }
+        e2eeStatus = syncedStatus;
+      }
+
+      if (_e2eeAvailable && e2eeStatus == 'negotiating') {
+        state = state.copyWith(error: 'e2ee_not_ready');
+        return null;
+      }
+      if (_e2eeAvailable && e2eeStatus == 'failed') {
+        await _e2eeMetaStore!.setSessionStatus(e2eeSessionId, 'plaintext');
+        e2eeStatus = 'plaintext';
+      }
+
+      // Prepare the pending message with plaintext for local display.
+      final pendingMessage = Message(
+        id: cid,
+        senderId: currentUid,
+        receiverId: receiverId,
+        isGroupChat: false,
+        messageType: messageType,
+        content: content,
+        sendTime: DateTime.now().toIso8601String(),
+        status: 'SENDING',
+        clientMessageId: cid,
+        encrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
+        decryptStatus: (_e2eeAvailable && e2eeStatus == 'encrypted')
+            ? 'skipped_own'
+            : null,
+        mediaUrl: mediaUrl,
+        mediaName: mediaName,
+        mediaSize: mediaSize,
+        thumbnailUrl: thumbnailUrl,
+        duration: duration,
+      );
+      addMessage(sessionKey, pendingMessage);
+
+      Map<String, dynamic>? encryptedEnvelope;
+      String? encryptedDeviceId;
+
+      try {
+        Message serverMessage;
+        if (_e2eeAvailable && e2eeStatus == 'encrypted') {
+          final e2eeManager = _e2eeManager!;
+          final senderDeviceId = await _e2eeMetaStore!.getOrCreateDeviceId();
+          final recipientDeviceId =
+              await _e2eeMetaStore!.getRemoteDeviceId(e2eeSessionId);
+          if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
+            throw Exception('remote device ID not found for session');
+          }
+
+          encryptedDeviceId = senderDeviceId;
+          encryptedEnvelope = await e2eeManager.encryptToEnvelope(
+            sessionId: e2eeSessionId,
+            senderDeviceId: senderDeviceId,
+            recipientDeviceId: recipientDeviceId,
+            plaintext: content,
+          );
+          _updateMessageE2eeMetadata(
+            sessionKey: sessionKey,
+            messageId: cid,
+            envelope: encryptedEnvelope,
+            deviceId: senderDeviceId,
+          );
+
+          serverMessage = await _messageApi.sendPrivateEncrypted(
+            receiverId: receiverId,
+            clientMessageId: cid,
+            messageType: messageType,
+            e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(
+              encryptedEnvelope,
+            ),
+            e2eeDeviceId: senderDeviceId,
+            mediaUrl: mediaUrl,
+            mediaName: mediaName,
+            mediaSize: mediaSize,
+            thumbnailUrl: thumbnailUrl,
+            duration: duration,
+          );
+        } else {
+          serverMessage = await _messageApi.sendPrivateMessage(
+            SendPrivateMessageRequest(
+              receiverId: receiverId,
+              content: content,
+              messageType: messageType,
+              clientMessageId: cid,
+              mediaUrl: mediaUrl,
+              mediaName: mediaName,
+              mediaSize: mediaSize,
+              thumbnailUrl: thumbnailUrl,
+              duration: duration,
+              extra: extra,
+            ),
+          );
+        }
+        _replaceMessage(sessionKey, cid, serverMessage);
+
+        // Cache plaintext for own sent E2EE messages to enable history recovery.
+        if (_e2eeAvailable &&
+            e2eeStatus == 'encrypted' &&
+            _sentMessageCache != null) {
+          await _sentMessageCache!.put(
+            clientMessageId: cid,
+            plaintext: content,
+            e2eeSessionId: e2eeSessionId,
+            serverMessageId: serverMessage.id,
+          );
         }
 
-        encryptedDeviceId = senderDeviceId;
-        encryptedEnvelope = await e2eeManager.encryptToEnvelope(
-          sessionId: e2eeSessionId,
-          senderDeviceId: senderDeviceId,
-          recipientDeviceId: recipientDeviceId,
-          plaintext: content,
-        );
-        _updateMessageE2eeMetadata(
-          sessionKey: sessionKey,
-          messageId: cid,
-          envelope: encryptedEnvelope,
-          deviceId: senderDeviceId,
-        );
+        return serverMessage;
+      } catch (e, st) {
+        AppLogger.instance.error('Send message failed', e, st);
 
-        serverMessage = await _messageApi.sendPrivateEncrypted(
-          receiverId: receiverId,
-          clientMessageId: cid,
-          messageType: messageType,
-          e2eeEnvelope: encryptedEnvelope,
-          e2eeDeviceId: senderDeviceId,
-          mediaUrl: mediaUrl,
-          mediaName: mediaName,
-          mediaSize: mediaSize,
-          thumbnailUrl: thumbnailUrl,
-          duration: duration,
-        );
-      } else {
-        serverMessage = await _messageApi.sendPrivateMessage(
-          SendPrivateMessageRequest(
+        if (_e2eeAvailable &&
+            e2eeStatus == 'encrypted' &&
+            encryptedEnvelope == null) {
+          state = state.copyWith(error: 'e2ee_encrypt_failed');
+          _updateMessageStatus(sessionKey, cid, 'FAILED');
+          return null;
+        }
+
+        // Only enqueue to outbox for retryable errors (network/temporary).
+        final decision = RetryableErrorClassifier.classifySendError(e);
+        if (decision.retryable && _outbox != null) {
+          await _outbox!.enqueue(OutboxMessage(
+            id: cid,
+            sessionKey: sessionKey,
             receiverId: receiverId,
             content: content,
             messageType: messageType,
@@ -770,62 +875,20 @@ class ChatNotifier extends StateNotifier<ChatState> {
             thumbnailUrl: thumbnailUrl,
             duration: duration,
             extra: extra,
-          ),
-        );
-      }
-      _replaceMessage(sessionKey, cid, serverMessage);
-
-      // Cache plaintext for own sent E2EE messages to enable history recovery.
-      if (_e2eeAvailable &&
-          e2eeStatus == 'encrypted' &&
-          _sentMessageCache != null) {
-        await _sentMessageCache!.put(
-          clientMessageId: cid,
-          plaintext: content,
-          e2eeSessionId: e2eeSessionId,
-          serverMessageId: serverMessage.id,
-        );
-      }
-
-      return serverMessage;
-    } catch (e, st) {
-      AppLogger.instance.error('Send message failed', e, st);
-
-      if (_e2eeAvailable &&
-          e2eeStatus == 'encrypted' &&
-          encryptedEnvelope == null) {
-        state = state.copyWith(error: 'e2ee_encrypt_failed');
-        _updateMessageStatus(sessionKey, cid, 'FAILED');
+            isEncrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
+            e2eeEnvelope: encryptedEnvelope,
+            e2eeDeviceId: encryptedDeviceId,
+          ));
+          _updateMessageStatus(sessionKey, cid, 'PENDING');
+        } else {
+          final errorMsg = decision.safeMessage ?? e.toString();
+          state = state.copyWith(error: errorMsg);
+          _updateMessageStatus(sessionKey, cid, 'FAILED');
+        }
         return null;
       }
-
-      // Only enqueue to outbox for retryable errors (network/temporary).
-      final decision = RetryableErrorClassifier.classifySendError(e);
-      if (decision.retryable && _outbox != null) {
-        await _outbox!.enqueue(OutboxMessage(
-          id: cid,
-          sessionKey: sessionKey,
-          receiverId: receiverId,
-          content: content,
-          messageType: messageType,
-          clientMessageId: cid,
-          mediaUrl: mediaUrl,
-          mediaName: mediaName,
-          mediaSize: mediaSize,
-          thumbnailUrl: thumbnailUrl,
-          duration: duration,
-          extra: extra,
-          isEncrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
-          e2eeEnvelope: encryptedEnvelope,
-          e2eeDeviceId: encryptedDeviceId,
-        ));
-        _updateMessageStatus(sessionKey, cid, 'PENDING');
-      } else {
-        final errorMsg = decision.safeMessage ?? e.toString();
-        state = state.copyWith(error: errorMsg);
-        _updateMessageStatus(sessionKey, cid, 'FAILED');
-      }
-      return null;
+    } finally {
+      _endInFlightSend(sendFingerprint);
     }
   }
 
@@ -897,48 +960,63 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return null;
     }
     final sessionKey = _sessionKeyForGroupTarget(groupId);
-
-    final pendingMessage = Message(
-      id: cid,
-      senderId: currentUserId,
-      isGroupChat: true,
-      groupId: groupId,
+    final sendFingerprint = _sendFingerprint(
+      sessionKey: sessionKey,
       messageType: messageType,
       content: content,
-      sendTime: DateTime.now().toIso8601String(),
-      status: 'SENDING',
-      clientMessageId: cid,
       mediaUrl: mediaUrl,
       mediaName: mediaName,
       mediaSize: mediaSize,
       thumbnailUrl: thumbnailUrl,
       duration: duration,
     );
-    addMessage(sessionKey, pendingMessage);
+    if (!_beginInFlightSend(sendFingerprint)) return null;
 
     try {
-      final serverMessage = await _messageApi.sendGroupMessage(
-        SendGroupMessageRequest(
-          groupId: groupId,
-          content: content,
-          messageType: messageType,
-          clientMessageId: cid,
-          mediaUrl: mediaUrl,
-          mediaName: mediaName,
-          mediaSize: mediaSize,
-          thumbnailUrl: thumbnailUrl,
-          duration: duration,
-          mentionedUserIds: mentionedUserIds,
-          extra: extra,
-        ),
+      final pendingMessage = Message(
+        id: cid,
+        senderId: currentUserId,
+        isGroupChat: true,
+        groupId: groupId,
+        messageType: messageType,
+        content: content,
+        sendTime: DateTime.now().toIso8601String(),
+        status: 'SENDING',
+        clientMessageId: cid,
+        mediaUrl: mediaUrl,
+        mediaName: mediaName,
+        mediaSize: mediaSize,
+        thumbnailUrl: thumbnailUrl,
+        duration: duration,
       );
-      _replaceMessage(sessionKey, cid, serverMessage);
-      return serverMessage;
-    } catch (e, st) {
-      AppLogger.instance.error('Send group message failed', e, st);
-      _updateMessageStatus(sessionKey, cid, 'FAILED');
-      state = state.copyWith(error: e.toString());
-      return null;
+      addMessage(sessionKey, pendingMessage);
+
+      try {
+        final serverMessage = await _messageApi.sendGroupMessage(
+          SendGroupMessageRequest(
+            groupId: groupId,
+            content: content,
+            messageType: messageType,
+            clientMessageId: cid,
+            mediaUrl: mediaUrl,
+            mediaName: mediaName,
+            mediaSize: mediaSize,
+            thumbnailUrl: thumbnailUrl,
+            duration: duration,
+            mentionedUserIds: mentionedUserIds,
+            extra: extra,
+          ),
+        );
+        _replaceMessage(sessionKey, cid, serverMessage);
+        return serverMessage;
+      } catch (e, st) {
+        AppLogger.instance.error('Send group message failed', e, st);
+        _updateMessageStatus(sessionKey, cid, 'FAILED');
+        state = state.copyWith(error: e.toString());
+        return null;
+      }
+    } finally {
+      _endInFlightSend(sendFingerprint);
     }
   }
 
@@ -1012,8 +1090,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
     } else {
       updated[index] = _mergeMessageReplacement(updated[index], message);
     }
+    final sorted = _mergeMessagesChronologically(<Message>[], updated);
     state = state.copyWith(
-      messages: {...state.messages, normalizedKey: updated},
+      messages: {...state.messages, normalizedKey: sorted},
+      sessions: _sessionsWithMessage(
+        normalizedKey,
+        message,
+        countUnread: index == -1,
+      ),
     );
   }
 
@@ -1035,9 +1119,127 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
     final updated = List<Message>.from(currentMessages);
     updated[index] = _mergeMessageReplacement(updated[index], newMessage);
+    final sorted = _mergeMessagesChronologically(<Message>[], updated);
     state = state.copyWith(
-      messages: {...state.messages, normalizedKey: updated},
+      messages: {...state.messages, normalizedKey: sorted},
+      sessions: _sessionsWithMessage(
+        normalizedKey,
+        newMessage,
+        countUnread: false,
+      ),
     );
+  }
+
+  List<ChatSession> _sessionsWithClearedUnread(String sessionKey) {
+    final index =
+        state.sessions.indexWhere((session) => session.id == sessionKey);
+    if (index == -1 || state.sessions[index].unreadCount == 0) {
+      return state.sessions;
+    }
+    final updated = List<ChatSession>.from(state.sessions);
+    updated[index] = updated[index].copyWith(unreadCount: 0);
+    return updated;
+  }
+
+  List<ChatSession> _sessionsWithMessage(
+    String sessionKey,
+    Message message, {
+    required bool countUnread,
+  }) {
+    final targetId = message.isGroupChat
+        ? _groupIdFromSessionKey(message.groupId ?? sessionKey)
+        : _privateTargetForMessage(message, sessionKey);
+    if (targetId.isEmpty) return state.sessions;
+
+    final index =
+        state.sessions.indexWhere((session) => session.id == sessionKey);
+    final existing = index == -1 ? null : state.sessions[index];
+    final active = state.activeSessionId == sessionKey;
+    final currentUserId = _currentUserId();
+    final fromCurrentUser = currentUserId != null &&
+        currentUserId.isNotEmpty &&
+        message.senderId == currentUserId;
+    final shouldIncrementUnread = countUnread && !active && !fromCurrentUser;
+    final unreadCount = active
+        ? 0
+        : (existing?.unreadCount ?? 0) + (shouldIncrementUnread ? 1 : 0);
+
+    final updatedSession =
+        (existing ?? _sessionFromMessage(sessionKey, message, targetId))
+            .copyWith(
+      lastMessage: message,
+      lastMessageTime: message.sendTime,
+      lastMessageSenderId: message.senderId,
+      lastMessageSenderName: message.senderName,
+      lastActiveTime: message.sendTime,
+      updateTime: message.sendTime,
+      unreadCount: unreadCount,
+    );
+
+    final updated = List<ChatSession>.from(state.sessions);
+    if (index != -1) {
+      updated.removeAt(index);
+    }
+    updated.insert(0, updatedSession);
+    return updated;
+  }
+
+  ChatSession _sessionFromMessage(
+    String sessionKey,
+    Message message,
+    String targetId,
+  ) {
+    if (message.isGroupChat) {
+      final name = _nonEmptyOr(message.groupName, targetId) ?? targetId;
+      return ChatSession(
+        id: sessionKey,
+        type: 'group',
+        targetId: targetId,
+        targetName: name,
+        targetAvatar: message.groupAvatar,
+        unreadCount: 0,
+        conversationId: _groupSessionKey(targetId),
+        name: name,
+        avatar: message.groupAvatar,
+        conversationType: 'group',
+        conversationName: name,
+        conversationAvatar: message.groupAvatar,
+      );
+    }
+
+    final currentUserId = _currentUserId();
+    final fromCurrentUser = currentUserId != null &&
+        currentUserId.isNotEmpty &&
+        message.senderId == currentUserId;
+    final name = _nonEmptyOr(
+          fromCurrentUser ? message.receiverName : message.senderName,
+          targetId,
+        ) ??
+        targetId;
+    final avatar =
+        fromCurrentUser ? message.receiverAvatar : message.senderAvatar;
+    return ChatSession(
+      id: sessionKey,
+      type: 'private',
+      targetId: targetId,
+      targetName: name,
+      targetAvatar: avatar,
+      unreadCount: 0,
+      conversationType: 'private',
+      name: name,
+      avatar: avatar,
+    );
+  }
+
+  String _privateTargetForMessage(Message message, String sessionKey) {
+    final currentUserId = _currentUserId();
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      if (message.senderId == currentUserId) {
+        return message.receiverId ?? _privateTargetFromSessionKey(sessionKey);
+      }
+      return message.senderId;
+    }
+    return message.receiverId ?? message.senderId;
   }
 
   Message _mergeMessageReplacement(Message existing, Message incoming) {

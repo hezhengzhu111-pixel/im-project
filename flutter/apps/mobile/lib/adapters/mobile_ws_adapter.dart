@@ -42,8 +42,8 @@ class MobileWsClient implements WsClientPort {
     required this.ticketUrl,
     required String wsBaseUrl,
     WsTicketProvider? ticketProvider,
-  })  : _wsBaseUrl = wsBaseUrl,
-        _ticketProvider = ticketProvider;
+  }) : _wsBaseUrl = wsBaseUrl,
+       _ticketProvider = ticketProvider;
 
   final String ticketUrl;
   final String _wsBaseUrl;
@@ -81,8 +81,9 @@ class MobileWsClient implements WsClientPort {
 
   @override
   Future<void> connect(String url) async {
-    _lastUrl = url;
-    _lastUserId = _extractUserId(url);
+    final normalizedUrl = _normalizeWebSocketUrl(url);
+    _lastUrl = normalizedUrl;
+    _lastUserId = _extractUserId(normalizedUrl);
     _manualDisconnect = false;
     _updateState(WsConnectionState.connecting);
 
@@ -90,7 +91,7 @@ class MobileWsClient implements WsClientPort {
       await _subscription?.cancel();
       await _channel?.sink.close();
 
-      _channel = WebSocketChannel.connect(Uri.parse(url));
+      _channel = WebSocketChannel.connect(Uri.parse(normalizedUrl));
       _subscription = _channel!.stream.listen(
         _onMessage,
         onDone: _onDone,
@@ -233,8 +234,10 @@ class MobileWsClient implements WsClientPort {
 
   String _buildUrl(String userId, String ticket) {
     final base = wsBaseUrl.replaceFirst(RegExp(r'/+$'), '');
-    return '$base/${Uri.encodeComponent(userId)}'
-        '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}';
+    return _normalizeWebSocketUrl(
+      '$base/${Uri.encodeComponent(userId)}'
+      '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}',
+    );
   }
 
   String? _extractUserId(String url) {
@@ -247,6 +250,20 @@ class MobileWsClient implements WsClientPort {
     final type = data['type']?.toString().toUpperCase();
     final content = data['content']?.toString().toUpperCase();
     return type == WsMessageType.heartbeat && content == 'PONG';
+  }
+
+  String _normalizeWebSocketUrl(String url) {
+    final uri = Uri.parse(url);
+    final resolved = uri.hasScheme ? uri : Uri.parse(_wsBaseUrl).resolve(url);
+    final scheme = switch (resolved.scheme) {
+      'http' => 'ws',
+      'https' => 'wss',
+      _ => resolved.scheme,
+    };
+    if (scheme != 'ws' && scheme != 'wss') {
+      throw FormatException('unsupported WebSocket URL scheme', url);
+    }
+    return resolved.replace(scheme: scheme).toString();
   }
 
   void _updateState(WsConnectionState state) {

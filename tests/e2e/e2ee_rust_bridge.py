@@ -21,8 +21,17 @@ def _find_lib_path() -> str:
     """自动查找 e2ee_ffi 共享库路径。"""
     system = platform.system()
     lib_name = "e2ee_ffi.dll" if system == "Windows" else "libe2ee_ffi.so"
+    repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    env_path = os.getenv("IM_E2EE_FFI_LIB")
+    if env_path and os.path.exists(os.path.normpath(env_path)):
+        return os.path.normpath(env_path)
 
     candidates = [
+        os.path.join(repo_root, "build", "cache", "rust-target", "release", lib_name),
+        os.path.join(repo_root, "build", "cache", "rust-target", "debug", lib_name),
+        os.path.join(repo_root, "rust", "target", "release", lib_name),
+        os.path.join(repo_root, "rust", "target", "debug", lib_name),
         os.path.join(os.path.dirname(__file__), "..", "rust", "target", "release", lib_name),
         os.path.join(os.path.dirname(__file__), "..", "rust", "target", "debug", lib_name),
     ]

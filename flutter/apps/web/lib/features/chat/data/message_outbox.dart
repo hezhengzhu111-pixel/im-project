@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:idb_shim/idb_shim.dart';
+import 'package:im_shared_features/chat.dart' show E2eeHistoryRecovery;
 import '../../../core/logging/app_logger.dart';
 import '../data/message_api.dart';
 
@@ -404,7 +405,9 @@ class MessageOutbox {
           receiverId: message.receiverId,
           clientMessageId: message.clientMessageId,
           messageType: message.messageType,
-          e2eeEnvelope: message.e2eeEnvelope!,
+          e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(
+            message.e2eeEnvelope!,
+          ),
           e2eeDeviceId: message.e2eeDeviceId ?? '',
           mediaUrl: message.mediaUrl,
           mediaName: message.mediaName,

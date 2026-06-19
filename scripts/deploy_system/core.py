@@ -172,7 +172,8 @@ def load_images_from_manifest(*, parallel: bool = True) -> None:
         return
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"[IMAGE] [WARNING] Failed to read manifest file, skipping image load: {exc}", file=sys.stderr)
         return
 
     image_names: dict[str, str] = manifest.get("docker_image_names", {})

@@ -63,6 +63,154 @@ void main() {
       expect(api.acceptedSessionIds, ['p_user-a_user-b']);
       expect(api.heartbeatDeviceIds, ['device-b']);
     });
+
+    test('derives sender user from private session id for legacy payloads',
+        () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': [
+            {'id': 7, 'key_pair_bincode': 'otk-seven'},
+          ],
+          'public_bundle': {
+            'signed_pre_key': {'key': 'public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore();
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({'e2ee_device_id': 'device-b'}),
+      );
+      final manager = E2eeManager(
+        adapter: _FakeE2eeBridge(),
+        api: _FakeE2eeApi(),
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: metaStore,
+        currentUserId: 'user-b',
+      );
+
+      final accepted = await manager.respondToNegotiation(
+        'p_user-a_user-b',
+        {
+          'senderDeviceId': 'device-a',
+          'targetDeviceId': 'device-b',
+          'senderIdentityKey': 'sender-identity',
+          'handshake': _handshakeWithOtkId(7),
+        },
+      );
+
+      expect(accepted, isTrue);
+      expect(sessionStore.savedSession?.remoteUserId, 'user-a');
+      expect(sessionStore.savedSession?.remoteDeviceId, 'device-a');
+    });
+  });
+
+  group('E2eeManager initiator flow', () {
+    test('includes senderUserId in pending and server request payloads',
+        () async {
+      final keyStore = _MemoryKeyStore(
+        jsonEncode({
+          'identity_key_pair_bincode': 'identity-bincode',
+          'signed_pre_key_pair_bincode': 'spk-bincode',
+          'otk_pairs': const [],
+          'public_bundle': {
+            'identity_key': 'identity-public',
+            'signed_pre_key': {'key': 'public-spk'},
+          },
+        }),
+      );
+      final sessionStore = _MemorySessionStore();
+      final metaStore = E2eeMetaStore(
+        FakeSecureStoragePort({'e2ee_device_id': 'device-a'}),
+      );
+      final api = _FakeE2eeApi()
+        ..devicesByUser['user-b'] = [
+          {
+            'deviceId': 'device-b',
+            'lastActiveAt': '2026-06-19T00:00:00Z',
+          },
+        ]
+        ..bundlesByUserAndDevice['user-b:device-b'] = {
+          'deviceId': 'device-b',
+          'identityKey': 'remote-identity',
+          'signingIdentityKey': 'remote-signing',
+          'signedPreKey': 'remote-spk',
+          'signedPreKeySignature': 'remote-spk-signature',
+          'oneTimePreKey': 'remote-otk',
+          'oneTimePreKeyId': 9,
+        };
+      final manager = E2eeManager(
+        adapter: _FakeE2eeBridge(),
+        api: api,
+        keyStore: keyStore,
+        sessionStore: sessionStore,
+        metaStore: metaStore,
+        currentUserId: 'user-a',
+      );
+
+      final started =
+          await manager.initiateNegotiation('p_user-a_user-b', 'user-b');
+
+      expect(started, isTrue);
+      final pending = jsonDecode(
+        (await metaStore.getPendingHandshake('p_user-a_user-b'))!,
+      ) as Map<String, dynamic>;
+      expect(pending['senderUserId'], 'user-a');
+      expect(pending['senderDeviceId'], 'device-a');
+      expect(pending['targetDeviceId'], 'device-b');
+
+      expect(api.requestPayloads, hasLength(1));
+      final requestPayload =
+          jsonDecode(api.requestPayloads.single) as Map<String, dynamic>;
+      expect(requestPayload['senderUserId'], 'user-a');
+      expect(requestPayload['senderDeviceId'], 'device-a');
+      expect(requestPayload['targetDeviceId'], 'device-b');
+      expect(sessionStore.savedSession?.remoteUserId, 'user-b');
+      expect(sessionStore.savedSession?.remoteDeviceId, 'device-b');
+    });
+  });
+
+  group('E2eeManager envelope handling', () {
+    test('decrypts camelCase envelopes from the API layer', () async {
+      final sessionStore = _MemorySessionStore()
+        ..seedSession(
+          sessionId: 'p_user-a_user-b',
+          stateBase64: 'inbound-state',
+          localDeviceId: 'device-b',
+          remoteUserId: 'user-a',
+          remoteDeviceId: 'device-a',
+        );
+      final bridge = _FakeE2eeBridge();
+      final manager = E2eeManager(
+        adapter: bridge,
+        api: _FakeE2eeApi(),
+        keyStore: _MemoryKeyStore(null),
+        sessionStore: sessionStore,
+        metaStore: E2eeMetaStore(
+          FakeSecureStoragePort({'e2ee_device_id': 'device-b'}),
+        ),
+        currentUserId: 'user-b',
+      );
+
+      final plaintext = await manager.decryptEnvelope(
+        sessionId: 'p_user-a_user-b',
+        envelope: {
+          'algorithm': 'x3dh-ratchet-v1',
+          'senderDeviceId': 'device-a',
+          'recipientDeviceId': 'device-b',
+          'sessionId': 'p_user-a_user-b',
+          'wire': 'wire-base64',
+        },
+      );
+
+      expect(plaintext, 'hello');
+      expect(bridge.lastDecryptEnvelope?['sender_device_id'], 'device-a');
+      expect(bridge.lastDecryptEnvelope?['recipient_device_id'], 'device-b');
+      expect(bridge.lastDecryptEnvelope?['session_id'], 'p_user-a_user-b');
+      expect(sessionStore.savedSession?.stateBase64, 'decrypted-state');
+    });
   });
 
   group('E2eeManager status reconciliation', () {
@@ -146,6 +294,7 @@ String _handshakeWithOtkId(int otkId) {
 
 class _FakeE2eeBridge implements E2eeBridge {
   String? lastLocalOtkPairBase64;
+  Map<String, dynamic>? lastDecryptEnvelope;
 
   @override
   Future<Map<String, dynamic>> createInboundSession({
@@ -165,16 +314,20 @@ class _FakeE2eeBridge implements E2eeBridge {
     required String sessionId,
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    return {'state': 'outbound-state', 'handshake': 'outbound-handshake'};
   }
 
   @override
   Future<Map<String, dynamic>> decryptMessage({
     required String stateBase64,
     required Map<String, dynamic> envelope,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    lastDecryptEnvelope = Map<String, dynamic>.from(envelope);
+    return {
+      'new_state': 'decrypted-state',
+      'plaintext': base64Encode(utf8.encode('hello')),
+    };
   }
 
   @override
@@ -273,8 +426,12 @@ class _FakeE2eeApi extends E2eeApi {
   _FakeE2eeApi() : super(FakeHttpClientPort());
 
   final acceptedSessionIds = <String>[];
+  final disabledSessionIds = <String>[];
   final heartbeatDeviceIds = <String>[];
   final sessionStatuses = <String, String>{};
+  final devicesByUser = <String, List<Map<String, dynamic>>>{};
+  final bundlesByUserAndDevice = <String, Map<String, dynamic>>{};
+  final requestPayloads = <String>[];
 
   @override
   Future<void> acceptEncryption({
@@ -287,6 +444,52 @@ class _FakeE2eeApi extends E2eeApi {
   @override
   Future<void> heartbeatDevice(String deviceId) async {
     heartbeatDeviceIds.add(deviceId);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getOpkStatus(String deviceId) async {
+    return {'lowWatermark': false, 'count': 100};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getDevices(String userId) async {
+    return List<Map<String, dynamic>>.from(
+      devicesByUser[userId] ?? const [],
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> getBundle(
+    String userId, {
+    required String deviceId,
+    required String conversationId,
+    required String requesterDeviceId,
+  }) async {
+    return Map<String, dynamic>.from(
+      bundlesByUserAndDevice['$userId:$deviceId'] ??
+          {
+            'deviceId': deviceId,
+            'identityKey': 'remote-identity',
+            'signingIdentityKey': 'remote-signing',
+            'signedPreKey': 'remote-spk',
+            'signedPreKeySignature': 'remote-signature',
+          },
+    );
+  }
+
+  @override
+  Future<void> requestEncryption({
+    required String sessionId,
+    required String identityKey,
+    required String signedPreKey,
+    required String requestPayloadJson,
+  }) async {
+    requestPayloads.add(requestPayloadJson);
+  }
+
+  @override
+  Future<void> disableEncryption(String sessionId) async {
+    disabledSessionIds.add(sessionId);
   }
 
   @override

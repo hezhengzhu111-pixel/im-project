@@ -68,4 +68,56 @@ void main() {
       containsPair('thumbnailUrl', 'https://example.com/thumb.png'),
     );
   });
+
+  test('sendPrivateEncrypted normalizes snake_case E2EE envelope for API',
+      () async {
+    final http = FakeHttpClientPort();
+    Map<String, dynamic>? capturedBody;
+
+    http.onPost = <T>(
+      String path, {
+      dynamic body,
+      required T Function(Map<String, dynamic>) fromJson,
+    }) async {
+      capturedBody = Map<String, dynamic>.from(body as Map);
+      return ApiResponse<T>(
+        code: 200,
+        message: 'ok',
+        data: fromJson({
+          'id': 'server-1',
+          'senderId': 'user-1',
+          'receiverId': 'user-2',
+          'isGroupChat': false,
+          'messageType': 'TEXT',
+          'content': '',
+          'sendTime': '2026-01-01T00:00:00Z',
+          'status': 'SENT',
+          'encrypted': true,
+        }),
+      );
+    };
+
+    await MessageApi(http).sendPrivateEncrypted(
+      receiverId: 'user-2',
+      clientMessageId: 'client-1',
+      messageType: 'TEXT',
+      e2eeEnvelope: const {
+        'version': 2,
+        'algorithm': 'rust-x25519-x3dh-dr-v1',
+        'sender_device_id': 'device-a',
+        'recipient_device_id': 'device-b',
+        'session_id': 'p_user-1_user-2',
+        'wire': 'ciphertext',
+      },
+      e2eeDeviceId: 'device-a',
+    );
+
+    final envelope = capturedBody!['e2eeEnvelope'] as Map<String, dynamic>;
+    expect(envelope['senderDeviceId'], 'device-a');
+    expect(envelope['recipientDeviceId'], 'device-b');
+    expect(envelope['sessionId'], 'p_user-1_user-2');
+    expect(envelope, isNot(contains('sender_device_id')));
+    expect(envelope, isNot(contains('recipient_device_id')));
+    expect(envelope, isNot(contains('session_id')));
+  });
 }

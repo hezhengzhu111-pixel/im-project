@@ -38,7 +38,9 @@ load_env_file(DEFAULT_RUNTIME_ENV_FILE)
 API_BASE = os.environ.get("IM_API_BASE", "http://localhost:8082").rstrip("/")
 IM_WS_BASE = os.environ.get("IM_WS_BASE")
 MYSQL_CONTAINER = os.environ.get("IM_MYSQL_CONTAINER", "sit-im-mysql-1")
-MYSQL_ROOT_PASSWORD = os.environ.get("MYSQL_ROOT_PASSWORD", "root123")
+MYSQL_ROOT_PASSWORD = os.environ.get("MYSQL_ROOT_PASSWORD")
+if not MYSQL_ROOT_PASSWORD:
+    raise SystemExit("MYSQL_ROOT_PASSWORD environment variable is not set")
 ACCESS_COOKIE_NAME = os.environ.get("IM_AUTH_COOKIE_ACCESS_TOKEN_NAME", "IM_ACCESS_TOKEN")
 INTERNAL_SECRET = os.environ.get(
     "IM_INTERNAL_SECRET",

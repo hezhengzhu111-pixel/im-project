@@ -56,3 +56,6 @@ wasm-bindgen = "0.2"
 wasm-bindgen-test = "0.3"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 zeroize = { version = "1", features = ["derive"] }
+
+[patch.crates-io]
+flutter_rust_bridge = { path = "vendor/flutter_rust_bridge-2.12.0" }

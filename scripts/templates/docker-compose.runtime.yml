@@ -8,7 +8,7 @@ services:
       - --collation-server=utf8mb4_0900_ai_ci
     environment:
       TZ: Asia/Shanghai
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-root123}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
-      MYSQL_PWD: "${MYSQL_ROOT_PASSWORD:-root123}"
+      MYSQL_PWD: "${MYSQL_ROOT_PASSWORD}"
     volumes:
       - sql_migration_file:/migrations/e2ee_migration.sql:ro
     command:
@@ -51,7 +51,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_PORT:-6379}:6379"
     ulimits:
@@ -61,7 +61,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -78,7 +78,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_GROUP_HOT_PORT:-6383}:6379"
     ulimits:
@@ -88,7 +88,7 @@ services:
     volumes:
       - redis_group_hot_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -105,7 +105,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_GROUP_HOT_PORT_2:-6386}:6379"
     ulimits:
@@ -115,7 +115,7 @@ services:
     volumes:
       - redis_group_hot_data_2:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -132,7 +132,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_GROUP_HOT_PORT_3:-6389}:6379"
     ulimits:
@@ -142,7 +142,7 @@ services:
     volumes:
       - redis_group_hot_data_3:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -159,7 +159,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_GROUP_HOT_PORT_4:-6390}:6379"
     ulimits:
@@ -169,7 +169,7 @@ services:
     volumes:
       - redis_group_hot_data_4:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -186,7 +186,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_PRIVATE_HOT_PORT:-6384}:6379"
     ulimits:
@@ -196,7 +196,7 @@ services:
     volumes:
       - redis_private_hot_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -213,7 +213,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_PRIVATE_HOT_PORT_2:-6385}:6379"
     ulimits:
@@ -223,7 +223,7 @@ services:
     volumes:
       - redis_private_hot_data_2:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -240,7 +240,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_PRIVATE_HOT_PORT_3:-6387}:6379"
     ulimits:
@@ -250,7 +250,7 @@ services:
     volumes:
       - redis_private_hot_data_3:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -267,7 +267,7 @@ services:
       - --save
       - "900 1 300 10 60 10000"
       - --requirepass
-      - "${REDIS_PASSWORD:-root123}"
+      - "${REDIS_PASSWORD}"
     ports:
       - "${REDIS_PRIVATE_HOT_PORT_4:-6388}:6379"
     ulimits:
@@ -277,7 +277,7 @@ services:
     volumes:
       - redis_private_hot_data_4:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 20
@@ -312,8 +312,8 @@ services:
     environment:
       TZ: Asia/Shanghai
       IM_SERVER_RS_PORT: "8083"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
       IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-api-server:8082}"
       IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://127.0.0.1:9}"
       IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
@@ -362,17 +362,17 @@ services:
       TZ: Asia/Shanghai
       RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off}"
       API_SERVER_RS_PORT: "8082"
-      MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-root123}@im-mysql:3306/service_message_service_db"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0"
-      IM_PRIVATE_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0"
-      IM_PRIVATE_HOT_REDIS_URLS: "${IM_PRIVATE_HOT_REDIS_URLS:-redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0}"
-      IM_GROUP_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot:6379/0"
-      IM_GROUP_HOT_REDIS_URLS: "${IM_GROUP_HOT_REDIS_URLS:-redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot:6379/0}"
-      IM_PRIVATE_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_GROUP_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD}@im-mysql:3306/service_message_service_db"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      IM_CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      IM_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis-private-hot:6379/0"
+      IM_PRIVATE_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis-private-hot:6379/0"
+      IM_PRIVATE_HOT_REDIS_URLS: "${IM_PRIVATE_HOT_REDIS_URLS:-redis://:${REDIS_PASSWORD}@im-redis-private-hot:6379/0}"
+      IM_GROUP_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis-group-hot:6379/0"
+      IM_GROUP_HOT_REDIS_URLS: "${IM_GROUP_HOT_REDIS_URLS:-redis://:${REDIS_PASSWORD}@im-redis-group-hot:6379/0}"
+      IM_PRIVATE_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      IM_GROUP_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
+      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD}@im-redis:6379/0"
       JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
       AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
       AUTH_WS_TICKET_TTL_SECONDS: "${AUTH_WS_TICKET_TTL_SECONDS:-120}"
@@ -471,7 +471,7 @@ services:
       TZ: Asia/Shanghai
       REDIS_HOST: im-redis
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: "${REDIS_PASSWORD:-root123}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
       IM_API_SERVER_URL: http://im-api-server:8082
       IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
       spring.ai.openai.api-key: placeholder

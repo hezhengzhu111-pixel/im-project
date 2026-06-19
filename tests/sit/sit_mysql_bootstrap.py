@@ -31,9 +31,13 @@ def mysql_quote(value: str) -> str:
 
 
 def main() -> int:
+    mysql_root_password = os.environ.get("MYSQL_ROOT_PASSWORD")
+    if not mysql_root_password:
+        sys.stderr.write("MYSQL_ROOT_PASSWORD environment variable is not set\n")
+        return 1
     env = {
         "COMPOSE_PROJECT_NAME": os.environ.get("COMPOSE_PROJECT_NAME", "im-main-full-gate"),
-        "MYSQL_ROOT_PASSWORD": os.environ.get("MYSQL_ROOT_PASSWORD", "root123"),
+        "MYSQL_ROOT_PASSWORD": mysql_root_password,
     }
     password = env["MYSQL_ROOT_PASSWORD"]
     ps = run(["docker", "compose", "-f", str(RUNTIME_COMPOSE), "ps", "-q", "im-mysql"], env=env)

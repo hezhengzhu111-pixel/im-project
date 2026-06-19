@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_core/core.dart';
 
 class AppConfig {
   const AppConfig({
@@ -36,12 +37,14 @@ final appConfigProvider = Provider<AppConfig>((ref) {
   );
   const wsBase = String.fromEnvironment(
     'WS_BASE_URL',
-    defaultValue: '',  // 将在运行时动态构建
+    defaultValue: '', // 将在运行时动态构建
   );
+  final wsEndpoint =
+      wsBase.isEmpty ? WsEndpoints.path : '$wsBase${WsEndpoints.path}';
   const env = String.fromEnvironment('APP_ENV', defaultValue: 'development');
   return AppConfig(
     apiBaseUrl: apiBase,
-    wsBaseUrl: wsBase,
+    wsBaseUrl: wsEndpoint,
     appEnv: env,
     analyticsEnabled: const bool.fromEnvironment('ANALYTICS_ENABLED'),
     errorReporterEnabled: const bool.fromEnvironment('ERROR_REPORTER_ENABLED'),

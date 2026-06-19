@@ -71,8 +71,9 @@ class WebWsClient implements WsClientPort {
 
   @override
   Future<void> connect(String url) async {
-    _lastUrl = url;
-    _lastUserId = _extractUserId(url) ?? _lastUserId;
+    final normalizedUrl = _normalizeWebSocketUrl(url);
+    _lastUrl = normalizedUrl;
+    _lastUserId = _extractUserId(normalizedUrl) ?? _lastUserId;
     _manualDisconnect = false;
     _updateState(WsConnectionState.connecting);
 
@@ -83,7 +84,7 @@ class WebWsClient implements WsClientPort {
       _onErrorSub?.cancel();
 
       _socket?.close();
-      _socket = html.WebSocket(url);
+      _socket = html.WebSocket(normalizedUrl);
       _onOpenSub = _socket!.onOpen.listen(_onOpen);
       _onMessageSub = _socket!.onMessage.listen(_onMessage);
       _onCloseSub = _socket!.onClose.listen(_onClose);
@@ -222,14 +223,34 @@ class WebWsClient implements WsClientPort {
 
   String _buildUrl(String userId, String ticket) {
     final base = wsBaseUrl.replaceFirst(RegExp(r'/+$'), '');
-    return '$base/${Uri.encodeComponent(userId)}'
-        '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}';
+    return _normalizeWebSocketUrl(
+      '$base/${Uri.encodeComponent(userId)}'
+      '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}',
+    );
   }
 
   String? _extractUserId(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || uri.pathSegments.isEmpty) return null;
     return Uri.decodeComponent(uri.pathSegments.last);
+  }
+
+  String _normalizeWebSocketUrl(String url) {
+    final uri = Uri.parse(url);
+    if (uri.hasScheme) {
+      if (uri.scheme == 'http' || uri.scheme == 'https') {
+        return uri
+            .replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws')
+            .toString();
+      }
+      return uri.toString();
+    }
+
+    final location = html.window.location;
+    final scheme = location.protocol == 'https:' ? 'wss' : 'ws';
+    final host = location.host;
+    final path = url.startsWith('/') ? url : '/$url';
+    return '$scheme://$host$path';
   }
 
   bool _isHeartbeatPong(Map<String, dynamic> data) {

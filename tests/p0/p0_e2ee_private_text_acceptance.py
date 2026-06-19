@@ -43,6 +43,7 @@ import requests
 
 # Import real Rust E2EE bridge and stores from existing test infrastructure.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "e2e"))
 from e2ee_rust_bridge import (
     RustE2eeEngine,
     parse_rust_handshake,

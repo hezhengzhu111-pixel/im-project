@@ -16,8 +16,8 @@ class DesktopWsAdapter implements WsClientPort {
     required this.ticketUrl,
     required String wsBaseUrl,
     WsTicketProvider? ticketProvider,
-  })  : _wsBaseUrl = wsBaseUrl,
-        _ticketProvider = ticketProvider;
+  }) : _wsBaseUrl = wsBaseUrl,
+       _ticketProvider = ticketProvider;
 
   final String ticketUrl;
   final String _wsBaseUrl;
@@ -55,8 +55,9 @@ class DesktopWsAdapter implements WsClientPort {
 
   @override
   Future<void> connect(String url) async {
-    _lastUrl = url;
-    _lastUserId = _extractUserId(url) ?? _lastUserId;
+    final normalizedUrl = _normalizeWebSocketUrl(url);
+    _lastUrl = normalizedUrl;
+    _lastUserId = _extractUserId(normalizedUrl) ?? _lastUserId;
     _manualDisconnect = false;
     _updateConnectionState(WsConnectionState.connecting);
 
@@ -64,7 +65,7 @@ class DesktopWsAdapter implements WsClientPort {
       await _subscription?.cancel();
       await _socket?.close();
 
-      _socket = await WebSocket.connect(Uri.parse(url).toString());
+      _socket = await WebSocket.connect(Uri.parse(normalizedUrl).toString());
       _isConnected = true;
       _retryCount = 0;
       _updateConnectionState(WsConnectionState.connected);
@@ -74,7 +75,12 @@ class DesktopWsAdapter implements WsClientPort {
         (data) {
           try {
             final json = jsonDecode(data as String) as Map<String, dynamic>;
+            if (_isHeartbeatPong(json)) {
+              _heartbeatTimeoutTimer?.cancel();
+              return;
+            }
             _eventsController.add(_WsEventImpl.fromJson(json));
+            _heartbeatTimeoutTimer?.cancel();
           } catch (e) {
             // Ignore parse errors
           }
@@ -204,14 +210,36 @@ class DesktopWsAdapter implements WsClientPort {
 
   String _buildUrl(String userId, String ticket) {
     final base = wsBaseUrl.replaceFirst(RegExp(r'/+$'), '');
-    return '$base/${Uri.encodeComponent(userId)}'
-        '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}';
+    return _normalizeWebSocketUrl(
+      '$base/${Uri.encodeComponent(userId)}'
+      '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}',
+    );
   }
 
   String? _extractUserId(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || uri.pathSegments.isEmpty) return null;
     return Uri.decodeComponent(uri.pathSegments.last);
+  }
+
+  bool _isHeartbeatPong(Map<String, dynamic> data) {
+    final type = data['type']?.toString().toUpperCase();
+    final content = data['content']?.toString().toUpperCase();
+    return type == WsMessageType.heartbeat && content == 'PONG';
+  }
+
+  String _normalizeWebSocketUrl(String url) {
+    final uri = Uri.parse(url);
+    final resolved = uri.hasScheme ? uri : Uri.parse(_wsBaseUrl).resolve(url);
+    final scheme = switch (resolved.scheme) {
+      'http' => 'ws',
+      'https' => 'wss',
+      _ => resolved.scheme,
+    };
+    if (scheme != 'ws' && scheme != 'wss') {
+      throw FormatException('unsupported WebSocket URL scheme', url);
+    }
+    return resolved.replace(scheme: scheme).toString();
   }
 
   void dispose() {

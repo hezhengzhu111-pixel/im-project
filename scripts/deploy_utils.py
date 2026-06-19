@@ -315,6 +315,14 @@ def load_config(
     # Import paths from new module
     from deploy_system.paths import INIT_SQL, MIGRATIONS_DIR
 
+    mysql_root_password = os.getenv("MYSQL_ROOT_PASSWORD")
+    if not mysql_root_password:
+        fatal("MYSQL_ROOT_PASSWORD environment variable is not set. Please configure it in your env file.")
+
+    redis_password = os.getenv("REDIS_PASSWORD")
+    if not redis_password:
+        fatal("REDIS_PASSWORD environment variable is not set. Please configure it in your env file.")
+
     config = DeploymentConfig(
         project_dir=root,
         env_file=resolved_env_file,
@@ -325,7 +333,7 @@ def load_config(
         frontend_root=root / "flutter" / "apps" / "web",
         sql_init_file=INIT_SQL,
         sql_migration_file=MIGRATIONS_DIR,  # Now points to migrations directory
-        mysql_root_password=os.getenv("MYSQL_ROOT_PASSWORD", "root123"),
+        mysql_root_password=mysql_root_password,
         network_name=os.getenv("GLOBAL_DOCKER_NETWORK", "im-sit-network"),
     )
     ensure_project_layout(config)
@@ -535,7 +543,13 @@ def redact_text(text: str) -> str:
     return redacted
 
 
+_compose_services_cache: dict[str, list[str]] = {}
+
+
 def compose_config_services(config: DeploymentConfig) -> list[str]:
+    cache_key = str(config.compose_file)
+    if cache_key in _compose_services_cache:
+        return _compose_services_cache[cache_key]
     result = run_command(
         [*compose_base_command(config), "config", "--services"],
         cwd=config.project_dir,
@@ -547,6 +561,7 @@ def compose_config_services(config: DeploymentConfig) -> list[str]:
     services = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if not services:
         fatal("Docker Compose configuration did not define any services.")
+    _compose_services_cache[cache_key] = services
     return services
 
 
@@ -612,7 +627,8 @@ def inspect_container_state(container_id: str) -> dict:
         return {}
     try:
         return json.loads(result.stdout.strip())
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        print(f"[WARNING] Failed to parse container state JSON: {exc}", file=sys.stderr)
         return {}
 
 

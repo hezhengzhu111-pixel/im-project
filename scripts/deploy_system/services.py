@@ -79,7 +79,10 @@ def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
 
 
 def configure_dynamic_redis_urls() -> None:
-    password = os.getenv("REDIS_PASSWORD", "root123")
+    password = os.getenv("REDIS_PASSWORD")
+    if not password:
+        from deploy_utils import fatal
+        fatal("REDIS_PASSWORD environment variable is not set. Please configure it in your env file.")
     os.environ.setdefault(
         "IM_PRIVATE_HOT_REDIS_URLS",
         _hot_urls("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS", password),

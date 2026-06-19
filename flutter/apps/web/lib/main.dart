@@ -41,8 +41,10 @@ Future<void> main() async {
   );
   const wsBase = String.fromEnvironment(
     'WS_BASE_URL',
-    defaultValue: '',  // 将在运行时动态构建
+    defaultValue: '', // 将在运行时动态构建
   );
+  final wsEndpoint =
+      wsBase.isEmpty ? WsEndpoints.path : '$wsBase${WsEndpoints.path}';
   final secureStorage = WebSecureStorageAdapter();
   final httpClient = WebHttpClient(baseUrl: apiBase);
   final filePicker = WebFilePickerAdapter();
@@ -53,7 +55,7 @@ Future<void> main() async {
   final storage = WebStorageAdapter();
   final wsClient = WebWsClient(
     ticketUrl: AuthEndpoints.wsTicket,
-    wsBaseUrl: '$wsBase${WsEndpoints.path}',
+    wsBaseUrl: wsEndpoint,
     ticketProvider: () async {
       final response = await httpClient.post<Map<String, dynamic>>(
         AuthEndpoints.wsTicket,

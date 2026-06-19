@@ -284,11 +284,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
     } catch (e, st) {
-      AppLogger.instance.error(
-          'WS ticket fetch failed, connecting without ticket', e, st, 'ws');
+      AppLogger.instance.error('WS ticket fetch failed', e, st, 'ws');
     }
-    // Fallback: connect without ticket (development mode)
-    _wsClient.connect(_buildWsUrl(normalizedUserId));
+
+    // Empty APP_ENV defaults to production (safe by default).
+    const appEnv =
+        String.fromEnvironment('APP_ENV', defaultValue: 'production');
+    final isDevMode =
+        appEnv == 'dev' || appEnv == 'development' || appEnv == 'test';
+    if (isDevMode) {
+      AppLogger.instance.warn(
+          'WS ticket unavailable, falling back to no-ticket connection (dev only)');
+      _wsClient.connect(_buildWsUrl(normalizedUserId));
+    } else {
+      AppLogger.instance.error(
+        'WS ticket unavailable, refusing to connect without ticket in production',
+        Exception('ws_ticket_unavailable'),
+        StackTrace.current,
+        'ws',
+      );
+    }
   }
 
   String _buildWsUrl(String userId, [String? ticket]) {

@@ -112,6 +112,74 @@ class E2eeHistoryRecovery {
     };
   }
 
+  /// Converts an E2EE envelope to the camelCase JSON shape expected by the
+  /// backend HTTP API.
+  static Map<String, dynamic> envelopeToApiJson(Map<String, dynamic> envelope) {
+    final apiJson = <String, dynamic>{
+      'version': envelope['version'],
+      'algorithm': _firstPresent(envelope['algorithm'], envelope['alg']),
+      'senderDeviceId': _firstPresent(
+        envelope['senderDeviceId'],
+        envelope['sender_device_id'],
+      ),
+      'recipientDeviceId': _firstPresent(
+        envelope['recipientDeviceId'],
+        envelope['recipient_device_id'],
+      ),
+      'sessionId': _firstPresent(envelope['sessionId'], envelope['session_id']),
+      'wire': envelope['wire'],
+      if (envelope['ciphertext'] != null) 'ciphertext': envelope['ciphertext'],
+    };
+
+    final handshake = envelope['handshake'];
+    if (handshake != null) apiJson['handshake'] = handshake;
+
+    final recipientUserId = _firstPresent(
+      envelope['recipientUserId'],
+      envelope['recipient_user_id'],
+    );
+    if (recipientUserId != null) apiJson['recipientUserId'] = recipientUserId;
+
+    final recipientDeviceIds = _firstPresent(
+      envelope['recipientDeviceIds'],
+      envelope['recipient_device_ids'],
+    );
+    if (recipientDeviceIds != null) {
+      apiJson['recipientDeviceIds'] = recipientDeviceIds;
+    }
+
+    final keyVersion = _firstPresent(
+      envelope['keyVersion'],
+      envelope['key_version'],
+    );
+    if (keyVersion != null) apiJson['keyVersion'] = keyVersion;
+
+    apiJson.removeWhere((_, value) => value == null);
+    return apiJson;
+  }
+
+  /// Converts a private per-device envelope item to the backend API shape.
+  static Map<String, dynamic> deviceEnvelopeToApiJson(
+    Map<String, dynamic> item,
+  ) {
+    final nested = item['envelope'];
+    if (nested is Map<String, dynamic>) {
+      return {
+        ...item,
+        'envelope': envelopeToApiJson(nested),
+      };
+    }
+    if (nested is Map) {
+      return {
+        ...item,
+        'envelope': envelopeToApiJson(
+          nested.map((key, value) => MapEntry(key.toString(), value)),
+        ),
+      };
+    }
+    return envelopeToApiJson(item);
+  }
+
   /// Extracts the E2EE session ID from a message's envelope.
   ///
   /// Returns the sessionId from the envelope, or empty string if not available.
@@ -122,5 +190,10 @@ class E2eeHistoryRecovery {
   /// Checks if a message is from the current user.
   static bool isOwnMessage(Message message, String currentUserId) {
     return message.senderId == currentUserId;
+  }
+
+  static Object? _firstPresent(Object? first, Object? second) {
+    if (first != null) return first;
+    return second;
   }
 }

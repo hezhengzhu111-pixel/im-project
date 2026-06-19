@@ -10,6 +10,9 @@ use im_e2ee_core::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+const RATCHET_HEADER_LEN: usize = 52;
+const WIRE_HEADER_LEN_PREFIX_SIZE: usize = 4;
+
 // ============================================================================
 // Serializable bridge types for FFI
 // ============================================================================
@@ -141,6 +144,50 @@ fn parse_remote_bundle_json(bundle_json: &str) -> Result<PreKeyBundleFetch> {
         signed_pre_key_signature: Ed25519Signature(sig),
         one_time_pre_key,
     })
+}
+
+fn encode_wire(header_and_ciphertext: &[u8]) -> Result<Vec<u8>> {
+    if header_and_ciphertext.len() < RATCHET_HEADER_LEN {
+        anyhow::bail!(
+            "ratchet payload too short: expected at least {} bytes, got {}",
+            RATCHET_HEADER_LEN,
+            header_and_ciphertext.len()
+        );
+    }
+    let header_len = u32::try_from(RATCHET_HEADER_LEN).context("ratchet header length overflow")?;
+    let mut wire = Vec::with_capacity(WIRE_HEADER_LEN_PREFIX_SIZE + header_and_ciphertext.len());
+    wire.extend_from_slice(&header_len.to_be_bytes());
+    wire.extend_from_slice(header_and_ciphertext);
+    Ok(wire)
+}
+
+fn decode_wire(wire: &[u8]) -> Result<Vec<u8>> {
+    if wire.len() < RATCHET_HEADER_LEN {
+        anyhow::bail!(
+            "wire too short: expected at least {} bytes, got {}",
+            RATCHET_HEADER_LEN,
+            wire.len()
+        );
+    }
+
+    if wire.len() >= WIRE_HEADER_LEN_PREFIX_SIZE + RATCHET_HEADER_LEN {
+        let prefix = wire
+            .get(..WIRE_HEADER_LEN_PREFIX_SIZE)
+            .context("missing wire header length prefix")?;
+        let header_len = u32::from_be_bytes(
+            prefix
+                .try_into()
+                .context("invalid wire header length prefix")?,
+        );
+        let header_len = usize::try_from(header_len).context("wire header length overflow")?;
+        if header_len == RATCHET_HEADER_LEN {
+            return Ok(wire[WIRE_HEADER_LEN_PREFIX_SIZE..].to_vec());
+        }
+    }
+
+    // Compatibility for older local envelopes produced before the network
+    // wire prefix was enforced.
+    Ok(wire.to_vec())
 }
 
 // ============================================================================
@@ -413,9 +460,10 @@ pub fn ratchet_encrypt(state_bytes: Vec<u8>, plaintext: Vec<u8>) -> Result<(Vec<
     let new_state_bytes =
         try_export_state(&state).context("failed to serialize updated ratchet state")?;
 
-    // Encode header (52 bytes) and prepend to ciphertext.
+    // Encode header (52 bytes) and prepend to ciphertext. The high-level
+    // envelope API adds the network wire header_len prefix.
     let header_bytes = encode_ratchet_header(&header);
-    let mut header_and_ciphertext = Vec::with_capacity(52 + ciphertext.len());
+    let mut header_and_ciphertext = Vec::with_capacity(RATCHET_HEADER_LEN + ciphertext.len());
     header_and_ciphertext.extend_from_slice(&header_bytes);
     header_and_ciphertext.extend_from_slice(&ciphertext);
 
@@ -436,13 +484,13 @@ pub fn ratchet_decrypt(state_bytes: Vec<u8>, ciphertext: Vec<u8>) -> Result<(Vec
         bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
 
     // Split header (52 bytes) from ciphertext.
-    if ciphertext.len() < 52 {
+    if ciphertext.len() < RATCHET_HEADER_LEN {
         anyhow::bail!(
             "ciphertext too short: expected at least 52 bytes for header, got {}",
             ciphertext.len()
         );
     }
-    let (header_bytes, actual_ciphertext) = ciphertext.split_at(52);
+    let (header_bytes, actual_ciphertext) = ciphertext.split_at(RATCHET_HEADER_LEN);
     let header = decode_ratchet_header(header_bytes).context("failed to decode ratchet header")?;
 
     let plaintext = core_ratchet_decrypt(&mut state, &header, actual_ciphertext)
@@ -626,8 +674,9 @@ pub fn encrypt_message(config_json: String) -> Result<String> {
         .context("invalid plaintext base64")?;
 
     let (new_state, header_and_ciphertext) = ratchet_encrypt(state_bytes, plaintext_bytes)?;
+    let wire_bytes = encode_wire(&header_and_ciphertext)?;
 
-    let wire = base64::engine::general_purpose::STANDARD.encode(&header_and_ciphertext);
+    let wire = base64::engine::general_purpose::STANDARD.encode(&wire_bytes);
     let new_state_b64 = base64::engine::general_purpose::STANDARD.encode(&new_state);
 
     let mut envelope = serde_json::json!({
@@ -667,8 +716,9 @@ pub fn decrypt_message(config_json: String) -> Result<String> {
     let wire_bytes = base64::engine::general_purpose::STANDARD
         .decode(wire_b64)
         .context("invalid wire base64")?;
+    let header_and_ciphertext = decode_wire(&wire_bytes)?;
 
-    let (new_state, plaintext) = ratchet_decrypt(state_bytes, wire_bytes)?;
+    let (new_state, plaintext) = ratchet_decrypt(state_bytes, header_and_ciphertext)?;
 
     let result = serde_json::json!({
         "plaintext": base64::engine::general_purpose::STANDARD.encode(&plaintext),
@@ -986,5 +1036,48 @@ mod tests {
             bincode::deserialize(&alice_state_after).expect("deserialize state");
         let exported2 = try_export_state(&deserialized_state).expect("try_export_state failed");
         let _restored2 = core_restore_state(&exported2).expect("core_restore_state failed");
+    }
+
+    #[test]
+    fn test_high_level_encrypt_message_wire_has_header_len_prefix() {
+        let (alice_state, bob_state) = run_x3dh_handshake();
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+        let encrypt_config = serde_json::json!({
+            "state": b64(&alice_state),
+            "plaintext": b64(b"hello across clients"),
+            "sender_device_id": "web-device",
+            "recipient_device_id": "desktop-device",
+            "session_id": "1_2",
+        });
+
+        let encrypted =
+            encrypt_message(encrypt_config.to_string()).expect("encrypt_message failed");
+        let envelope: serde_json::Value =
+            serde_json::from_str(&encrypted).expect("parse encrypted envelope");
+        let wire_b64 = envelope["wire"].as_str().expect("wire is a string");
+        let wire = base64::engine::general_purpose::STANDARD
+            .decode(wire_b64)
+            .expect("decode wire");
+
+        assert_eq!(wire.get(0), Some(&0));
+        assert_eq!(wire.get(1), Some(&0));
+        assert_eq!(wire.get(2), Some(&0));
+        assert_eq!(wire.get(3), Some(&52));
+        assert!(wire.len() > 4 + 52);
+
+        let decrypt_config = serde_json::json!({
+            "state": b64(&bob_state),
+            "envelope": envelope,
+        });
+        let decrypted =
+            decrypt_message(decrypt_config.to_string()).expect("decrypt_message failed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&decrypted).expect("parse decrypt result");
+        let plaintext = base64::engine::general_purpose::STANDARD
+            .decode(parsed["plaintext"].as_str().expect("plaintext is a string"))
+            .expect("decode plaintext");
+
+        assert_eq!(plaintext, b"hello across clients");
     }
 }

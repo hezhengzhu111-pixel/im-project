@@ -1,4 +1,5 @@
 import 'package:im_core/core.dart';
+import 'package:im_shared_features/chat.dart' show E2eeHistoryRecovery;
 
 class SendPrivateMessageRequest {
   const SendPrivateMessageRequest({
@@ -166,8 +167,11 @@ class MessageApi {
         'clientMessageId': clientMessageId,
         'messageType': messageType,
         'encrypted': true,
-        'e2eeEnvelope': e2eeEnvelope,
-        if (e2eeEnvelopes != null) 'e2eeEnvelopes': e2eeEnvelopes,
+        'e2eeEnvelope': E2eeHistoryRecovery.envelopeToApiJson(e2eeEnvelope),
+        if (e2eeEnvelopes != null)
+          'e2eeEnvelopes': e2eeEnvelopes
+              .map(E2eeHistoryRecovery.deviceEnvelopeToApiJson)
+              .toList(),
         'e2eeDeviceId': e2eeDeviceId,
         if (mediaUrl != null) 'mediaUrl': mediaUrl,
         if (mediaName != null) 'mediaName': mediaName,

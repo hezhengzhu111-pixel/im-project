@@ -150,8 +150,12 @@ def manifest_fast() -> list:
 def main_full_dependency_env() -> dict[str, str]:
     mysql_port = os.environ.get("IM_MAIN_FULL_MYSQL_PORT", "13306")
     redis_port = os.environ.get("IM_MAIN_FULL_REDIS_PORT", "16379")
-    mysql_password = os.environ.get("MYSQL_ROOT_PASSWORD", "root123")
-    redis_password = os.environ.get("REDIS_PASSWORD", "root123")
+    mysql_password = os.environ.get("MYSQL_ROOT_PASSWORD")
+    redis_password = os.environ.get("REDIS_PASSWORD")
+    if not mysql_password:
+        raise SystemExit("MYSQL_ROOT_PASSWORD environment variable is not set")
+    if not redis_password:
+        raise SystemExit("REDIS_PASSWORD environment variable is not set")
     mysql_url = f"mysql://root:{mysql_password}@127.0.0.1:{mysql_port}/service_message_service_db"
     redis_url = f"redis://:{redis_password}@127.0.0.1:{redis_port}/0"
     return {
@@ -179,8 +183,12 @@ def gray_release_env(base_url: str, db_url: str) -> dict[str, str]:
     mysql_port = os.environ.get("IM_GRAY_MYSQL_PORT", "13307")
     redis_port = os.environ.get("IM_GRAY_REDIS_PORT", "16380")
     api_port = os.environ.get("IM_GRAY_API_PORT", "18082")
-    mysql_password = os.environ.get("IM_GRAY_MYSQL_ROOT_PASSWORD", "root123")
-    redis_password = os.environ.get("IM_GRAY_REDIS_PASSWORD", "root123")
+    mysql_password = os.environ.get("IM_GRAY_MYSQL_ROOT_PASSWORD")
+    redis_password = os.environ.get("IM_GRAY_REDIS_PASSWORD")
+    if not mysql_password:
+        raise SystemExit("IM_GRAY_MYSQL_ROOT_PASSWORD environment variable is not set")
+    if not redis_password:
+        raise SystemExit("IM_GRAY_REDIS_PASSWORD environment variable is not set")
     internal_secret = os.environ.get(
         "IM_GRAY_INTERNAL_SECRET",
         "im-internal-secret-im-internal-secret-im-internal-secret-im",

@@ -34,6 +34,8 @@ class TestMessageApi extends MessageApi {
   Message? sendGroupMessageResponse;
   Message? sendPrivateEncryptedResponse;
   Exception? errorToThrow;
+  Completer<void>? sendPrivateMessageGate;
+  Completer<void>? sendGroupMessageGate;
 
   int getConversationsCallCount = 0;
   int sendPrivateMessageCallCount = 0;
@@ -75,6 +77,9 @@ class TestMessageApi extends MessageApi {
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
     sendPrivateMessageCallCount++;
     lastSendPrivateRequest = request;
+    if (sendPrivateMessageGate != null) {
+      await sendPrivateMessageGate!.future;
+    }
     if (errorToThrow != null) throw errorToThrow!;
     return sendPrivateMessageResponse ?? _dummyMessage();
   }
@@ -83,6 +88,9 @@ class TestMessageApi extends MessageApi {
   Future<Message> sendGroupMessage(SendGroupMessageRequest request) async {
     sendGroupMessageCallCount++;
     lastSendGroupRequest = request;
+    if (sendGroupMessageGate != null) {
+      await sendGroupMessageGate!.future;
+    }
     if (errorToThrow != null) throw errorToThrow!;
     return sendGroupMessageResponse ?? _dummyMessage();
   }
@@ -1224,6 +1232,46 @@ void main() {
       expect(spyOutbox.enqueueCalls, isEmpty);
     });
 
+    test('concurrent duplicate private send only calls API once', () async {
+      notifier = createNotifier();
+      testApi.sendPrivateMessageGate = Completer<void>();
+
+      final first = notifier.sendMessage('user-2', 'Once');
+      final second = notifier.sendMessage('user-2', 'Once');
+      await Future.delayed(Duration.zero);
+
+      expect(testApi.sendPrivateMessageCallCount, 1);
+      expect(notifier.state.messages['user-1_user-2']?.length, 1);
+
+      testApi.sendPrivateMessageGate!.complete();
+      final results = await Future.wait([first, second]);
+
+      expect(results.first, isNotNull);
+      expect(results.last, isNull);
+      expect(testApi.sendPrivateMessageCallCount, 1);
+      expect(notifier.state.messages['user-1_user-2']?.length, 1);
+    });
+
+    test('concurrent duplicate group send only calls API once', () async {
+      notifier = createNotifier();
+      testApi.sendGroupMessageGate = Completer<void>();
+
+      final first = notifier.sendGroupMessage('group-1', 'Once');
+      final second = notifier.sendGroupMessage('group-1', 'Once');
+      await Future.delayed(Duration.zero);
+
+      expect(testApi.sendGroupMessageCallCount, 1);
+      expect(notifier.state.messages['group_group-1']?.length, 1);
+
+      testApi.sendGroupMessageGate!.complete();
+      final results = await Future.wait([first, second]);
+
+      expect(results.first, isNotNull);
+      expect(results.last, isNull);
+      expect(testApi.sendGroupMessageCallCount, 1);
+      expect(notifier.state.messages['group_group-1']?.length, 1);
+    });
+
     test('pending message is added to state before outbox enqueue', () async {
       notifier = createNotifier();
       testApi.errorToThrow = Exception('fail');
@@ -1242,6 +1290,67 @@ void main() {
   // =========================================================================
 
   group('session key routing', () {
+    test('incoming private message creates and updates session immediately',
+        () async {
+      notifier = createNotifier();
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.message,
+        data: {
+          'id': 'msg-new-session',
+          'senderId': 'user-2',
+          'senderName': 'User 2',
+          'receiverId': 'user-1',
+          'isGroupChat': false,
+          'messageType': 'text',
+          'content': 'Realtime hello',
+          'sendTime': '2024-01-01T00:00:00Z',
+          'status': 'sent',
+        },
+      ));
+      await Future.delayed(Duration.zero);
+
+      expect(testApi.getConversationsCallCount, 0);
+      expect(notifier.state.sessions.length, 1);
+
+      final session = notifier.state.sessions.single;
+      expect(session.id, 'user-1_user-2');
+      expect(session.targetId, 'user-2');
+      expect(session.targetName, 'User 2');
+      expect(session.unreadCount, 1);
+      expect(session.lastMessage?.content, 'Realtime hello');
+      expect(notifier.state.messages['user-1_user-2']?.single.id,
+          'msg-new-session');
+    });
+
+    test(
+        'incoming message for active session updates last message without unread',
+        () async {
+      notifier = createNotifier();
+      notifier.setActiveSession('user-1_user-2');
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.message,
+        data: {
+          'id': 'msg-active-session',
+          'senderId': 'user-2',
+          'senderName': 'User 2',
+          'receiverId': 'user-1',
+          'isGroupChat': false,
+          'messageType': 'text',
+          'content': 'Already open',
+          'sendTime': '2024-01-01T00:00:01Z',
+          'status': 'sent',
+        },
+      ));
+      await Future.delayed(Duration.zero);
+
+      final session = notifier.state.sessions.single;
+      expect(session.id, 'user-1_user-2');
+      expect(session.unreadCount, 0);
+      expect(session.lastMessage?.content, 'Already open');
+    });
+
     test(
         'private chat: message routes to session by id even when id != targetId',
         () async {

@@ -174,48 +174,57 @@ async fn internal_push_batch(
 async fn websocket(
     ws: WebSocketUpgrade,
     State(service): State<ImService>,
-    Path(_path_user_id): Path<String>,
+    Path(path_user_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    let (gateway_user_id, _gateway_username) =
-        match validate_gateway_ws_identity(&headers, service.config()) {
-            Ok(identity) => identity,
-            Err(err) => {
-                tracing::warn!(error = %err, "websocket gateway auth rejected");
-                return err.into_response();
-            }
-        };
-
     let ticket = match resolve_ticket(&headers, &query, &service) {
         TicketResolution::Ticket(ticket) => ticket,
         TicketResolution::RejectedQueryTicket => {
             tracing::warn!(
-                user_id = gateway_user_id,
+                user_id = %path_user_id,
                 "websocket query ticket rejected by config"
             );
             return AppError::query_ticket_not_allowed().into_response();
         }
         TicketResolution::Missing => {
-            tracing::warn!(user_id = gateway_user_id, "websocket ticket missing");
+            tracing::warn!(user_id = %path_user_id, "websocket ticket missing");
             return AppError::ticket_invalid().into_response();
         }
     };
 
+    let gateway_identity = match validate_gateway_ws_identity(&headers, service.config()) {
+        Ok(identity) => Some(identity),
+        Err(err) => {
+            tracing::debug!(error = %err, user_id = %path_user_id, "websocket gateway auth absent or rejected; falling back to ws ticket identity");
+            None
+        }
+    };
+    let expected_user_id = match gateway_identity {
+        Some((user_id, _)) => user_id,
+        None => match path_user_id.trim().parse::<i64>() {
+            Ok(user_id) => user_id,
+            Err(_) => {
+                tracing::warn!(user_id = %path_user_id, "websocket path user id invalid");
+                return AppError::ticket_invalid().into_response();
+            }
+        },
+    };
+
     let consume_result = match service
         .clients()
-        .consume_ws_ticket(&ticket, gateway_user_id)
+        .consume_ws_ticket(&ticket, expected_user_id)
         .await
     {
         Ok(result) => result,
         Err(err) => {
-            tracing::warn!(error = %err, user_id = gateway_user_id, "consume ws ticket failed");
+            tracing::warn!(error = %err, user_id = expected_user_id, "consume ws ticket failed");
             return AppError::ticket_invalid().into_response();
         }
     };
     let Some(consumed_user_id) = consume_result.user_id else {
         tracing::warn!(
-            user_id = gateway_user_id,
+            user_id = expected_user_id,
             status = ?consume_result.status,
             error = ?consume_result.error,
             "websocket ticket rejected"
@@ -224,7 +233,7 @@ async fn websocket(
     };
     if !consume_result.valid {
         tracing::warn!(
-            user_id = gateway_user_id,
+            user_id = expected_user_id,
             status = ?consume_result.status,
             error = ?consume_result.error,
             "websocket ticket rejected"

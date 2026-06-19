@@ -61,6 +61,21 @@ def calculate_checksum(file_path: Path) -> str:
     return sha256.hexdigest()
 
 
+def verify_migration_checksums(migration_files: list[Path], applied: dict[str, str]) -> None:
+    """Verify checksums of applied migrations. Raises fatal error on mismatch."""
+    for migration_file in migration_files:
+        version = migration_file.stem
+        if version in applied:
+            current_checksum = calculate_checksum(migration_file)
+            if applied[version] != current_checksum:
+                fatal(
+                    f"Migration checksum mismatch for {version}!\n"
+                    f"  Stored:  {applied[version]}\n"
+                    f"  Current: {current_checksum}\n"
+                    f"Applied migrations cannot be modified. Create a new migration instead."
+                )
+
+
 def ensure_schema_migrations_table(config: DeploymentConfig) -> None:
     """Create schema_migrations table if it doesn't exist."""
     # Get first declared database name to use
@@ -135,25 +150,18 @@ def apply_pending_migrations(config: DeploymentConfig) -> int:
         return 0
 
     applied = applied_migrations(config)
-    applied_count = 0
 
+    # Verify checksums of applied migrations
+    verify_migration_checksums(migration_files, applied)
+
+    applied_count = 0
     for migration_file in migration_files:
         version = migration_file.stem
-        current_checksum = calculate_checksum(migration_file)
-
         if version in applied:
-            # Verify checksum
-            stored_checksum = applied[version]
-            if stored_checksum != current_checksum:
-                fatal(
-                    f"Migration checksum mismatch for {version}!\n"
-                    f"  Stored:  {stored_checksum}\n"
-                    f"  Current: {current_checksum}\n"
-                    f"Applied migrations cannot be modified. Create a new migration instead."
-                )
             continue
 
         # Apply migration
+        current_checksum = calculate_checksum(migration_file)
         print(f"[DB] Applying migration: {version}")
         import_sql(config, migration_file)
         mark_migration_applied(config, version, current_checksum)
@@ -186,10 +194,10 @@ def mysql_exec(
         docker_cmd,
         "exec",
         "-i",
+        "-e", f"MYSQL_PWD={config.mysql_root_password}",
         mysql_container,
         "mysql",
         "-uroot",
-        f"-p{config.mysql_root_password}",
         "--default-character-set=utf8mb4",
     ]
     stdin = None
@@ -359,17 +367,11 @@ def check_database(config: DeploymentConfig, *, timeout_seconds: int = 180) -> N
 
             print(f"  Pending migrations: {pending_count}")
 
-            # Check for checksum mismatches
-            for migration_file in migration_files:
-                version = migration_file.stem
-                if version in applied:
-                    current_checksum = calculate_checksum(migration_file)
-                    if applied[version] != current_checksum:
-                        print(f"  [ERROR] Checksum mismatch for {version}!")
-                        fatal("Migration checksum verification failed.")
+            # Verify checksums of applied migrations
+            verify_migration_checksums(migration_files, applied)
 
-        except Exception:
-            print("  [INFO] Could not read migration status (table may not exist yet)")
+        except Exception as exc:
+            print(f"  [INFO] Could not read migration status (table may not exist yet): {exc}")
 
     # Overall status
     if missing or tables == 0:

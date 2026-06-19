@@ -74,13 +74,14 @@ def _sync_sources(verbose: bool = False) -> None:
 def _ensure_tool(name: str, commands: list[str]) -> str:
     """Ensure a tool is available and return its path."""
     for cmd in commands:
+        resolved = shutil.which(cmd) or cmd
         try:
             subprocess.run(
-                [cmd, "--version"],
+                [resolved, "--version"],
                 capture_output=True,
                 check=True,
             )
-            return cmd
+            return resolved
         except (subprocess.CalledProcessError, FileNotFoundError):
             continue
 
@@ -123,7 +124,12 @@ def _cargo_profile_dir(profile: str) -> Path:
 
 def build_rust(profile: str) -> None:
     cargo = _ensure_tool("cargo", ["cargo"])
-    args = ["build", f"--{profile}", "-p", "api-server", "-p", "im-server"]
+    args = ["build", "-p", "api-server", "-p", "im-server"]
+    if profile == "release":
+        args.insert(1, "--release")
+    elif profile != "debug":
+        args.insert(1, profile)
+        args.insert(1, "--profile")
     _run([cargo, *args], cwd=paths.RUST_WORK, env=_rust_env())
     exe_suffix = ".exe" if platform.system() == "Windows" else ""
     for name in ("api-server", "im-server"):
@@ -266,8 +272,8 @@ def build_docker_images(config: DeploymentConfig, services: Sequence[str], *, pa
     if paths.MANIFEST_FILE.is_file():
         try:
             manifest = json.loads(paths.MANIFEST_FILE.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"[BUILD] [WARNING] Failed to read manifest file, will overwrite: {exc}", file=sys.stderr)
 
     manifest["docker_image_names"] = DOCKER_IMAGES
     manifest["docker_image_tar_paths"] = generated
@@ -367,8 +373,8 @@ def _write_manifest(options: BuildOptions) -> None:
         try:
             existing = json.loads(paths.MANIFEST_FILE.read_text(encoding="utf-8"))
             manifest.update(existing)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"[BUILD] [WARNING] Failed to read existing manifest, will overwrite: {exc}", file=sys.stderr)
 
     paths.MANIFEST_FILE.parent.mkdir(parents=True, exist_ok=True)
     paths.MANIFEST_FILE.write_text(
