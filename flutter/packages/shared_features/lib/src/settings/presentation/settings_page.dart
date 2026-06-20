@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core_flutter/im_core_flutter.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_shared_features/auth.dart';
@@ -23,30 +20,17 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   int _selectedIndex = 0;
-  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(settingsStateProvider.notifier).loadSettings();
     });
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   void _onNavItemSelected(int index) {
     setState(() => _selectedIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
   }
 
   @override
@@ -77,10 +61,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Expanded(
               child: GlassPanel(
                 padding: const EdgeInsets.all(24),
-                child: PageView(
-                  controller: _pageController,
-                  onPageChanged: (index) =>
-                      setState(() => _selectedIndex = index),
+                child: IndexedStack(
+                  index: _selectedIndex,
                   children: [
                     _buildAccountPage(loc, theme, authState),
                     _buildAppearancePage(loc, theme, settings),
@@ -103,366 +85,152 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     UserSettings? settings,
     AuthState authState,
   ) {
-    return ListView(
-      padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
-      children: [
-        _buildHero(loc, theme),
-        _buildAccountSection(loc, theme, authState),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildPreferencesSection(loc, theme, settings),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildNotificationSection(loc, theme, settings),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildPrivacySection(loc, theme, settings),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildSecondaryColumn(loc, theme),
-      ],
-    );
-  }
-
-  Widget _buildGroupedSection({
-    required String title,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return GlassPanel(
-      padding: const EdgeInsets.all(16),
-      borderRadius: 4,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(loc.settingsTitle),
+        backgroundColor: Colors.white,
+        foregroundColor: theme.colorScheme.onSurface,
+        elevation: 0,
+      ),
+      backgroundColor: ImTokens.wechatPageBg,
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          Row(
-            children: [
-              Icon(icon,
-                  color: Theme.of(context).colorScheme.primary, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          child,
+          _buildAccountPage(loc, theme, authState),
+          const SizedBox(height: 24),
+          _buildAppearancePage(loc, theme, settings),
+          const SizedBox(height: 24),
+          _buildNotificationPage(loc, theme, settings),
+          const SizedBox(height: 24),
+          _buildSecurityPage(loc, theme, settings),
+          const SizedBox(height: 24),
+          _buildAISettingsPage(loc, theme),
         ],
       ),
     );
   }
-
-  Widget _buildHero(AppLocalizations loc, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: ImTokens.layoutSectionGap),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => context.go('/chat'),
-            icon: const Icon(Icons.arrow_back_ios_new, size: ImTokens.textLg),
-          ),
-          const SizedBox(width: ImTokens.layoutItemGap),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                loc.settingsTitle,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              Text(
-                loc.settingsSubtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccountSection(
-    AppLocalizations loc,
-    ThemeData theme,
-    AuthState authState,
-  ) {
-    final user = authState.user;
-    return SettingsSection(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => context.push('/settings/profile'),
-            borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundImage: user?.avatar != null
-                        ? NetworkImage(user!.avatar!)
-                        : null,
-                    child: user?.avatar == null
-                        ? Text(
-                            (user?.nickname ?? user?.username ?? '?')
-                                .substring(0, 1)
-                                .toUpperCase(),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user?.nickname ?? user?.username ?? '',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          loc.settingsProfileDesc,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPreferencesSection(
-    AppLocalizations loc,
-    ThemeData theme,
-    UserSettings? settings,
-  ) {
-    return SettingsSection(
-      children: [
-        SettingsRow(
-          title: loc.settingsLanguage,
-          description: loc.settingsLanguageDesc,
-          trailing: SegmentedControl<String>(
-            segments: [
-              Segment(label: '中文', value: 'zh'),
-              Segment(label: 'English', value: 'en'),
-            ],
-            value: ref.watch(languageProvider),
-            onChanged: (value) {
-              ref.read(languageProvider.notifier).state = value;
-              unawaited(
-                ref.read(storageProvider).setString('app_language', value),
-              );
-            },
-          ),
-        ),
-        SettingsRow(
-          title: loc.settingsTheme,
-          description: loc.settingsThemeDesc,
-          trailing: SegmentedControl<ThemeMode>(
-            segments: [
-              Segment(label: loc.settingsThemeLight, value: ThemeMode.light),
-              Segment(label: loc.settingsThemeDark, value: ThemeMode.dark),
-              Segment(label: loc.settingsThemeAuto, value: ThemeMode.system),
-            ],
-            value: ref.watch(themeModeProvider),
-            onChanged: (value) {
-              ref.read(themeModeProvider.notifier).state = value;
-              unawaited(
-                ref.read(storageProvider).setString('app_theme_mode', value.name),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNotificationSection(
-    AppLocalizations loc,
-    ThemeData theme,
-    UserSettings? settings,
-  ) {
-    if (settings == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return SettingsSection(
-      children: [
-        SettingsRow(
-          title: loc.settingsNotification,
-          trailing: Switch(
-            value: settings.message.enableNotification,
-            onChanged: (v) {
-              _updateMessage(settings.message.copyWith(enableNotification: v));
-            },
-          ),
-        ),
-        SettingsRow(
-          title: loc.settingsSound,
-          trailing: Switch(
-            value: settings.message.enableSound,
-            onChanged: (v) {
-              _updateMessage(settings.message.copyWith(enableSound: v));
-            },
-          ),
-        ),
-        SettingsRow(
-          title: loc.settingsInsecureVoice,
-          description: '即将推出',
-          trailing: const Switch(
-            value: false,
-            onChanged: null,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPrivacySection(
-    AppLocalizations loc,
-    ThemeData theme,
-    UserSettings? settings,
-  ) {
-    if (settings == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return SettingsSection(
-      children: [
-        SettingsRow(
-          title: loc.settingsReadReceipt,
-          description: loc.settingsReadReceiptDesc,
-          trailing: Switch(
-            value: settings.privacy.messageReadReceipt,
-            onChanged: (v) {
-              _updatePrivacy(settings.privacy.copyWith(messageReadReceipt: v));
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSecondaryColumn(AppLocalizations loc, ThemeData theme) {
-    return Column(
-      children: [
-        SettingsSection(
-          children: [
-            SettingsRow(
-              title: loc.settingsClearCache,
-              description: loc.settingsClearCacheDesc,
-              trailing: _SolidActionChip(
-                label: loc.settingsClearCache,
-                onTap: _confirmClearCache,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        SettingsSection(
-          children: [
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => context.push('/settings/ai'),
-                borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-                child: SettingsRow(
-                  title: loc.settingsAiAssistant,
-                  description: loc.settingsAiAssistantDesc,
-                  trailing: Icon(
-                    Icons.chevron_right,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        SettingsSection(
-          children: [
-            SettingsRow(
-              title: loc.settingsLogout,
-              trailing: _SolidActionChip(
-                label: loc.settingsLogout,
-                onTap: _confirmLogout,
-                isDestructive: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        Center(
-          child: TextButton(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (context) => const DeleteAccountDialog(),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('删除账号'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- Page builders for desktop PageView ---
 
   Widget _buildAccountPage(
     AppLocalizations loc,
     ThemeData theme,
     AuthState authState,
   ) {
-    return ListView(
+    final user = authState.user;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHero(loc, theme),
-        _buildAccountSection(loc, theme, authState),
-        const SizedBox(height: ImTokens.layoutSectionGap),
+        Text(
+          loc.accountTitle,
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
         SettingsSection(
           children: [
-            SettingsRow(
-              title: loc.settingsLogout,
-              trailing: _SolidActionChip(
-                label: loc.settingsLogout,
-                onTap: _confirmLogout,
-                isDestructive: true,
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text(loc.accountProfile),
+              subtitle: Text(loc.accountProfileDesc),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/profile'),
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: Text(loc.accountPassword),
+              subtitle: Text(loc.accountPasswordDesc),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/profile'),
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: Icon(Icons.logout, color: theme.colorScheme.error),
+              title: Text(loc.accountLogout),
+              onTap: () => _showLogoutConfirm(context),
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: Icon(Icons.delete_forever,
+                  color: theme.colorScheme.error),
+              title: Text(
+                loc.accountDelete,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              onTap: () => showDialog(
+                context: context,
+                builder: (ctx) => const DeleteAccountDialog(),
               ),
             ),
           ],
         ),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        Center(
-          child: TextButton(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (context) => const DeleteAccountDialog(),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('删除账号'),
-          ),
-        ),
+        const SizedBox(height: 16),
+        if (user != null) _buildUserInfoCard(loc, theme, user),
       ],
+    );
+  }
+
+  Widget _buildUserInfoCard(
+    AppLocalizations loc,
+    ThemeData theme,
+    User user,
+  ) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ImAvatar(
+            imageUrl: user.avatar,
+            name: user.nickname ?? user.username,
+            size: 72,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.nickname ?? user.username,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '@${user.username}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _buildInfoChip(theme, loc.accountId, user.id),
+                    if (user.phone != null)
+                      _buildInfoChip(theme, loc.accountPhone, user.phone!),
+                    if (user.email != null)
+                      _buildInfoChip(theme, loc.accountEmail, user.email!),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(ThemeData theme, String label, String value) {
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      label: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 11,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 
@@ -471,15 +239,88 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ThemeData theme,
     UserSettings? settings,
   ) {
-    return ListView(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHero(loc, theme),
-        _buildGroupedSection(
-          title: loc.settingsAppearance,
-          icon: Icons.palette_outlined,
-          child: _buildPreferencesSection(loc, theme, settings),
+        Text(
+          loc.appearanceTitle,
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          title: loc.appearanceTheme,
+          children: [
+            _buildThemeSelector(loc, theme, settings?.general.theme),
+          ],
+        ),
+        const SizedBox(height: 16),
+        SettingsSection(
+          title: loc.appearanceLanguage,
+          children: [
+            _buildLanguageSelector(loc, theme, settings?.general.language),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildThemeSelector(
+    AppLocalizations loc,
+    ThemeData theme,
+    String? current,
+  ) {
+    final value = current ?? 'system';
+    return SegmentedControl<String>(
+      value: value,
+      segments: [
+        Segment(label: loc.themeLight, value: 'light'),
+        Segment(label: loc.themeDark, value: 'dark'),
+        Segment(label: loc.themeSystem, value: 'system'),
+      ],
+      onChanged: (themeValue) {
+        final s = ref.read(settingsStateProvider);
+        if (s == null) return;
+        final mode = _parseThemeMode(themeValue);
+        ref.read(themeModeProvider.notifier).state = mode;
+        ref.read(settingsStateProvider.notifier).updateGeneralSettings(
+              s.general.copyWith(theme: themeValue),
+            );
+      },
+    );
+  }
+
+  ThemeMode _parseThemeMode(String value) {
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  Widget _buildLanguageSelector(
+    AppLocalizations loc,
+    ThemeData theme,
+    String? language,
+  ) {
+    final options = [
+      Segment(label: loc.languageChinese, value: 'zh'),
+      Segment(label: loc.languageEnglish, value: 'en'),
+    ];
+    return SegmentedControl<String>(
+      value: language ?? 'zh',
+      segments: options,
+      onChanged: (lang) {
+        final s = ref.read(settingsStateProvider);
+        if (s == null) return;
+        ref.read(languageProvider.notifier).state = lang;
+        ref.read(settingsStateProvider.notifier).updateGeneralSettings(
+              s.general.copyWith(language: lang),
+            );
+      },
     );
   }
 
@@ -488,13 +329,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ThemeData theme,
     UserSettings? settings,
   ) {
-    return ListView(
+    final message = settings?.message;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHero(loc, theme),
-        _buildGroupedSection(
-          title: loc.settingsNotifications,
-          icon: Icons.notifications_outlined,
-          child: _buildNotificationSection(loc, theme, settings),
+        Text(
+          loc.notificationTitle,
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SwitchListTile(
+              title: Text(loc.notificationEnable),
+              subtitle: Text(loc.notificationEnableDesc),
+              value: message?.enableNotification ?? false,
+              onChanged: (v) {
+                if (message != null) {
+                  ref
+                      .read(settingsStateProvider.notifier)
+                      .updateMessageSettings(
+                        message.copyWith(enableNotification: v),
+                      );
+                }
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: Text(loc.notificationSound),
+              value: message?.enableSound ?? false,
+              onChanged: (v) {
+                if (message != null) {
+                  ref
+                      .read(settingsStateProvider.notifier)
+                      .updateMessageSettings(
+                        message.copyWith(enableSound: v),
+                      );
+                }
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: Text(loc.notificationVibrate),
+              value: message?.enableVibration ?? false,
+              onChanged: (v) {
+                if (message != null) {
+                  ref
+                      .read(settingsStateProvider.notifier)
+                      .updateMessageSettings(
+                        message.copyWith(enableVibration: v),
+                      );
+                }
+              },
+            ),
+          ],
         ),
       ],
     );
@@ -505,161 +394,99 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ThemeData theme,
     UserSettings? settings,
   ) {
-    return ListView(
+    final privacy = settings?.privacy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHero(loc, theme),
-        _buildGroupedSection(
-          title: '安全',
-          icon: Icons.shield_outlined,
-          child: Column(
-            children: [
-              _buildPrivacySection(loc, theme, settings),
-              const SizedBox(height: ImTokens.layoutSectionGap),
-              SettingsSection(
-                children: [
-                  SettingsRow(
-                    title: loc.settingsClearCache,
-                    description: loc.settingsClearCacheDesc,
-                    trailing: _SolidActionChip(
-                      label: loc.settingsClearCache,
-                      onTap: _confirmClearCache,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        Text(
+          loc.securityTitle,
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          title: loc.securityPrivacy,
+          children: [
+            SwitchListTile(
+              title: Text(loc.securityAddFriend),
+              subtitle: Text(loc.securityAddFriendDesc),
+              value: privacy?.allowStrangerAdd ?? false,
+              onChanged: (v) {
+                if (privacy != null) {
+                  ref
+                      .read(settingsStateProvider.notifier)
+                      .updatePrivacySettings(
+                        privacy.copyWith(allowStrangerAdd: v),
+                      );
+                }
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              title: Text(loc.securityOnlineStatus),
+              value: privacy?.showOnlineStatus ?? false,
+              onChanged: (v) {
+                if (privacy != null) {
+                  ref
+                      .read(settingsStateProvider.notifier)
+                      .updatePrivacySettings(
+                        privacy.copyWith(showOnlineStatus: v),
+                      );
+                }
+              },
+            ),
+          ],
         ),
       ],
     );
   }
 
   Widget _buildAISettingsPage(AppLocalizations loc, ThemeData theme) {
-    return ListView(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHero(loc, theme),
-        _buildGroupedSection(
-          title: loc.settingsAiAssistant,
-          icon: Icons.smart_toy_outlined,
-          child: SettingsSection(
-            children: [
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => context.push('/settings/ai'),
-                  borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-                  child: SettingsRow(
-                    title: loc.settingsAiAssistant,
-                    description: loc.settingsAiAssistantDesc,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        Text(
+          loc.aiTitle,
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: Text(loc.aiAssistant),
+              subtitle: Text(loc.aiComingSoon),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {},
+            ),
+          ],
         ),
       ],
     );
   }
 
-  void _updatePrivacy(PrivacySettings privacy) {
-    ref.read(settingsStateProvider.notifier).updatePrivacySettings(privacy);
-  }
-
-  void _updateMessage(MessagePreferenceSettings message) {
-    ref.read(settingsStateProvider.notifier).updateMessageSettings(message);
-  }
-
-  void _confirmClearCache() {
-    final loc = AppLocalizations.of(context)!;
+  void _showLogoutConfirm(BuildContext ctx) {
+    final loc = AppLocalizations.of(ctx)!;
     showDialog(
-      context: context,
+      context: ctx,
       builder: (ctx) => AlertDialog(
-        title: Text(loc.settingsCacheTitle),
-        content: Text(loc.settingsCacheMessage),
+        title: Text(loc.logoutConfirmTitle),
+        content: Text(loc.logoutConfirmMessage),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.of(ctx).pop(),
             child: Text(loc.commonCancel),
           ),
-          PrimarySolidButton(
-            label: loc.commonConfirm,
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await ref.read(settingsStateProvider.notifier).clearCache();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(loc.settingsCacheCleared)),
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmLogout() {
-    final loc = AppLocalizations.of(context)!;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(loc.settingsLogoutTitle),
-        content: Text(loc.settingsLogoutMessage),
-        actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(loc.commonCancel),
-          ),
-          PrimarySolidButton(
-            label: loc.commonConfirm,
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await ref.read(authStateProvider.notifier).logout();
-              if (mounted) {
-                GoRouter.of(context).go('/login');
-              }
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ref.read(authStateProvider.notifier).logout();
+              ctx.go('/login');
             },
+            child: Text(loc.logoutConfirmAction),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 渐变胶囊操作按钮，用于卡片内的操作触发。
-class _SolidActionChip extends StatelessWidget {
-  const _SolidActionChip({
-    required this.label,
-    required this.onTap,
-    this.isDestructive = false,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final bool isDestructive;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isDestructive ? const Color(0xFFF44336) : imGlassBrand,
-          borderRadius: BorderRadius.circular(ImTokens.radiusSm),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-        ),
       ),
     );
   }

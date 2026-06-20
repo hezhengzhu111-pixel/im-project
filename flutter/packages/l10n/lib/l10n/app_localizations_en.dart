@@ -1354,6 +1354,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Member list unavailable; @ mentions are disabled';
 
   @override
+  String chatMembersLoadFailed(Object error) {
+    return 'Failed to load group members: $error';
+  }
+
+  @override
   String get chatGroupChat => 'Group chat';
 
   @override

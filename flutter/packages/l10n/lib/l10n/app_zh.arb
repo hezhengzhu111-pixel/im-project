@@ -435,6 +435,12 @@
   "chatNoMessages": "暂无消息",
   "chatMessagesLoadFailed": "消息加载失败",
   "chatMentionUnavailable": "成员列表加载失败，@ 功能暂不可用",
+  "chatMembersLoadFailed": "群成员加载失败：{error}",
+  "@chatMembersLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "chatGroupChat": "群聊",
   "chatE2eeStartFailed": "开启加密协商失败。",
   "chatE2eeAcceptFailed": "接受加密请求失败。",

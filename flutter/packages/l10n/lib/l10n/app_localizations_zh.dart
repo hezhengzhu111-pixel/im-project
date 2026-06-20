@@ -1310,6 +1310,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatMentionUnavailable => '成员列表加载失败，@ 功能暂不可用';
 
   @override
+  String chatMembersLoadFailed(Object error) {
+    return '群成员加载失败：$error';
+  }
+
+  @override
   String get chatGroupChat => '群聊';
 
   @override

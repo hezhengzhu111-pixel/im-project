@@ -435,6 +435,12 @@
   "chatNoMessages": "No messages yet",
   "chatMessagesLoadFailed": "Failed to load messages",
   "chatMentionUnavailable": "Member list unavailable; @ mentions are disabled",
+  "chatMembersLoadFailed": "Failed to load group members: {error}",
+  "@chatMembersLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "chatGroupChat": "Group chat",
   "chatE2eeStartFailed": "Failed to start encryption negotiation.",
   "chatE2eeAcceptFailed": "Failed to accept encryption request.",

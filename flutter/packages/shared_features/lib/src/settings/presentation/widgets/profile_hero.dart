@@ -123,11 +123,15 @@ class _VerificationChip extends StatelessWidget {
         children: [
           const Icon(Icons.check_circle, size: 12, color: Colors.green),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.green.shade700,
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.green.shade700,
+              ),
             ),
           ),
         ],

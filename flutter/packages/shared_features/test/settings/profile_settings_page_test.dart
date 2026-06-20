@@ -41,6 +41,28 @@ void main() {
       http = FakeHttpClientPort();
     });
 
+    void prepareHttp() {
+      http.onPut = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('profile')) {
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'id': 'u1',
+              'username': 'testuser',
+              'nickname': 'Updated Nickname',
+              'email': 'updated@example.com',
+            }),
+          );
+        }
+        return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
+      };
+    }
+
     testWidgets('shows Profile Settings title and form fields', (tester) async {
       final authNotifier = createTestAuthNotifier(httpClient: http);
 
@@ -305,6 +327,171 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Failed to upload avatar'), findsOneWidget);
+    });
+
+    testWidgets('save profile updates authState user nickname', (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      prepareHttp();
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider.overrideWith((ref) {
+              final notifier = ProfileNotifier(SettingsApi(http));
+              notifier.loadProfile(authNotifier.state.user!);
+              return notifier;
+            }),
+            authStateProvider.overrideWith((ref) => authNotifier),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'Updated Nickname');
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Save changes'));
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+
+      expect(authNotifier.state.user?.nickname, 'Updated Nickname');
+      expect(find.text('Profile updated'), findsOneWidget);
+    });
+
+    testWidgets('wide layout uses row body key', (tester) async {
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+      tester.view.physicalSize = const Size(900, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider.overrideWith((ref) {
+              final notifier = ProfileNotifier(SettingsApi(http));
+              notifier.loadProfile(authNotifier.state.user!);
+              return notifier;
+            }),
+            authStateProvider.overrideWith((ref) => authNotifier),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('profile-body-wide')), findsOneWidget);
+    });
+
+    testWidgets('compact layout uses column body key', (tester) async {
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+      tester.view.physicalSize = const Size(600, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider.overrideWith((ref) {
+              final notifier = ProfileNotifier(SettingsApi(http));
+              notifier.loadProfile(authNotifier.state.user!);
+              return notifier;
+            }),
+            authStateProvider.overrideWith((ref) => authNotifier),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('profile-body-compact')), findsOneWidget);
+    });
+
+    testWidgets('rapid save taps only call update once', (tester) async {
+      var updateCount = 0;
+      prepareHttp();
+      http.onPut = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path.contains('profile')) {
+          updateCount++;
+          // slow request so the guard remains active
+          await Future.delayed(const Duration(milliseconds: 200));
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'id': 'u1',
+              'username': 'testuser',
+              'nickname': 'Updated Nickname',
+            }),
+          );
+        }
+        return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
+      };
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider.overrideWith((ref) {
+              final notifier = ProfileNotifier(SettingsApi(http));
+              notifier.loadProfile(authNotifier.state.user!);
+              return notifier;
+            }),
+            authStateProvider.overrideWith((ref) => authNotifier),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'A');
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Save changes'));
+      await tester.tap(find.text('Save changes'));
+      await tester.pump(const Duration(milliseconds: 50));
+      // Second tap should be ignored while the first save is in flight.
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+
+      expect(updateCount, 1);
+    });
+
+    testWidgets('unsaved changes prompt appears when leaving dirty form',
+        (tester) async {
+      final navKey = GlobalKey<NavigatorState>();
+      final authNotifier = createTestAuthNotifier(httpClient: http);
+
+      await tester.pumpWidget(
+        _buildApp(
+          navigatorKey: navKey,
+          overrides: [
+            settingsApiProvider.overrideWithValue(SettingsApi(http)),
+            profileStateProvider.overrideWith((ref) {
+              final notifier = ProfileNotifier(SettingsApi(http));
+              notifier.loadProfile(authNotifier.state.user!);
+              return notifier;
+            }),
+            authStateProvider.overrideWith((ref) => authNotifier),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'Dirty');
+      await tester.pump();
+
+      navKey.currentState!.maybePop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unsaved changes'), findsOneWidget);
     });
   });
 }

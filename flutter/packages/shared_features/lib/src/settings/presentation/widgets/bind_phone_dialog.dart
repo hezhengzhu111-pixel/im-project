@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
+import 'package:im_shared_features/auth.dart';
 import '../settings_providers.dart';
 
 class BindPhoneDialog extends ConsumerStatefulWidget {
@@ -46,13 +47,13 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
               Expanded(
                 child: TextField(
                   controller: _codeController,
-                  decoration: const InputDecoration(labelText: '验证码'),
+                  decoration: InputDecoration(labelText: loc.verificationCode),
                 ),
               ),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: _countdown > 0 ? null : _sendCode,
-                child: Text(_countdown > 0 ? '$_countdown s' : '发送验证码'),
+                child: Text(_countdown > 0 ? '$_countdown s' : loc.sendVerificationCode),
               ),
             ],
           ),
@@ -109,6 +110,10 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
               code: _codeController.text.trim(),
             ),
           );
+      final updatedUser = ref.read(profileStateProvider).user;
+      if (updatedUser != null) {
+        ref.read(authStateProvider.notifier).updateUser(updatedUser);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {

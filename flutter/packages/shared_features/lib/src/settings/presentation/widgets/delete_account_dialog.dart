@@ -30,7 +30,7 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
     final loc = AppLocalizations.of(context)!;
 
     return AlertDialog(
-      title: const Text('删除账号'),
+      title: Text(loc.settingsDeleteAccount),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,7 +50,7 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '删除账号后，所有数据将被永久删除，且无法恢复。',
+                    loc.settingsDeleteAccountWarning,
                     style: TextStyle(color: theme.colorScheme.error),
                   ),
                 ),
@@ -61,9 +61,9 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
           TextField(
             controller: _passwordController,
             obscureText: true,
-            decoration: const InputDecoration(
-              labelText: '请输入密码确认',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: loc.settingsDeleteAccountPasswordHint,
+              border: const OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -71,7 +71,7 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
           CheckboxListTile(
             value: _confirmed,
             onChanged: (value) => setState(() => _confirmed = value ?? false),
-            title: const Text('我已了解风险'),
+            title: Text(loc.settingsDeleteAccountAcknowledge),
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
           ),
@@ -107,6 +107,7 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
   }
 
   Future<void> _handleDelete() async {
+    final loc = AppLocalizations.of(context)!;
     setState(() => _isLoading = true);
     try {
       final success = await ref
@@ -116,23 +117,21 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
       if (!success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('删除失败，请检查密码是否正确')),
+            SnackBar(content: Text(loc.settingsDeleteAccountFailed)),
           );
         }
         return;
       }
 
-      // 清除登录状态
       await ref.read(authStateProvider.notifier).logout();
 
-      // 跳转到登录页
       if (mounted) {
         context.go('/login');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e')),
+          SnackBar(content: Text('${loc.settingsDeleteAccountFailed}: $e')),
         );
       }
     } finally {
