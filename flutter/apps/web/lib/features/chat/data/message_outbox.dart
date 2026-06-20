@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:idb_shim/idb_shim.dart';
-import 'package:im_shared_features/chat.dart' show E2eeHistoryRecovery;
+import 'package:im_shared_features/chat.dart'
+    show E2eeHistoryRecovery, RetryableErrorClassifier;
 import '../../../core/logging/app_logger.dart';
 import '../data/message_api.dart';
 
@@ -385,13 +386,13 @@ class MessageOutbox {
     if (message.retryCount >= _maxRetries) {
       final failedMessage = message.copyWith(
         status: OutboxMessageStatus.failed,
-        error: 'Max retries exceeded',
+        error: 'max_retries_exceeded',
       );
       await _updateInDb(failedMessage);
       _eventsController.add(OutboxEvent(
         type: OutboxEventType.messageFailed,
         message: failedMessage,
-        error: 'Max retries exceeded',
+        error: 'max_retries_exceeded',
       ));
       return;
     }
@@ -469,19 +470,19 @@ class MessageOutbox {
         final failedMessage = message.copyWith(
           status: OutboxMessageStatus.failed,
           retryCount: message.retryCount + 1,
-          error: e.toString(),
+          error: RetryableErrorClassifier.safeErrorCode(e),
         );
         await _updateInDb(failedMessage);
         _eventsController.add(OutboxEvent(
           type: OutboxEventType.messageFailed,
           message: failedMessage,
-          error: e.toString(),
+          error: failedMessage.error,
         ));
       } else {
         final pendingMessage = message.copyWith(
           status: OutboxMessageStatus.pending,
           retryCount: message.retryCount + 1,
-          error: e.toString(),
+          error: RetryableErrorClassifier.safeErrorCode(e),
         );
         await _updateInDb(pendingMessage);
 

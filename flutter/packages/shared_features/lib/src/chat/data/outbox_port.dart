@@ -43,6 +43,10 @@ class OutboxMessage {
   final int? duration;
   final Map<String, dynamic>? extra;
 
+  /// Group chat fields.
+  final bool isGroupChat;
+  final String? groupId;
+
   /// E2EE fields.
   final bool isEncrypted;
   final Map<String, dynamic>? e2eeEnvelope;
@@ -70,6 +74,8 @@ class OutboxMessage {
     this.thumbnailUrl,
     this.duration,
     this.extra,
+    this.isGroupChat = false,
+    this.groupId,
     this.isEncrypted = false,
     this.e2eeEnvelope,
     this.e2eeEnvelopes,
@@ -101,6 +107,8 @@ class OutboxMessage {
       thumbnailUrl: thumbnailUrl,
       duration: duration,
       extra: extra,
+      isGroupChat: isGroupChat,
+      groupId: groupId,
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
       e2eeEnvelopes: e2eeEnvelopes,
@@ -128,6 +136,8 @@ class OutboxMessage {
       'thumbnailUrl': thumbnailUrl,
       'duration': duration,
       'extra': extra,
+      'isGroupChat': isGroupChat,
+      'groupId': groupId,
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope,
       'e2eeEnvelopes': e2eeEnvelopes,
@@ -155,6 +165,8 @@ class OutboxMessage {
       thumbnailUrl: map['thumbnailUrl'] as String?,
       duration: map['duration'] as int?,
       extra: map['extra'] as Map<String, dynamic>?,
+      isGroupChat: map['isGroupChat'] as bool? ?? false,
+      groupId: map['groupId'] as String?,
       isEncrypted: map['isEncrypted'] as bool? ?? false,
       e2eeEnvelope: map['e2eeEnvelope'] as Map<String, dynamic>?,
       e2eeEnvelopes: (map['e2eeEnvelopes'] as List?)

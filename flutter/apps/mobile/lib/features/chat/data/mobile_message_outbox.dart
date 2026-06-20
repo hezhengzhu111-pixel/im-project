@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:im_core/core.dart';
-import 'package:im_shared_features/chat.dart' show OutboxPort, OutboxEvent, OutboxMessage, OutboxMessageStatus, OutboxEventType;
+import 'package:im_shared_features/chat.dart'
+    show OutboxPort, OutboxEvent, OutboxMessage, OutboxMessageStatus, OutboxEventType, RetryableErrorClassifier;
 
 /// Mobile implementation of [OutboxPort] using SharedPreferences for storage.
 ///
@@ -132,7 +133,7 @@ class MobileMessageOutbox implements OutboxPort {
         _updateMessage(msg.copyWith(
           status: OutboxMessageStatus.failed,
           retryCount: msg.retryCount + 1,
-          lastError: e.toString(),
+          lastError: RetryableErrorClassifier.safeErrorCode(e),
           lastRetryAt: DateTime.now().toIso8601String(),
         ));
         _eventController.add(const OutboxEvent(

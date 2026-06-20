@@ -14,6 +14,7 @@ import '../data/outbox_port.dart';
 import '../data/e2ee_history_recovery.dart';
 import '../data/session_key_codec.dart';
 import '../data/retryable_error_classifier.dart';
+import '../data/outbox_message_id.dart';
 import '../data/sent_message_cache_port.dart';
 
 /// Simplified chat notifier for desktop (no IndexedDB outbox).
@@ -183,23 +184,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   String _sendFingerprint({
     required String sessionKey,
     required String messageType,
-    required String content,
-    String? mediaUrl,
-    String? mediaName,
-    int? mediaSize,
-    String? thumbnailUrl,
-    int? duration,
+    required String clientMessageId,
   }) {
-    return jsonEncode([
-      _normalizeIncomingSessionKey(sessionKey),
-      messageType.toUpperCase(),
-      content,
-      mediaUrl ?? '',
-      mediaName ?? '',
-      mediaSize,
-      thumbnailUrl ?? '',
-      duration,
-    ]);
+    return '${_normalizeIncomingSessionKey(sessionKey)}|${messageType.toUpperCase()}|$clientMessageId';
   }
 
   bool _beginInFlightSend(String fingerprint) {
@@ -215,6 +202,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<Message?> _sendOutboxMessage(OutboxMessage outboxMsg) async {
+    if (outboxMsg.isGroupChat) {
+      return _messageApi.sendGroupMessage(
+        SendGroupMessageRequest(
+          groupId: outboxMsg.groupId ?? outboxMsg.receiverId,
+          content: outboxMsg.content,
+          messageType: outboxMsg.messageType,
+          clientMessageId: outboxMsg.clientMessageId,
+          mediaUrl: outboxMsg.mediaUrl,
+          mediaName: outboxMsg.mediaName,
+          mediaSize: outboxMsg.mediaSize,
+          thumbnailUrl: outboxMsg.thumbnailUrl,
+          duration: outboxMsg.duration,
+        ),
+      );
+    }
+
     if (outboxMsg.isEncrypted) {
       final envelope = _tryGetEnvelopeForOutbox(outboxMsg);
       if (envelope == null) {
@@ -259,7 +262,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> retryPendingOutboxIfNeeded() async {
     if (_outbox == null) return;
     final pendingCount = await _outbox!.getPendingCount();
-    if (pendingCount > 0) {
+    final failedCount = await _outbox!.getFailedCount();
+    if (pendingCount > 0 || failedCount > 0) {
       await _outbox!.retryAllFailed(_sendOutboxMessage);
     }
   }
@@ -702,8 +706,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       String? thumbnailUrl,
       int? duration,
       Map<String, dynamic>? extra}) async {
-    final cid =
-        clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final cid = clientMessageId ?? OutboxMessageId.generate();
     final currentUid = _currentUserId();
     if (currentUid == null || currentUid.isEmpty) {
       state = state.copyWith(error: 'user_not_authenticated');
@@ -714,12 +717,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final sendFingerprint = _sendFingerprint(
       sessionKey: sessionKey,
       messageType: messageType,
-      content: content,
-      mediaUrl: mediaUrl,
-      mediaName: mediaName,
-      mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl,
-      duration: duration,
+      clientMessageId: cid,
     );
     if (!_beginInFlightSend(sendFingerprint)) return null;
 
@@ -957,8 +955,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       int? duration,
       List<String>? mentionedUserIds,
       Map<String, dynamic>? extra}) async {
-    final cid =
-        clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final cid = clientMessageId ?? OutboxMessageId.generate();
     final currentUserId = _currentUserId();
     if (currentUserId == null || currentUserId.isEmpty) {
       state = state.copyWith(error: 'user_not_authenticated');
@@ -968,12 +965,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final sendFingerprint = _sendFingerprint(
       sessionKey: sessionKey,
       messageType: messageType,
-      content: content,
-      mediaUrl: mediaUrl,
-      mediaName: mediaName,
-      mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl,
-      duration: duration,
+      clientMessageId: cid,
     );
     if (!_beginInFlightSend(sendFingerprint)) return null;
 
@@ -1016,8 +1008,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
         return serverMessage;
       } catch (e, st) {
         AppLogger.instance.error('Send group message failed', e, st);
-        _updateMessageStatus(sessionKey, cid, 'FAILED');
-        state = state.copyWith(error: e.toString());
+
+        final decision = RetryableErrorClassifier.classifySendError(e);
+        if (decision.retryable && _outbox != null) {
+          await _outbox!.enqueue(OutboxMessage(
+            id: cid,
+            sessionKey: sessionKey,
+            receiverId: groupId,
+            content: content,
+            messageType: messageType,
+            clientMessageId: cid,
+            mediaUrl: mediaUrl,
+            mediaName: mediaName,
+            mediaSize: mediaSize,
+            thumbnailUrl: thumbnailUrl,
+            duration: duration,
+            extra: extra,
+            isGroupChat: true,
+            groupId: groupId,
+          ));
+          _updateMessageStatus(sessionKey, cid, 'PENDING');
+        } else {
+          final errorMsg = decision.safeMessage ?? e.toString();
+          state = state.copyWith(error: errorMsg);
+          _updateMessageStatus(sessionKey, cid, 'FAILED');
+        }
         return null;
       }
     } finally {
@@ -1351,13 +1366,38 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
+    final targetId = msg.isGroupChat
+        ? (msg.groupId ?? _groupIdFromSessionKey(normalizedKey))
+        : (msg.receiverId ?? _privateTargetFromSessionKey(normalizedKey));
+
+    if (_outbox != null) {
+      await _outbox!.enqueue(OutboxMessage(
+        id: msg.clientMessageId ?? msg.id,
+        sessionKey: normalizedKey,
+        receiverId: targetId,
+        content: msg.content,
+        messageType: msg.messageType,
+        clientMessageId: msg.clientMessageId ?? msg.id,
+        mediaUrl: msg.mediaUrl,
+        mediaName: msg.mediaName,
+        mediaSize: msg.mediaSize,
+        thumbnailUrl: msg.thumbnailUrl,
+        duration: msg.duration,
+        isGroupChat: msg.isGroupChat,
+        groupId: msg.groupId,
+      ));
+      _updateMessageStatus(normalizedKey, msg.id, 'PENDING');
+      return;
+    }
+
+    // Fallback when no outbox is configured: attempt a single direct retry.
     _updateMessageStatus(normalizedKey, msg.id, 'SENDING');
     try {
       final Message serverMessage;
       if (msg.isGroupChat) {
         serverMessage = await _messageApi.sendGroupMessage(
           SendGroupMessageRequest(
-            groupId: msg.groupId ?? _groupIdFromSessionKey(normalizedKey),
+            groupId: targetId,
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
@@ -1371,8 +1411,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       } else {
         serverMessage = await _messageApi.sendPrivateMessage(
           SendPrivateMessageRequest(
-            receiverId:
-                msg.receiverId ?? _privateTargetFromSessionKey(normalizedKey),
+            receiverId: targetId,
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
