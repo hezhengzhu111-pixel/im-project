@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import NoReturn, Sequence
 from copy import deepcopy
 
+# Nginx / HTTPS generation
+from datetime import datetime, timedelta, timezone
+import ipaddress
+
+
 try:
     import yaml
 except ImportError:  # pragma: no cover - depends on local Python environment
@@ -28,6 +33,9 @@ from runtime_paths import (
     RUNTIME_ENV_DIR,
     RUNTIME_FILES_DIR,
     RUNTIME_LOGS_DIR,
+    RUNTIME_NGINX_DIR,
+    RUNTIME_NGINX_CONF_DIR,
+    RUNTIME_NGINX_SSL_DIR,
     RUNTIME_MYSQL_DIR,
     RUNTIME_REDIS_DIR,
     SOURCE_COMPOSE_TEMPLATE,
@@ -37,7 +45,7 @@ from runtime_paths import (
 
 SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY")
 DEFAULT_APP_SERVICES = ("im-server", "im-api-server", "im-frontend")
-OPTIONAL_APP_SERVICES = ("im-spring-ai",)
+OPTIONAL_APP_SERVICES = ()
 ONE_SHOT_SERVICES = frozenset({"im-files-init", "im-db-migrate"})
 DEFAULT_PROJECT_NAME = "sit"
 REDIS_RUNTIME_DIRS = (
@@ -60,6 +68,9 @@ RUNTIME_DIRECTORIES = (
     *REDIS_RUNTIME_DIRS,
     RUNTIME_FILES_DIR,
     RUNTIME_LOGS_DIR,
+    RUNTIME_NGINX_DIR,
+    RUNTIME_NGINX_CONF_DIR,
+    RUNTIME_NGINX_SSL_DIR,
 )
 RUNTIME_VOLUME_SOURCES = {
     "mysql_data": RUNTIME_MYSQL_DIR,
@@ -75,6 +86,8 @@ RUNTIME_VOLUME_SOURCES = {
     "im_files": RUNTIME_FILES_DIR,
     "sql_init_file": PROJECT_ROOT / "sql" / "mysql8" / "init_all.sql",
     "sql_migration_file": PROJECT_ROOT / "sql" / "mysql8" / "migrations",
+    "nginx_conf": RUNTIME_NGINX_CONF_DIR,
+    "nginx_ssl": RUNTIME_NGINX_SSL_DIR,
 }
 
 
@@ -110,6 +123,68 @@ def fatal(message: str) -> NoReturn:
     sys.exit(1)
 
 
+def ensure_nginx_runtime_files(host: str = "localhost") -> None:
+    """Generate self-signed SSL cert and nginx config for local/runtime use."""
+    from pathlib import Path
+
+    RUNTIME_NGINX_DIR.mkdir(parents=True, exist_ok=True)
+    RUNTIME_NGINX_SSL_DIR.mkdir(parents=True, exist_ok=True)
+
+    nginx_template = PROJECT_ROOT / "scripts" / "templates" / "nginx-ssl" / "default.conf"
+    nginx_conf = RUNTIME_NGINX_CONF_DIR / "default.conf"
+    if nginx_template.is_file():
+        shutil.copy2(nginx_template, nginx_conf)
+
+    cert_path = RUNTIME_NGINX_SSL_DIR / "im-server.crt"
+    key_path = RUNTIME_NGINX_SSL_DIR / "im-server.key"
+    if cert_path.is_file() and key_path.is_file():
+        return
+
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+    except ImportError:
+        # cryptography not installed locally; leave certs missing.
+        # Remote deploy will generate them via remote_deploy.py.
+        return
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "IM Project"),
+        x509.NameAttribute(NameOID.COMMON_NAME, host),
+    ])
+    san_entries = []
+    try:
+        addr = ipaddress.ip_address(host)
+        san_entries.append(x509.IPAddress(addr))
+    except ValueError:
+        san_entries.append(x509.DNSName(host))
+    san_entries.append(x509.DNSName("localhost"))
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+        .add_extension(x509.SubjectAlternativeName(san_entries), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+
+
 def ensure_runtime_directories() -> None:
     for path in RUNTIME_DIRECTORIES:
         path.mkdir(parents=True, exist_ok=True)
@@ -136,6 +211,7 @@ def ensure_runtime_env_file(*, env_file: str | Path | None = None) -> Path:
 def prepare_runtime_files(*, env_file: str | Path | None = None) -> None:
     ensure_runtime_directories()
     ensure_runtime_env_file(env_file=env_file)
+    ensure_nginx_runtime_files()
     generate_runtime_compose()
 
 
@@ -345,7 +421,6 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.rust_root / "Cargo.toml",
         config.rust_root / "apps" / "api-server" / "Dockerfile",
         config.rust_root / "apps" / "im-server" / "Dockerfile",
-        config.backend_root / "spring-ai" / "Dockerfile",
         config.frontend_root / "pubspec.yaml",
         config.frontend_root / "Dockerfile",
         config.frontend_root / "nginx.conf",

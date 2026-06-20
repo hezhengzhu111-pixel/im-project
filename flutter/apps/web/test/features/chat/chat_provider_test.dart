@@ -117,6 +117,7 @@ class FakeMessageOutbox extends MessageOutbox {
     String? groupId,
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? e2eeDeviceId,
     String? mediaUrl,
     String? mediaName,

@@ -30,10 +30,12 @@ class AppConfig {
 
 final appConfigProvider = Provider<AppConfig>((ref) {
   // 使用相对路径，通过 nginx 代理访问 API
-  // 这样前端和 API 在同一个域名下，避免跨域问题
+  // 这样前端和 API 在同一个域名下，避免跨域问题。
+  // nginx 已将 /api/ 代理到后端，端点本身已以 /api 开头，
+  // 因此 baseUrl 留空，最终请求的完整路径为 /api/...。
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: '/api',
+    defaultValue: '',
   );
   const wsBase = String.fromEnvironment(
     'WS_BASE_URL',

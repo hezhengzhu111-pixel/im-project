@@ -110,6 +110,26 @@ class FakeHttpClientPort implements HttpClientPort {
   }
 }
 
+/// Fake StoragePort that keeps values in memory.
+class FakeStoragePort implements StoragePort {
+  final _values = <String, String>{};
+
+  @override
+  Future<String?> getString(String key) async => _values[key];
+
+  @override
+  Future<void> setString(String key, String value) async => _values[key] = value;
+
+  @override
+  Future<void> remove(String key) async => _values.remove(key);
+
+  @override
+  Future<void> clear() async => _values.clear();
+
+  @override
+  Future<bool> containsKey(String key) async => _values.containsKey(key);
+}
+
 /// Fake AnalyticsPort that discards all events.
 class FakeAnalyticsPort implements AnalyticsPort {
   @override

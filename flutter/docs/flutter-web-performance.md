@@ -49,11 +49,11 @@ flutter build web --debug
 ```bash
 make prod
 # 或
-flutter build web --release --obfuscate --split-debug-info=build/debug-info
+flutter build web --release --pwa-strategy=none
 ```
 
-- 代码混淆，减小体积
-- 生成 sourcemap 到 `build/debug-info/`
+- `--release` 启用 dart2js 优化
+- Flutter Web **不支持** `--obfuscate` / `--split-debug-info`
 - 输出到 `build/web/`
 
 ### WASM 构建
@@ -129,10 +129,14 @@ GoRoute(
 
 ### Service Worker 缓存
 
-- 预缓存应用 shell
-- 静态资源 stale-while-revalidate
-- API 请求 network-first
-- 图片 cache-first
+当前构建使用 `--pwa-strategy=none`，不生成 Flutter Service Worker，以避免旧版本 `main.dart.js` 引用已删除的 deferred chunks。
+静态资源缓存由 Nginx 控制，推荐配置：
+
+- `index.html` / `flutter_bootstrap.js` / `main.dart.js`：`Cache-Control: public, must-revalidate`（每次 304 校验）
+- `/pkg/*`（Rust WASM bridge）：`Cache-Control: public, must-revalidate`
+- `/assets/*`：`Cache-Control: public, max-age=86400, must-revalidate`
+- `main.dart.js_*.part.js`（deferred chunks）：`Cache-Control: public, max-age=31536000, immutable`
+- 启用 `gzip`（并建议前端代理层启用 `brotli`）压缩 JS/WASM/JSON/SVG
 
 ## 验证方式
 

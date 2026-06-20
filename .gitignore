@@ -96,6 +96,18 @@ init.md
 .superpowers/
 .git.backup/
 
+# 嵌套 Git 仓库（不作为子模块管理）
+# ===========================================
+admin-console/backend/ruoyi-vue/
+admin-console/frontend/ruoyi-vue3/
+
+# 本地工作区 / 管理控制台 / SSH 密钥
+# ===========================================
+.mimocode/
+admin-console/
+ssh/*.pem
+ssh/*.key
+
 # ===========================================
 # 编译和缓存（IDE 和前端工具生成）
 # ===========================================

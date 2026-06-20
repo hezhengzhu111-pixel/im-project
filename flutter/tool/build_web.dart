@@ -76,7 +76,6 @@ Future<void> _buildWasmBridge(Directory repoRoot) async {
     workingDirectory: bridgeDir.path,
     environment: const {
       'RUSTFLAGS': '-C target-feature=-atomics,-bulk-memory,-mutable-globals',
-      'WASM_OPT': '0',
     },
   );
   await _run(

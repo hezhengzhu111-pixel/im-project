@@ -26,6 +26,7 @@ class _AppState extends ConsumerState<App> {
   @override
   void initState() {
     super.initState();
+    unawaited(_loadPersistedSettings());
     ref.listenManual<GoRouter>(routerProvider, (prev, next) {
       final path = next.routeInformationProvider.value.uri.path;
       final locale = ref.read(languageProvider);
@@ -36,6 +37,22 @@ class _AppState extends ConsumerState<App> {
     ref.listenManual<AuthState>(authStateProvider, (prev, next) {
       if (next.isAuthenticated && prev?.user?.id != next.user?.id) {
         unawaited(_bootstrapRealtimeState());
+      }
+      // The shared AuthNotifier no longer receives the web E2EE sent-message
+      // cache, so clear it here when the user logs out.
+      if (prev?.isAuthenticated == true && !next.isAuthenticated) {
+        unawaited(
+          ref.read(e2eeSentMessageCacheProvider).clearAll().catchError(
+            (Object e, StackTrace st) {
+              AppLogger.instance.error(
+                'Failed to clear E2EE sent message cache on logout',
+                e,
+                st,
+                'e2ee',
+              );
+            },
+          ),
+        );
       }
     });
 
@@ -60,6 +77,29 @@ class _AppState extends ConsumerState<App> {
       ]);
     } catch (e, st) {
       AppLogger.instance.error('Realtime bootstrap failed', e, st, 'ws');
+    }
+  }
+
+  Future<void> _loadPersistedSettings() async {
+    try {
+      final storage = ref.read(storageProvider);
+      final savedLanguage = await storage.getString('app_language');
+      if (savedLanguage != null &&
+          (savedLanguage == 'en' || savedLanguage == 'zh')) {
+        ref.read(languageProvider.notifier).state = savedLanguage;
+      }
+      final savedTheme = await storage.getString('app_theme_mode');
+      if (savedTheme != null) {
+        final themeMode = switch (savedTheme) {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          'system' => ThemeMode.system,
+          _ => ThemeMode.system,
+        };
+        ref.read(themeModeProvider.notifier).state = themeMode;
+      }
+    } catch (e) {
+      AppLogger.instance.warn('Failed to load persisted settings: $e');
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/moments.dart';
 import 'package:im_shared_features/chat.dart';
 import '../helpers/fakes.dart';
@@ -12,6 +13,9 @@ Widget _buildApp({
   return ProviderScope(
     overrides: overrides,
     child: const MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: Locale('en'),
       home: MomentsNotificationsPage(),
     ),
   );
@@ -86,7 +90,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('No notifications yet'), findsOneWidget);
+      expect(find.text('No notifications'), findsOneWidget);
     });
 
     testWidgets('shows error state', (tester) async {
@@ -156,8 +160,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Test liked your post'), findsOneWidget);
-      expect(find.text('Other commented on your post'), findsOneWidget);
+      expect(find.text('Test liked your moment'), findsOneWidget);
+      expect(find.text('Other commented on your moment'), findsOneWidget);
     });
 
     testWidgets('markAllRead button visible with unread', (tester) async {
@@ -203,8 +207,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Mark all read'), findsOneWidget);
-      await tester.tap(find.text('Mark all read'));
+      expect(find.text('Mark all as read'), findsOneWidget);
+      await tester.tap(find.text('Mark all as read'));
       await tester.pumpAndSettle();
 
       expect(notifier.state.unreadCount, 0);

@@ -405,9 +405,9 @@ services:
       IM_FILE_VIDEO_MAX_SIZE: "${IM_FILE_VIDEO_MAX_SIZE:-1073741824}"
       IM_FILE_AVATAR_MAX_SIZE: "${IM_FILE_AVATAR_MAX_SIZE:-5242880}"
       IM_FILE_MULTIPART_MAX_BYTES: "${IM_FILE_MULTIPART_MAX_BYTES:-1082130432}"
-      IM_AI_ENABLED: "${IM_AI_ENABLED:-true}"
+      IM_AI_ENABLED: "${IM_AI_ENABLED:-false}"
       IM_AI_ENCRYPTION_KEY: "${IM_AI_ENCRYPTION_KEY}"
-      IM_AI_SPRING_URL: "${IM_AI_SPRING_URL:-http://im-spring-ai:8080}"
+      IM_AI_SPRING_URL: "${IM_AI_SPRING_URL:-http://127.0.0.1:9}"
       IM_AI_TASK_STREAM_KEY: "${IM_AI_TASK_STREAM_KEY:-im:ai:tasks}"
     ports:
       - "${GATEWAY_PORT:-8082}:8082"
@@ -457,32 +457,26 @@ services:
     networks:
       - im-network
 
-  im-spring-ai:
-    image: im-project-sit/im-spring-ai:latest
-    build:
-      context: ../../spring-ai
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+  im-nginx:
+    image: "${NGINX_IMAGE:-docker.1ms.run/library/nginx:1.27-alpine}"
     restart: unless-stopped
     depends_on:
-      im-redis:
+      im-frontend:
+        condition: service_started
+      im-api-server:
         condition: service_healthy
-    environment:
-      TZ: Asia/Shanghai
-      REDIS_HOST: im-redis
-      REDIS_PORT: "6379"
-      REDIS_PASSWORD: "${REDIS_PASSWORD}"
-      IM_API_SERVER_URL: http://im-api-server:8082
-      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
-      spring.ai.openai.api-key: placeholder
+      im-server:
+        condition: service_healthy
     ports:
-      - "${SPRING_AI_PORT:-8084}:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_conf:/etc/nginx/conf.d:ro
+      - nginx_ssl:/etc/nginx/ssl:ro
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
     networks:
       - im-network
 

@@ -76,9 +76,7 @@ class AiApi {
   Future<List<AiApiKey>> getKeys() async {
     final response = await _httpClient.get<List<AiApiKey>>(
       AiEndpoints.keys,
-      fromJson: (json) => (json['items'] as List)
-          .map((e) => AiApiKey.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      fromJson: (json) => _extractItems(json).map(_parseKey).toList(),
     );
     return response.data;
   }
@@ -86,17 +84,12 @@ class AiApi {
   Future<AiApiKey> createKey(AiApiKeyCreateRequest request) async {
     final response = await _httpClient.post<AiApiKey>(
       AiEndpoints.keys,
-      body: request.toJson(),
-      fromJson: AiApiKey.fromJson,
-    );
-    return response.data;
-  }
-
-  Future<AiApiKey> updateKey(String id, AiApiKeyUpdateRequest request) async {
-    final response = await _httpClient.put<AiApiKey>(
-      AiEndpoints.keyById(id),
-      body: request.toJson(),
-      fromJson: AiApiKey.fromJson,
+      body: {
+        'provider': request.provider,
+        'apiKey': request.key,
+        'keyName': request.label ?? '',
+      },
+      fromJson: _parseKey,
     );
     return response.data;
   }
@@ -113,7 +106,12 @@ class AiApi {
       AiEndpoints.keyTest(id),
       fromJson: (json) => json,
     );
-    return response.data['status'] as String? ?? 'unknown';
+    return _stringValue(
+          response.data['status'],
+          response.data['validateStatus'],
+          response.data['validate_status'],
+        ) ??
+        'unknown';
   }
 
   Future<AiSettings> getAiSettings() async {
@@ -132,6 +130,15 @@ class AiApi {
     );
   }
 
+  Future<AiApiKey> updateKey(String id, AiApiKeyUpdateRequest request) async {
+    final response = await _httpClient.put<AiApiKey>(
+      AiEndpoints.keyById(id),
+      body: request.toJson(),
+      fromJson: _parseKey,
+    );
+    return response.data;
+  }
+
   Future<Map<String, dynamic>> createSummary(AiSummaryRequest request) async {
     final response = await _httpClient.post<Map<String, dynamic>>(
       AiEndpoints.summary,
@@ -143,8 +150,6 @@ class AiApi {
 
   /// Build the SSE stream URL for a background AI task.
   /// Note: Actual SSE subscription requires a platform-specific SSE adapter.
-  /// This method only returns the endpoint path; consumers should build the
-  /// full URL with the base API URL and auth token.
   String buildStreamUrl(String taskId) {
     return AiEndpoints.stream(taskId);
   }
@@ -164,7 +169,7 @@ class AiApi {
       AiEndpoints.ragDocs,
       fromJson: (json) => json,
     );
-    final items = response.data['items'];
+    final items = response.data['items'] ?? response.data['data'];
     if (items is List) {
       return items
           .whereType<Map>()
@@ -188,5 +193,56 @@ class AiApi {
       fromJson: (json) => json,
     );
     return response.data;
+  }
+
+  static List<Map<String, dynamic>> _extractItems(Map<String, dynamic> json) {
+    final raw = json['items'] ?? json['data'] ?? json['keys'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => item.map((key, value) => MapEntry('$key', value)))
+        .toList();
+  }
+
+  static AiApiKey _parseKey(Map<String, dynamic> json) {
+    final isActive = _boolValue(json['isActive'] ?? json['is_active']);
+    return AiApiKey(
+      id: _stringValue(json['id']) ?? '',
+      provider: _stringValue(json['provider']) ?? '',
+      key: _stringValue(json['key'], json['maskedKey'], json['masked_key']) ??
+          '****',
+      label: _stringValue(json['label'], json['keyName'], json['key_name']),
+      status: _stringValue(
+            json['status'],
+            json['validateStatus'],
+            json['validate_status'],
+          ) ??
+          (isActive == false ? 'inactive' : 'unknown'),
+      createdAt: _stringValue(
+            json['createdAt'],
+            json['created_time'],
+            json['lastValidatedAt'],
+            json['last_validated_at'],
+          ) ??
+          '',
+    );
+  }
+
+  static String? _stringValue(Object? first,
+      [Object? second, Object? third, Object? fourth]) {
+    for (final value in [first, second, third, fourth]) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty && text != 'null') return text;
+    }
+    return null;
+  }
+
+  static bool? _boolValue(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value?.toString().toLowerCase();
+    if (text == 'true' || text == '1') return true;
+    if (text == 'false' || text == '0') return false;
+    return null;
   }
 }

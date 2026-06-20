@@ -9,7 +9,6 @@ import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
@@ -265,7 +264,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
                       onTap: () => AgreementDialog.show(
                         context,
                         loc.registerUserAgreement,
-                        userAgreementContent,
+                        loc.registerUserAgreementContent,
                       ),
                       child: Text(
                         loc.registerUserAgreement,
@@ -284,7 +283,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
                       onTap: () => AgreementDialog.show(
                         context,
                         loc.registerPrivacyPolicy,
-                        privacyPolicyContent,
+                        loc.registerPrivacyPolicyContent,
                       ),
                       child: Text(
                         loc.registerPrivacyPolicy,

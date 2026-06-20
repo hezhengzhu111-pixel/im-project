@@ -102,7 +102,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         status: AuthStatus.loading, error: null, errorCode: null);
     try {
       final response = await _repository.login(
-        LoginRequest(username: username, password: password),
+        LoginRequest(
+          username: username,
+          password: password,
+          rememberMe: rememberMe,
+        ),
       );
       state = AuthState(
         user: response.user,

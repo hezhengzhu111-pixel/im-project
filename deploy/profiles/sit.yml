@@ -8,7 +8,7 @@ services:
     - im-api-server
     - im-frontend
 
-  include_ai: true
+  include_ai: false
 
 # 构建配置
 build:

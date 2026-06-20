@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
-import '../../presentation/moments_providers.dart';
+import 'package:im_l10n/im_l10n.dart';
+import '../moments_providers.dart';
+import '../utils/time_formatter.dart';
 
 class MomentsNotificationsPage extends ConsumerStatefulWidget {
   const MomentsNotificationsPage({super.key});
@@ -25,10 +28,11 @@ class _MomentsNotificationsPageState
   Widget build(BuildContext context) {
     final state = ref.watch(notificationsProvider);
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(_Strings.title),
+        title: Text(loc.momentsNotifications),
         centerTitle: true,
         actions: [
           if (state.unreadCount > 0)
@@ -36,7 +40,7 @@ class _MomentsNotificationsPageState
               onPressed: () {
                 ref.read(notificationsProvider.notifier).markAllRead();
               },
-              child: const Text(_Strings.markAllRead),
+              child: Text(loc.momentsMarkAllRead),
             ),
         ],
       ),
@@ -60,7 +64,7 @@ class _MomentsNotificationsPageState
                         onPressed: () => ref
                             .read(notificationsProvider.notifier)
                             .loadNotifications(),
-                        child: const Text(_Strings.retry),
+                        child: Text(loc.retry),
                       ),
                     ],
                   ),
@@ -76,7 +80,7 @@ class _MomentsNotificationsPageState
                                   .withValues(alpha: 0.5)),
                           const SizedBox(height: 16),
                           Text(
-                            _Strings.empty,
+                            loc.momentsNoNotifications,
                             style: TextStyle(
                                 fontSize: 16,
                                 color: theme.colorScheme.onSurfaceVariant),
@@ -93,38 +97,25 @@ class _MomentsNotificationsPageState
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final notification = state.notifications[index];
-                          return _NotificationTile(
-                            notification: notification,
-                            onTap: () {
-                              // Navigation to post detail can be added later
-                            },
-                          );
+                          return _buildNotificationItem(context, notification);
                         },
                       ),
                     ),
     );
   }
-}
 
-class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({
-    required this.notification,
-    required this.onTap,
-  });
-
-  final MomentNotification notification;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildNotificationItem(
+      BuildContext context, MomentNotification notification) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
     final isUnread = notification.isRead != true;
-    final userName = notification.userNickname ??
-        notification.userName ??
-        _Strings.userFallback;
 
     return ListTile(
-      onTap: onTap,
+      onTap: () {
+        if (notification.postId != null) {
+          context.go('/moments?postId=${notification.postId}');
+        }
+      },
       leading: Stack(
         children: [
           CircleAvatar(
@@ -134,11 +125,12 @@ class _NotificationTile extends StatelessWidget {
                 : null,
             child: notification.userAvatar == null
                 ? Text(
-                    userName.isNotEmpty
-                        ? userName.substring(0, 1).toUpperCase()
-                        : '?',
-                    style: const TextStyle(fontSize: 14),
-                  )
+                    (notification.userNickname ??
+                            notification.userName ??
+                            loc.momentsUserFallback)
+                        .substring(0, 1)
+                        .toUpperCase(),
+                    style: const TextStyle(fontSize: 14))
                 : null,
           ),
           if (isUnread)
@@ -151,17 +143,15 @@ class _NotificationTile extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: theme.colorScheme.surface,
-                    width: 2,
-                  ),
+                  border:
+                      Border.all(color: theme.colorScheme.surface, width: 2),
                 ),
               ),
             ),
         ],
       ),
       title: Text(
-        _buildText(userName),
+        _buildNotificationText(context, notification),
         style: TextStyle(
           fontSize: 14,
           fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
@@ -169,47 +159,31 @@ class _NotificationTile extends StatelessWidget {
       ),
       subtitle: Text(
         _formatTime(notification.createTime),
-        style: TextStyle(
-          fontSize: 12,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style:
+            TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
       ),
     );
   }
 
-  String _buildText(String userName) {
+  String _buildNotificationText(
+      BuildContext context, MomentNotification notification) {
+    final loc = AppLocalizations.of(context)!;
+    final userName = notification.userNickname ??
+        notification.userName ??
+        loc.momentsUserFallback;
     switch (notification.type) {
       case 'like':
-        return '$userName liked your post';
+        return loc.momentsNotificationLiked(userName);
       case 'comment':
-        return '$userName commented on your post';
+        return loc.momentsNotificationCommented(userName);
       case 'reply':
-        return '$userName replied to your comment';
+        return loc.momentsNotificationReplied(userName);
       default:
-        return '$userName interacted with your post';
+        return loc.momentsNotificationInteracted(userName);
     }
   }
 
   String _formatTime(String time) {
-    try {
-      final dt = DateTime.parse(time);
-      final diff = DateTime.now().difference(dt);
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-      if (diff.inDays < 1) return '${diff.inHours}h ago';
-      if (diff.inDays < 30) return '${diff.inDays}d ago';
-      return '${dt.month}/${dt.day}';
-    } catch (_) {
-      return time;
-    }
+    return formatRelativeTime(context, DateTime.parse(time));
   }
-}
-
-class _Strings {
-  _Strings._();
-  static const title = 'Notifications';
-  static const markAllRead = 'Mark all read';
-  static const empty = 'No notifications yet';
-  static const retry = 'Retry';
-  static const userFallback = 'Someone';
 }

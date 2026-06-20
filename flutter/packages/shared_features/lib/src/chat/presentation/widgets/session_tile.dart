@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
+import 'package:im_l10n/im_l10n.dart';
 
-class SessionTile extends StatelessWidget {
+class SessionTile extends StatefulWidget {
   const SessionTile({
     required this.session,
     required this.isSelected,
@@ -14,89 +16,179 @@ class SessionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<SessionTile> createState() => _SessionTileState();
+}
+
+class _SessionTileState extends State<SessionTile> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lastMsg = session.lastMessage;
+    final lastMsg = widget.session.lastMessage;
+    final isPinned =
+        widget.session.isPinned == true || widget.session.pinned == true;
+    final isMuted =
+        widget.session.isMuted == true || widget.session.muted == true;
+    final background = widget.isSelected
+        ? ImTokens.wechatSelectedBg
+        : _isHovered
+            ? ImTokens.wechatHoverBg
+            : Colors.transparent;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        selected: isSelected,
-        selectedTileColor: Colors.transparent,
-        leading: CircleAvatar(
-          radius: 22,
-          backgroundImage: session.targetAvatar != null
-              ? NetworkImage(session.targetAvatar!)
-              : null,
-          child: session.targetAvatar == null
-              ? Text(
-                  session.targetName.isNotEmpty
-                      ? session.targetName[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(fontSize: 16),
-                )
-              : null,
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                session.targetName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ),
-            if (session.lastMessageTime != null)
-              Text(
-                _formatTime(session.lastMessageTime!),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Semantics(
+        label: widget.session.targetName.isNotEmpty
+            ? widget.session.targetName
+            : AppLocalizations.of(context)!.chatSelectSession,
+        button: true,
+        selected: widget.isSelected,
+        child: Material(
+          color: background,
+          child: InkWell(
+            onTap: widget.onTap,
+            child: Container(
+              height: 72,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: theme.dividerColor),
                 ),
               ),
-          ],
-        ),
-        subtitle: Row(
-          children: [
-            Expanded(
-              child: Text(
-                lastMsg?.content ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            if (session.unreadCount > 0)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  session.unreadCount > 99 ? '99+' : '${session.unreadCount}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: ImTokens.wechatAvatarBg,
+                    backgroundImage: widget.session.targetAvatar != null
+                        ? NetworkImage(widget.session.targetAvatar!)
+                        : null,
+                    child: widget.session.targetAvatar == null
+                        ? Text(
+                            widget.session.targetName.isNotEmpty
+                                ? widget.session.targetName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              color: Color(0xFF4A4A4A),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        : null,
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.session.targetName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                  color: ImTokens.wechatTextPrimary,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            if (isPinned) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.push_pin,
+                                size: 13,
+                                color: ImTokens.wechatTextSecondary,
+                              ),
+                            ],
+                            if (isMuted) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.volume_off,
+                                size: 14,
+                                color: ImTokens.wechatTextSecondary,
+                              ),
+                            ],
+                            if (widget.session.lastMessageTime != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatTime(widget.session.lastMessageTime!),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: ImTokens.wechatTextSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _lastMessagePreview(lastMsg),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: ImTokens.wechatTextSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            if (widget.session.unreadCount > 0)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 5),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: ImTokens.wechatUnread,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Text(
+                                  widget.session.unreadCount > 99
+                                      ? '99+'
+                                      : '${widget.session.unreadCount}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
-        onTap: onTap,
       ),
     );
+  }
+
+  String _lastMessagePreview(Message? message) {
+    if (message == null) return '';
+    if (message.content.trim().isNotEmpty) return message.content;
+    return switch (message.messageType.toUpperCase()) {
+      'IMAGE' => '[Image]',
+      'FILE' => '[File]',
+      'VOICE' => '[Voice]',
+      'VIDEO' => '[Video]',
+      _ => '',
+    };
   }
 
   String _formatTime(String time) {

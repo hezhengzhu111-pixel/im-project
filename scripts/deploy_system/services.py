@@ -33,9 +33,6 @@ SERVICE_ALIASES = {
     "frontend": "im-frontend",
     "front": "im-frontend",
     "web": "im-frontend",
-    "ai": "im-spring-ai",
-    "spring-ai": "im-spring-ai",
-    "im-spring-ai": "im-spring-ai",
 }
 
 SERVICE_GROUPS = {
@@ -56,8 +53,6 @@ def normalize_services(raw_services: list[str] | tuple[str, ...], *, include_ai:
         key = raw.strip().lower()
         if key in SERVICE_GROUPS:
             targets = list(SERVICE_GROUPS[key])
-            if key in {"all"} and not include_ai and "im-spring-ai" in targets:
-                targets.remove("im-spring-ai")
         else:
             targets = [SERVICE_ALIASES.get(key, raw)]
         for service in targets:

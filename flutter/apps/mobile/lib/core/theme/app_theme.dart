@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:im_ui/im_ui.dart';
+import 'package:im_ui/im_ui.dart' hide GlassTheme;
 
 import 'glass_theme.dart';
 

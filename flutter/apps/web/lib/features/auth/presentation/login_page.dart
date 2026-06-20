@@ -7,7 +7,6 @@ import 'package:im_web/core/forms/form_schema.dart';
 import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/settings/presentation/settings_providers.dart';
 import 'package:im_web/core/platform/platform_adapter.dart';
@@ -267,6 +266,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   Widget _buildLanguageToggle() {
     final currentLang = ref.watch(languageProvider);
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -276,8 +276,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildLangChip('中文', 'zh', currentLang),
-          _buildLangChip('English', 'en', currentLang),
+          _buildLangChip(loc.languageChinese, 'zh', currentLang),
+          _buildLangChip(loc.languageEnglish, 'en', currentLang),
         ],
       ),
     );

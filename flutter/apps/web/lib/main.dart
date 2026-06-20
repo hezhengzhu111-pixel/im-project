@@ -22,7 +22,9 @@ import 'core/di/platform_providers.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';
+import 'features/chat/presentation/chat_providers.dart' as web_chat;
 import 'features/e2ee/data/e2ee_providers.dart';
+import 'package:im_shared_features/chat.dart' as shared_chat;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,10 +36,12 @@ Future<void> main() async {
   // Build config from compile-time environment variables (same defaults as
   // appConfigProvider) so we can construct web adapters before the
   // ProviderScope is created.
-  // 使用相对路径，通过 nginx 代理访问 API
+  // 使用相对路径，通过 nginx 代理访问 API。
+  // nginx 已将 /api/ 代理到后端，端点本身已以 /api 开头，
+  // 因此 baseUrl 留空，最终请求的完整路径为 /api/...。
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: '/api',
+    defaultValue: '',
   );
   const wsBase = String.fromEnvironment(
     'WS_BASE_URL',
@@ -103,6 +107,13 @@ Future<void> main() async {
       core_flutter.analyticsProvider.overrideWithValue(analytics),
       core_flutter.errorReporterProvider.overrideWithValue(errorReporter),
       core_flutter.pushProvider.overrideWithValue(push),
+      // The shared [ChatPage] reads from `im_shared_features` providers. The
+      // web app builds its own [ChatNotifier] (with web-specific E2EE/outbox
+      // dependencies), so bridge the two to avoid duplicate chat state and to
+      // make shared widgets observe the same sessions as the web bootstrap.
+      shared_chat.chatStateProvider.overrideWith(
+        (ref) => ref.read(web_chat.chatStateProvider.notifier),
+      ),
     ],
     observers: [AppProviderObserver(env: env)],
     child: const App(),

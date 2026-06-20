@@ -4,17 +4,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/settings.dart';
+import 'package:im_ui/im_ui.dart';
 import '../helpers/fakes.dart';
 
 Widget _buildApp({
   required List<Override> overrides,
 }) {
   return ProviderScope(
-    overrides: overrides,
-    child: const MaterialApp(
-      home: ProfileSettingsPage(),
+    overrides: [
+      storageProvider.overrideWithValue(FakeStoragePort()),
+      ...overrides,
+    ],
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: ImTheme.light().copyWith(
+        extensions: [GlassTheme.light],
+      ),
+      home: const Scaffold(
+        body: ProfileSettingsPage(),
+      ),
     ),
   );
 }
@@ -42,7 +54,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Profile Settings'), findsOneWidget);
+      expect(find.text('Basic info'), findsOneWidget);
       expect(find.text('Username'), findsOneWidget);
       expect(find.text('Nickname'), findsOneWidget);
       expect(find.text('Signature'), findsOneWidget);

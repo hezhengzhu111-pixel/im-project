@@ -639,8 +639,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           content.contains('GROUP') ||
           content.contains('friend') ||
           content.contains('group') ||
-          content.contains('好友申请') ||
-          content.contains('同意') ||
           content.contains('REFRESH_FRIEND')) {
         loadSessions();
       }

@@ -17,6 +17,11 @@ dependencies:
     path: ../core_flutter
   im_ui:
     path: ../ui
+  im_l10n:
+    path: ../l10n
+  file_picker: ^11.0.2
+  url_launcher: ^6.2.0
+  video_player: ^2.8.0
 
 dev_dependencies:
   flutter_test:

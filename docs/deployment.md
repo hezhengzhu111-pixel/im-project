@@ -57,6 +57,13 @@ python scripts/imctl.py --profile prod build
 
 ### 本地开发环境
 
+前端默认暴露在主机 `8080` 端口（由 `FRONTEND_PORT` 控制）。启动后访问：
+
+- 前端：`http://localhost:8080`
+- API：`http://localhost:8082`
+
+如果需要本地 HTTPS，可以手动启动 `im-nginx` 服务（远程部署会自动启动）。
+
 首次启动：
 
 ```sh
@@ -80,6 +87,18 @@ python scripts/imctl.py up
 
 ```sh
 python scripts/imctl.py --profile sit up
+```
+
+重新部署中间件和应用服务：
+
+```sh
+python scripts/imctl.py --profile sit up --all
+```
+
+只部署应用服务，不处理中间件和数据库：
+
+```sh
+python scripts/imctl.py --profile sit up --server
 ```
 
 ### 生产环境

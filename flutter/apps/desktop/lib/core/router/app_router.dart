@@ -7,8 +7,8 @@ import 'package:im_shared_features/chat.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/group.dart';
 import 'package:im_shared_features/moments.dart';
+import 'package:im_shared_features/navigation.dart';
 import 'package:im_desktop/features/settings/settings.dart';
-import '../shell/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -36,7 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       ShellRoute(
         builder: (context, state, child) {
-          return MainShell(child: child);
+          return NavigationShell(child: child);
         },
         routes: [
           GoRoute(

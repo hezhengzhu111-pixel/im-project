@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/auth/domain/auth_status.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
-import 'package:im_web/features/e2ee/data/e2ee_sent_message_cache.dart';
+import 'package:im_shared_features/src/chat/data/sent_message_cache_port.dart';
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -141,13 +141,10 @@ class FakeAnalyticsPort implements AnalyticsPort {
   void setUserProperties(Map<String, dynamic> properties) {}
 }
 
-/// Fake E2eeSentMessageCache for testing.
-class FakeE2eeSentMessageCache implements E2eeSentMessageCache {
+/// Fake SentMessageCachePort for testing.
+class FakeSentMessageCachePort implements SentMessageCachePort {
   int clearAllCallCount = 0;
   bool clearAllShouldThrow = false;
-
-  @override
-  SentMessageCacheStorage get storage => throw UnimplementedError();
 
   @override
   Future<void> clearAll() async {
@@ -156,9 +153,6 @@ class FakeE2eeSentMessageCache implements E2eeSentMessageCache {
       throw Exception('Cache clear failed');
     }
   }
-
-  @override
-  Future<void> clearExpired() async {}
 
   @override
   Future<void> clearSession(String e2eeSessionId) async {}
@@ -174,15 +168,11 @@ class FakeE2eeSentMessageCache implements E2eeSentMessageCache {
     required String clientMessageId,
     required String plaintext,
     required String e2eeSessionId,
-    String? peerUserId,
     String? serverMessageId,
   }) async {}
 
   @override
-  Future<void> updateServerId({
-    required String clientMessageId,
-    required String serverMessageId,
-  }) async {}
+  Future<void> updateServerId(String clientMessageId, String serverMessageId) async {}
 }
 
 // ---------------------------------------------------------------------------
@@ -195,14 +185,14 @@ void main() {
   late FakeWsClientPort fakeWs;
   late FakeHttpClientPort fakeHttp;
   late FakeAnalyticsPort fakeAnalytics;
-  late FakeE2eeSentMessageCache fakeCache;
+  late FakeSentMessageCachePort fakeCache;
 
   setUp(() {
     fakeRepo = FakeAuthRepository();
     fakeWs = FakeWsClientPort();
     fakeHttp = FakeHttpClientPort();
     fakeAnalytics = FakeAnalyticsPort();
-    fakeCache = FakeE2eeSentMessageCache();
+    fakeCache = FakeSentMessageCachePort();
     notifier =
         AuthNotifier(fakeRepo, fakeWs, fakeHttp, fakeAnalytics, fakeCache);
   });

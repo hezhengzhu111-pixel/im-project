@@ -7,9 +7,8 @@ services:
     - im-server
     - im-api-server
     - im-frontend
-    - im-spring-ai
 
-  include_ai: true
+  include_ai: false
 
 # 构建配置
 build:
