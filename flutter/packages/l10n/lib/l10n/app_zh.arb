@@ -331,6 +331,8 @@
   "momentsVisibilitySelf": "仅自己",
   "momentsAddMedia": "添加图片/视频，最多 {count} 张",
   "momentsShowFull": "全文",
+  "momentsNoMorePosts": "没有更多了",
+  "momentsPostNotFound": "动态不存在",
   "timeJustNow": "刚刚",
   "timeMinutesAgo": "{minutes}分钟前",
   "timeHoursAgo": "{hours}小时前",

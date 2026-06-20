@@ -1026,6 +1026,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get momentsShowFull => '全文';
 
   @override
+  String get momentsNoMorePosts => '没有更多了';
+
+  @override
+  String get momentsPostNotFound => '动态不存在';
+
+  @override
   String get timeJustNow => '刚刚';
 
   @override

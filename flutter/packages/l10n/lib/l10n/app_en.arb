@@ -331,6 +331,8 @@
   "momentsVisibilitySelf": "Only me",
   "momentsAddMedia": "Add photos/videos, max {count}",
   "momentsShowFull": "Show full",
+  "momentsNoMorePosts": "No more moments",
+  "momentsPostNotFound": "Post not found",
   "timeJustNow": "just now",
   "timeMinutesAgo": "{minutes} min ago",
   "timeHoursAgo": "{hours} h ago",

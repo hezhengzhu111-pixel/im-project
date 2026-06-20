@@ -15,12 +15,14 @@ class PostCard extends ConsumerStatefulWidget {
     required this.post,
     required this.onLike,
     required this.onDelete,
+    this.isHighlighted = false,
     super.key,
   });
 
   final PostWithDetails post;
   final VoidCallback onLike;
   final VoidCallback onDelete;
+  final bool isHighlighted;
 
   @override
   ConsumerState<PostCard> createState() => _PostCardState();
@@ -47,12 +49,19 @@ class _PostCardState extends ConsumerState<PostCard> {
           : null,
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        elevation: 0,
+        elevation: widget.isHighlighted ? 2 : 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(4),
-          side: BorderSide(color: theme.dividerColor),
+          side: BorderSide(
+            color: widget.isHighlighted
+                ? theme.colorScheme.primary
+                : theme.dividerColor,
+            width: widget.isHighlighted ? 2 : 1,
+          ),
         ),
-        color: theme.colorScheme.surface,
+        color: widget.isHighlighted
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+            : theme.colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

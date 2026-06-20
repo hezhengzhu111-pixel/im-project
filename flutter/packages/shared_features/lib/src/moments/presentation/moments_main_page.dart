@@ -5,6 +5,7 @@ import 'package:im_shared_features/auth.dart';
 import 'package:im_ui/im_ui.dart';
 import 'composer/moments_composer_page.dart';
 import 'feed/moments_feed_page.dart';
+import 'moments_providers.dart';
 import 'widgets/moments_cover.dart';
 import 'widgets/moments_sidebar.dart';
 import 'widgets/moments_topbar.dart';
@@ -70,6 +71,10 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
     );
   }
 
+  Future<void> _refreshFeed() async {
+    await ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final showSidebar = context.isLarge;
@@ -90,27 +95,31 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
                       onComposeTap: _openComposer,
                     ),
                     Expanded(
-                      child: CustomScrollView(
-                        controller: _scrollController,
-                        slivers: [
-                          SliverToBoxAdapter(
-                            child: Builder(
-                              builder: (context) {
-                                final user = ref.watch(authStateProvider).user;
-                                return MomentsCover(
-                                  nickname: user?.nickname ??
-                                      user?.username ??
-                                      AppLocalizations.of(context)!
-                                          .momentsUserFallback,
-                                  avatar: user?.avatar,
-                                );
-                              },
+                      child: RefreshIndicator(
+                        onRefresh: _refreshFeed,
+                        child: CustomScrollView(
+                          controller: _scrollController,
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Builder(
+                                builder: (context) {
+                                  final user = ref.watch(authStateProvider).user;
+                                  return MomentsCover(
+                                    nickname: user?.nickname ??
+                                        user?.username ??
+                                        AppLocalizations.of(context)!
+                                            .momentsUserFallback,
+                                    avatar: user?.avatar,
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                          SliverFillRemaining(
-                            child: MomentsFeedPage(postId: widget.postId),
-                          ),
-                        ],
+                            MomentsFeedPage(
+                              postId: widget.postId,
+                              scrollController: _scrollController,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

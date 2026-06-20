@@ -160,6 +160,8 @@ class FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+  @override
+  void dispose() {}
 }
 
 /// Fake AuthRepository for tests.

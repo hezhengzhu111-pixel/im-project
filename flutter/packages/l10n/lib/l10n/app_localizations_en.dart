@@ -1055,6 +1055,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get momentsShowFull => 'Show full';
 
   @override
+  String get momentsNoMorePosts => 'No more moments';
+
+  @override
+  String get momentsPostNotFound => 'Post not found';
+
+  @override
   String get timeJustNow => 'just now';
 
   @override
