@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 /// A wrapper that loads a deferred Dart library before building its child.
 ///
@@ -83,6 +84,7 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     if (errorBuilder != null) {
       return errorBuilder!(context, onRetry);
     }
@@ -93,10 +95,11 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
-            const Text('页面加载失败', style: TextStyle(fontSize: 16)),
+            Text(loc.deferredRouteLoadFailed,
+                style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 8),
             Text(
-              error?.toString() ?? '未知错误',
+              error?.toString() ?? loc.deferredRouteUnknownError,
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(context).textTheme.bodySmall?.color,
@@ -106,7 +109,7 @@ class _ErrorView extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+              label: Text(loc.retry),
             ),
           ],
         ),

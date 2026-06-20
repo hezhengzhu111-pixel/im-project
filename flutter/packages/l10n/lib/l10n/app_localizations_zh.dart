@@ -876,6 +876,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notFoundBackHome => '返回首页';
 
   @override
+  String get forbiddenTitle => '无权访问';
+
+  @override
+  String get forbiddenMessage => '您没有权限访问此页面。';
+
+  @override
+  String get forbiddenBackHome => '返回首页';
+
+  @override
+  String get pageLoadFailed => '页面加载失败';
+
+  @override
+  String get pageLoadRetry => '重试';
+
+  @override
   String loadingFailed(Object error) {
     return '加载失败: $error';
   }
@@ -1511,4 +1526,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get logoutConfirmAction => '退出登录';
+
+  @override
+  String get deferredRouteLoadFailed => '页面加载失败';
+
+  @override
+  String get deferredRouteUnknownError => '未知错误';
 }

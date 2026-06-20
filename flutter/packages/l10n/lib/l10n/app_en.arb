@@ -299,6 +299,11 @@
   },
   "notFoundTitle": "Page not found",
   "notFoundBackHome": "Back to Home",
+  "forbiddenTitle": "Access Denied",
+  "forbiddenMessage": "You don't have permission to access this page.",
+  "forbiddenBackHome": "Back to Home",
+  "pageLoadFailed": "Page failed to load",
+  "pageLoadRetry": "Retry",
   "loadingFailed": "Loading failed: {error}",
   "momentsPublishTitle": "Publish Moment",
   "momentsPublishButton": "Publish Moment",
@@ -523,5 +528,7 @@
   "contactsSignature": "Signature",
   "contactsMoments": "Moments",
   "contactsDailyOverview": "Daily overview",
-  "contactsRecentInteractions": "Recent interactions"
+  "contactsRecentInteractions": "Recent interactions",
+  "deferredRouteLoadFailed": "Failed to load page",
+  "deferredRouteUnknownError": "Unknown error"
 }

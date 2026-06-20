@@ -895,6 +895,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notFoundBackHome => 'Back to Home';
 
   @override
+  String get forbiddenTitle => 'Access Denied';
+
+  @override
+  String get forbiddenMessage =>
+      'You don\'t have permission to access this page.';
+
+  @override
+  String get forbiddenBackHome => 'Back to Home';
+
+  @override
+  String get pageLoadFailed => 'Page failed to load';
+
+  @override
+  String get pageLoadRetry => 'Retry';
+
+  @override
   String loadingFailed(Object error) {
     return 'Loading failed: $error';
   }
@@ -1563,4 +1579,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get logoutConfirmAction => 'Logout';
+
+  @override
+  String get deferredRouteLoadFailed => 'Failed to load page';
+
+  @override
+  String get deferredRouteUnknownError => 'Unknown error';
 }
