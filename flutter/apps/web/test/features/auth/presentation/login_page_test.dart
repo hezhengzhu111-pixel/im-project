@@ -8,6 +8,7 @@ import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/settings/presentation/settings_providers.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 import '../../../helpers/fakes.dart';
@@ -36,12 +37,14 @@ void main() {
         }),
         languageProvider.overrideWith((ref) => 'en'),
       ],
-      child: MaterialApp(
-        locale: const Locale('en'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: ThemeData(extensions: [GlassTheme.light]),
-        home: showLogin ? const LoginPage() : const _FallbackPage(),
+      child: BreakpointScope(
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(extensions: [GlassTheme.light]),
+          home: showLogin ? const LoginPage() : const _FallbackPage(),
+        ),
       ),
     );
   }
