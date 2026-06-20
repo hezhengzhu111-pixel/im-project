@@ -80,7 +80,7 @@ def sync_source_to_work(source: Path, target: Path) -> None:
 def ensure_work_workspace() -> None:
     """Sync rust/ and flutter/ into build/work/ for test isolation."""
     rust_work = ROOT / "build" / "work" / "rust"
-    flutter_work = ROOT / "build" / "work" / "flutter9"
+    flutter_work = ROOT / "build" / "work" / "flutter"
     rust_work.parent.mkdir(parents=True, exist_ok=True)
     flutter_work.parent.mkdir(parents=True, exist_ok=True)
 

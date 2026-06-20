@@ -23,7 +23,7 @@ TEST_REPORT_DIR = ROOT / "build" / "reports" / "test"
 
 # Use build/work isolated workspaces instead of source directories
 RUST_WORK_DIR = ROOT / "build" / "work" / "rust"
-FLUTTER_WORK_DIR = ROOT / "build" / "work" / "flutter9"
+FLUTTER_WORK_DIR = ROOT / "build" / "work" / "flutter"
 FLUTTER_TARGETS = [
     ("core", "packages/core"),
     ("core_flutter", "packages/core_flutter"),
