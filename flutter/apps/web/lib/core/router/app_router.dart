@@ -34,6 +34,7 @@ import 'route_resolver.dart';
 import 'route_observer.dart';
 export 'route_resolver.dart' show routeMetaMap, resolveRouteMeta;
 import 'not_found_page.dart';
+import 'forbidden_page.dart';
 
 final _routerRefreshProvider = Provider<_RouterRefreshListenable>((ref) {
   final refresh = _RouterRefreshListenable();
@@ -72,10 +73,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
       }
 
-      // permission: user lacks required permission -> /chat
+      // permission: user lacks required permission -> /forbidden
       if (meta.permission != null) {
         if (!authState.permissions.contains(meta.permission!)) {
-          return '/chat';
+          return '/forbidden';
         }
       }
 
@@ -197,6 +198,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/forbidden',
+        name: RouteNames.forbidden,
+        builder: (_, __) => const ForbiddenPage(),
       ),
       // 404 catch-all -- must be last
       GoRoute(
