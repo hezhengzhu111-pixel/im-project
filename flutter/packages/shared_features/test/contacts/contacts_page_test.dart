@@ -108,7 +108,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Default breakpoint is compact, so tapping a friend should push detail.
-      await tester.tap(find.text('Alice'));
+      await tester.tap(find.text('Alice').last);
       await tester.pumpAndSettle();
 
       expect(find.text('Send message'), findsOneWidget);
