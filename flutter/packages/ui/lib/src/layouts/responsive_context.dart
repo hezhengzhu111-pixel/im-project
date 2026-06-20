@@ -3,7 +3,9 @@ import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
 
 extension ResponsiveContext on BuildContext {
-  Breakpoint get breakpoint => BreakpointScope.of(this);
+  Breakpoint get breakpoint =>
+      BreakpointScope.maybeOf(this) ??
+      Breakpoint.fromWidth(MediaQuery.sizeOf(this).width);
   bool get isCompact => breakpoint == Breakpoint.compact;
   bool get isMedium => breakpoint == Breakpoint.medium;
   bool get isExpanded => breakpoint == Breakpoint.expanded;

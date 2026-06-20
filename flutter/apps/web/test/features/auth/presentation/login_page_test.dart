@@ -6,6 +6,7 @@ import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
+import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/settings/presentation/settings_providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
@@ -198,7 +199,8 @@ void main() {
       expect(find.text('Secure · Private · Instant'), findsNothing);
 
       // Should show login form
-      expect(find.text('Login'), findsOneWidget);
+      expect(find.byType(AuthCard), findsOneWidget);
+      expect(find.byType(TextFormField), findsWidgets);
 
       // Reset screen size
       tester.view.resetPhysicalSize();

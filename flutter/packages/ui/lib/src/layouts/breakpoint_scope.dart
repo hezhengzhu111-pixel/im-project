@@ -7,8 +7,12 @@ class BreakpointScope extends StatelessWidget {
   final Widget child;
 
   static Breakpoint of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<_BreakpointData>();
-    return scope?.breakpoint ?? Breakpoint.compact;
+    return maybeOf(context) ?? Breakpoint.compact;
+  }
+
+  static Breakpoint? maybeOf(BuildContext context) {
+    final scope = context.getInheritedWidgetOfExactType<_BreakpointData>();
+    return scope?.breakpoint;
   }
 
   @override
