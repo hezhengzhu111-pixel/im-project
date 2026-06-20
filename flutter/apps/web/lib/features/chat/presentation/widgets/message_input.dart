@@ -26,6 +26,7 @@ class MessageInput extends ConsumerStatefulWidget {
     this.focusNode,
     this.onFocusChanged,
     this.members,
+    this.membersFailed = false,
   });
 
   final FutureOr<void> Function(String text, List<String> mentionedUserIds)
@@ -36,6 +37,7 @@ class MessageInput extends ConsumerStatefulWidget {
   final FocusNode? focusNode;
   final ValueChanged<bool>? onFocusChanged;
   final List<GroupMember>? members;
+  final bool membersFailed;
 
   @override
   ConsumerState<MessageInput> createState() => _MessageInputState();
@@ -229,6 +231,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.membersFailed) _buildMentionDisabledBanner(),
         if (_showMention) _buildMentionDropdown(),
         if (_showEmojiPanel) _buildEmojiPanel(),
         Container(
@@ -339,6 +342,41 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMentionDisabledBanner() {
+    final loc = AppLocalizations.of(context)!;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: ImTokens.space3,
+        vertical: ImTokens.space2,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.6),
+        border: Border(
+          top: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: ImTokens.space4,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          SizedBox(width: ImTokens.space2),
+          Expanded(
+            child: Text(
+              loc.chatMentionUnavailable,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

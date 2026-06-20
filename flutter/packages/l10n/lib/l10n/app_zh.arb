@@ -299,6 +299,11 @@
   },
   "notFoundTitle": "页面不存在",
   "notFoundBackHome": "返回首页",
+  "forbiddenTitle": "无权访问",
+  "forbiddenMessage": "您没有权限访问此页面。",
+  "forbiddenBackHome": "返回首页",
+  "pageLoadFailed": "页面加载失败",
+  "pageLoadRetry": "重试",
   "loadingFailed": "加载失败: {error}",
   "momentsPublishTitle": "发布动态",
   "momentsPublishButton": "发布动态",
@@ -523,5 +528,7 @@
   "contactsSignature": "个性签名",
   "contactsMoments": "朋友圈",
   "contactsDailyOverview": "每日概览",
-  "contactsRecentInteractions": "最近互动"
+  "contactsRecentInteractions": "最近互动",
+  "deferredRouteLoadFailed": "页面加载失败",
+  "deferredRouteUnknownError": "未知错误"
 }

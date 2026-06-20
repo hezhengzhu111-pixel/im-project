@@ -20,6 +20,7 @@ import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
 import 'core/di/rust_bridge_init_provider.dart';
+import 'core/di/rust_bridge_warmup.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';

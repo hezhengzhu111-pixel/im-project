@@ -19,6 +19,8 @@ import 'widgets/message_input.dart';
 import 'widgets/network_status_banner.dart';
 import 'widgets/session_tile.dart';
 
+enum _DeepLinkResolution { pending, notFound, resolved }
+
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({this.sessionId, super.key});
   final String? sessionId;
@@ -36,6 +38,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _initialLoadStarted = false;
   ProviderSubscription<AuthState>? _authSubscription;
   List<GroupMember> _groupMembers = [];
+  bool _groupMembersFailed = false;
+  _DeepLinkResolution _deepLinkResolution = _DeepLinkResolution.pending;
+  String? _lastShownError;
+  final Set<String> _lastShownNegotiationKeys = <String>{};
 
   void _handleEsc() {
     if (_messageInputFocused) {
@@ -97,11 +103,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _openDeepLinkedSession(String rawSessionId) async {
+    setState(() => _deepLinkResolution = _DeepLinkResolution.pending);
     final session =
         _resolveDeepLinkedSession(rawSessionId, ref.read(chatStateProvider));
-    if (session == null) return;
+    if (session == null) {
+      if (mounted) {
+        setState(() => _deepLinkResolution = _DeepLinkResolution.notFound);
+      }
+      return;
+    }
 
     await _selectSession(session);
+    if (mounted) {
+      setState(() => _deepLinkResolution = _DeepLinkResolution.resolved);
+    }
   }
 
   ChatSession? _resolveDeepLinkedSession(
@@ -148,14 +163,24 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _loadGroupMembers(String groupId) async {
+    setState(() => _groupMembersFailed = false);
     try {
       final groupApi = ref.read(groupApiProvider);
       final members = await groupApi.getMembers(groupId);
       if (mounted) {
-        setState(() => _groupMembers = members);
+        setState(() {
+          _groupMembers = members;
+          _groupMembersFailed = false;
+        });
       }
-    } catch (_) {
-      // Silently fail - mention will just not show members
+    } catch (e) {
+      if (mounted) {
+        setState(() => _groupMembersFailed = true);
+        final loc = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.chatMembersLoadFailed(e.toString()))),
+        );
+      }
     }
   }
 
@@ -167,6 +192,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
     if (!authState.isAuthenticated) {
       return const SizedBox.shrink();
+    }
+
+    if (_deepLinkResolution == _DeepLinkResolution.notFound) {
+      return _ChatSessionNotFoundState(
+        onRetry: () {
+          setState(() {
+            _initialLoadStarted = false;
+            _deepLinkResolution = _DeepLinkResolution.pending;
+          });
+          _scheduleInitialLoad();
+        },
+        onBack: () {
+          ref.read(chatStateProvider.notifier).setActiveSession(null);
+          setState(() => _deepLinkResolution = _DeepLinkResolution.resolved);
+        },
+      );
     }
 
     final chatState = ref.watch(chatStateProvider);
@@ -193,9 +234,25 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             compact: activeId != null
                 ? _buildChatView(activeId, loc)
                 : _buildSessionList(sessions, activeId, loc),
-            medium: activeId != null
-                ? _buildChatView(activeId, loc)
-                : _buildSessionList(sessions, activeId, loc),
+            medium: activeId == null
+                ? _buildSessionList(sessions, activeId, loc)
+                : Row(
+                    children: [
+                      Container(
+                        width: 280,
+                        decoration: BoxDecoration(
+                          color: ImTokens.wechatPanelBg,
+                          border: Border(
+                            right: BorderSide(
+                              color: Theme.of(context).dividerColor,
+                            ),
+                          ),
+                        ),
+                        child: _buildSessionList(sessions, activeId, loc),
+                      ),
+                      Expanded(child: _buildChatView(activeId, loc)),
+                    ],
+                  ),
             expanded: Row(
               children: [
                 Container(
@@ -378,21 +435,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         .initiateEncryptionForSession(session.id);
     ref.invalidate(e2eeSessionStatusProvider(e2eeSessionId));
     if (!started && mounted) {
+      final loc = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to start encryption negotiation.'),
-        ),
+        SnackBar(content: Text(loc.chatE2eeStartFailed)),
       );
     }
   }
 
   void _showGroupE2eeUnavailable() {
+    final loc = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Group E2EE requires sender-key support before it can be enabled.',
-        ),
-      ),
+      SnackBar(content: Text(loc.chatE2eeGroupUnavailable)),
     );
   }
 
@@ -408,13 +461,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     });
 
     ref.listen(chatStateProvider.select((s) => s.error), (prev, next) {
-      if (next != null && next != prev) {
+      if (next != null && next != prev && next != _lastShownError) {
+        _lastShownError = next;
         final errorMessage = switch (next) {
           'e2ee_not_ready' => loc.errorE2eeNotReady,
-          'e2ee_encrypt_failed' =>
-            'Failed to encrypt message. Please restart encryption negotiation.',
-          'group_e2ee_unavailable' =>
-            'Group E2EE requires sender-key support before it can be enabled.',
+          'e2ee_encrypt_failed' => loc.chatE2eeEncryptFailed,
+          'group_e2ee_unavailable' => loc.chatE2eeGroupUnavailable,
           final e => e,
         };
         ScaffoldMessenger.of(context).showSnackBar(
@@ -427,23 +479,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     ref.listen(
       chatStateProvider.select((s) => s.pendingNegotiations),
       (prev, next) {
-        if (next.length > (prev?.length ?? 0)) {
-          for (final entry in next.entries) {
-            if (prev == null || !prev.containsKey(entry.key)) {
-              final event = entry.value;
-              if (event.action == E2eeNegotiationAction.request) {
-                final activeId = ref.read(chatStateProvider).activeSessionId;
-                // Only show notification if not the current session
-                if (entry.key != activeId && mounted) {
-                  final name = event.requesterName ?? event.requesterId;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(loc.e2eeNegotiationNotification(name)),
-                      duration: const Duration(seconds: 5),
-                    ),
-                  );
-                }
-              }
+        final activeId = ref.read(chatStateProvider).activeSessionId;
+        for (final entry in next.entries) {
+          if (prev == null || !prev.containsKey(entry.key)) {
+            final event = entry.value;
+            if (event.action == E2eeNegotiationAction.request &&
+                entry.key != activeId &&
+                !_lastShownNegotiationKeys.contains(entry.key) &&
+                mounted) {
+              _lastShownNegotiationKeys.add(entry.key);
+              final name = event.requesterName ?? event.requesterId;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(loc.e2eeNegotiationNotification(name)),
+                  duration: const Duration(seconds: 5),
+                ),
+              );
             }
           }
         }
@@ -469,13 +520,63 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             .read(chatStateProvider.notifier)
             .pendingNegotiationForSession(session.id);
 
+    final Widget messageBody;
+    if (chatState.isLoading && messages.isEmpty) {
+      messageBody = _ChatLoadingState(message: loc.chatLoadingConversation);
+    } else if (chatState.error != null && messages.isEmpty) {
+      messageBody = _ChatLoadMessagesFailedState(
+        message: loc.chatMessagesLoadFailed,
+        onRetry: () {
+          if (isGroup) {
+            ref
+                .read(chatStateProvider.notifier)
+                .loadGroupMessages(session.targetId);
+          } else {
+            ref
+                .read(chatStateProvider.notifier)
+                .loadMessages(session.targetId);
+          }
+        },
+      );
+    } else if (messages.isEmpty) {
+      messageBody = _ChatEmptyState(message: loc.chatNoMessages);
+    } else {
+      final hasMore = chatState.hasMoreHistoryBySession[sessionId] == true;
+      messageBody = ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(
+          horizontal: ImTokens.space1 / 2,
+          vertical: ImTokens.space3,
+        ),
+        itemCount: messages.length + (hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (hasMore && index == 0) {
+            return LoadMoreHistoryButton(sessionId: sessionId);
+          }
+          final msgIndex = hasMore ? index - 1 : index;
+          final msg = messages[msgIndex];
+          final currentUserId = ref.watch(authStateProvider).user?.id ?? '';
+          return AnimatedEntrance(
+            duration: ImTokens.animFast,
+            offset: ImTokens.space1.toDouble(),
+            child: MessageBubble(
+              message: msg,
+              isMe: msg.senderId == currentUserId,
+              onRetry: () => ref.read(chatStateProvider.notifier).retryMessage(
+                    sessionId,
+                    msg.clientMessageId ?? msg.messageId ?? msg.id,
+                  ),
+            ),
+          );
+        },
+      );
+    }
+
     return Container(
       color: ImTokens.wechatPageBg,
       child: Column(
         children: [
-          // Network status banner
           const NetworkStatusBanner(),
-          // Header
           _GlassChatHeader(
             session: session,
             isMobile: isMobile,
@@ -491,7 +592,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             onShowGroupEncryptionUnavailable:
                 isGroup ? _showGroupE2eeUnavailable : null,
           ),
-          // E2EE encryption banner (private chats only)
           if (e2eeStatusAsync != null)
             e2eeStatusAsync.when(
               data: (statusStr) => E2eeNegotiationBanner(
@@ -508,10 +608,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         );
                         if (!accepted && mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Failed to accept encryption request.',
-                              ),
+                            SnackBar(
+                              content: Text(loc.chatE2eeAcceptFailed),
                             ),
                           );
                         }
@@ -539,47 +637,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
             ),
-          // Messages
-          Expanded(
-            child: messages.isEmpty
-                ? _ChatEmptyState(message: loc.noData)
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 2,
-                      vertical: 12,
-                    ),
-                    itemCount: messages.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return LoadMoreHistoryButton(sessionId: sessionId);
-                      }
-                      final msg = messages[index - 1];
-                      final currentUserId =
-                          ref.watch(authStateProvider).user?.id ?? '';
-                      return AnimatedEntrance(
-                        duration: ImTokens.animFast,
-                        offset: 4,
-                        child: MessageBubble(
-                          message: msg,
-                          isMe: msg.senderId == currentUserId,
-                          onRetry: () => ref
-                              .read(chatStateProvider.notifier)
-                              .retryMessage(
-                                sessionId,
-                                msg.clientMessageId ?? msg.messageId ?? msg.id,
-                              ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: messageBody),
           // Input
           MessageInput(
             focusNode: _messageInputFocusNode,
             onFocusChanged: (focused) =>
                 setState(() => _messageInputFocused = focused),
             members: isGroup ? _groupMembers : null,
+            membersFailed: isGroup && _groupMembersFailed,
             onSend: (text, mentionedUserIds) {
               if (isGroup) {
                 return ref.read(chatStateProvider.notifier).sendGroupMessage(
@@ -770,12 +835,170 @@ class _ChatEmptyState extends StatelessWidget {
     return ColoredBox(
       color: ImTokens.wechatPageBg,
       child: Center(
-        child: Text(
-          message,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: ImTokens.wechatTextSecondary,
-                fontSize: 14,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline,
+              size: ImTokens.space8,
+              color: ImTokens.wechatTextSecondary,
+            ),
+            SizedBox(height: ImTokens.space3),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: ImTokens.wechatTextSecondary,
+                    fontSize: ImTokens.textSm,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatLoadingState extends StatelessWidget {
+  const _ChatLoadingState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: ImTokens.space6,
+              height: ImTokens.space6,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(height: ImTokens.space3),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: ImTokens.wechatTextSecondary,
+                    fontSize: ImTokens.textSm,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatSessionNotFoundState extends StatelessWidget {
+  const _ChatSessionNotFoundState({
+    required this.onRetry,
+    required this.onBack,
+  });
+
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(ImTokens.space6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: ImTokens.space8,
+                color: theme.colorScheme.error,
               ),
+              SizedBox(height: ImTokens.space3),
+              Text(
+                loc.chatSessionNotFoundTitle,
+                style: theme.textTheme.titleMedium?.copyWith(
+                      color: ImTokens.wechatTextPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              SizedBox(height: ImTokens.space2),
+              Text(
+                loc.chatSessionNotFoundMessage,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                      color: ImTokens.wechatTextSecondary,
+                    ),
+              ),
+              SizedBox(height: ImTokens.space4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onBack,
+                    icon: const Icon(Icons.arrow_back),
+                    label: Text(loc.chatBackToSessions),
+                  ),
+                  SizedBox(width: ImTokens.space3),
+                  TextButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(loc.retry),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatLoadMessagesFailedState extends StatelessWidget {
+  const _ChatLoadMessagesFailedState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(ImTokens.space6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: ImTokens.space8,
+                color: theme.colorScheme.error,
+              ),
+              SizedBox(height: ImTokens.space3),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                      color: ImTokens.wechatTextSecondary,
+                    ),
+              ),
+              SizedBox(height: ImTokens.space4),
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: Text(AppLocalizations.of(context)!.retry),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -847,7 +1070,7 @@ class _GlassChatHeader extends StatelessWidget {
     final status = e2eeStatus ?? E2eeSessionStatus.plaintext;
     final subtitle = isGroup
         ? (session.memberCount == null
-            ? 'Group chat'
+            ? loc.chatGroupChat
             : loc.chatMemberCount(session.memberCount!))
         : switch (status) {
             E2eeSessionStatus.encrypted => loc.e2eeEncrypted,
@@ -932,7 +1155,7 @@ class _GlassChatHeader extends StatelessWidget {
           ],
           if (isGroup && onShowGroupEncryptionUnavailable != null)
             IconButton(
-              tooltip: 'Group E2EE unavailable',
+              tooltip: loc.chatE2eeGroupUnavailableTooltip,
               icon: const Icon(Icons.lock_outline),
               onPressed: onShowGroupEncryptionUnavailable,
             ),

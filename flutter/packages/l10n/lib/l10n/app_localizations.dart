@@ -1772,6 +1772,36 @@ abstract class AppLocalizations {
   /// **'Back to Home'**
   String get notFoundBackHome;
 
+  /// No description provided for @forbiddenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access Denied'**
+  String get forbiddenTitle;
+
+  /// No description provided for @forbiddenMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You don't have permission to access this page.'**
+  String get forbiddenMessage;
+
+  /// No description provided for @forbiddenBackHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to Home'**
+  String get forbiddenBackHome;
+
+  /// No description provided for @pageLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Page failed to load'**
+  String get pageLoadFailed;
+
+  /// No description provided for @pageLoadRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get pageLoadRetry;
+
   /// No description provided for @loadingFailed.
   ///
   /// In en, this message translates to:
@@ -2977,6 +3007,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logout'**
   String get logoutConfirmAction;
+
+  /// No description provided for @deferredRouteLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load page'**
+  String get deferredRouteLoadFailed;
+
+  /// No description provided for @deferredRouteUnknownError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown error'**
+  String get deferredRouteUnknownError;
 }
 
 class _AppLocalizationsDelegate
