@@ -38,8 +38,10 @@ class _JoinGroupDialogState extends ConsumerState<JoinGroupDialog> {
     if (_isJoining) return;
     setState(() => _isJoining = true);
 
-    final success =
-        await ref.read(groupStateProvider.notifier).joinGroup(group.id);
+    final userId = ref.read(authStateProvider).user?.id;
+    final success = await ref
+        .read(groupStateProvider.notifier)
+        .joinGroup(group.id, userId: userId);
 
     if (mounted) {
       final loc = AppLocalizations.of(context)!;
@@ -49,11 +51,6 @@ class _JoinGroupDialogState extends ConsumerState<JoinGroupDialog> {
         messenger.showSnackBar(
           SnackBar(content: Text(loc.joinGroupSuccess(group.name))),
         );
-        // Reload groups list
-        final userId = ref.read(authStateProvider).user?.id;
-        if (userId != null) {
-          ref.read(groupStateProvider.notifier).loadGroups(userId);
-        }
       } else {
         messenger.showSnackBar(
           SnackBar(content: Text(loc.joinGroupError)),

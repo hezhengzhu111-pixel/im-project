@@ -90,9 +90,9 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
           const SizedBox(height: ImTokens.space4),
           TextField(
             controller: _avatarController,
-            decoration: const InputDecoration(
-              labelText: 'Group avatar URL',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: loc.groupAvatarLabel,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: ImTokens.space4),

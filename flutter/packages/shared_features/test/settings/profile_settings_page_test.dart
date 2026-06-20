@@ -12,6 +12,7 @@ import '../helpers/fakes.dart';
 
 Widget _buildApp({
   required List<Override> overrides,
+  GlobalKey<NavigatorState>? navigatorKey,
 }) {
   return ProviderScope(
     overrides: [
@@ -19,6 +20,7 @@ Widget _buildApp({
       ...overrides,
     ],
     child: MaterialApp(
+      navigatorKey: navigatorKey,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: ImTheme.light().copyWith(

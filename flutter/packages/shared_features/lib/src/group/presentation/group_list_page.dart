@@ -5,9 +5,14 @@ import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/chat.dart';
 import 'package:im_ui/im_ui.dart';
+import 'group_provider.dart';
 import 'group_providers.dart';
 import 'widgets/group_tile.dart';
 import 'widgets/join_group_dialog.dart';
+import 'widgets/group_detail_view.dart';
+
+// Group model comes from core and is not re-exported transitively by providers.
+import 'package:im_core/core.dart' show Group;
 
 class GroupListPage extends ConsumerStatefulWidget {
   const GroupListPage({super.key});
@@ -17,21 +22,43 @@ class GroupListPage extends ConsumerStatefulWidget {
 }
 
 class _GroupListPageState extends ConsumerState<GroupListPage> {
+  ProviderSubscription<AuthState>? _authSubscription;
+
+  void _onAuthChanged(AuthState? previous, AuthState next) {
+    final userId = next.user?.id;
+    if (next.authReady && userId != null && userId.isNotEmpty) {
+      final groupStateValue = ref.read(groupStateProvider);
+      if (groupStateValue.groups.isEmpty &&
+          !groupStateValue.isLoading &&
+          groupStateValue.error == null) {
+        ref.read(groupStateProvider.notifier).loadGroups(userId);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _authSubscription = ref.listenManual(
+      authStateProvider,
+      _onAuthChanged,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userId = ref.read(authStateProvider).user?.id;
-      if (userId != null) {
-        ref.read(groupStateProvider.notifier).loadGroups(userId);
-      }
+      _onAuthChanged(null, ref.read(authStateProvider));
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.close();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
+    final isCompact = context.isCompact;
 
     return ColoredBox(
       color: ImTokens.wechatPageBg,
@@ -39,149 +66,150 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            SizedBox(
-              width: context.isCompact ? 0 : 304,
-              child: context.isCompact
-                  ? const SizedBox.shrink()
-                  : GlassPanel(
-                      child: _GroupListPanel(
-                        groups: groupState.groups,
-                        isLoading: groupState.isLoading,
-                        onGroupTap: _openGroupChat,
-                      ),
-                    ),
-            ),
-            if (!context.isCompact) const SizedBox(width: 18),
+            if (!isCompact)
+              SizedBox(
+                width: 304,
+                child: GlassPanel(
+                  child: _GroupListPanel(
+                    groups: groupState.groups,
+                    isLoading: groupState.isLoading,
+                    selectedGroupId: groupState.selectedGroupId,
+                    onGroupTap: _selectGroup,
+                  ),
+                ),
+              ),
+            if (!isCompact) const SizedBox(width: 18),
             Expanded(
               child: GlassPanel(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          loc.navGroups,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.search_outlined),
-                          onPressed: () => showDialog(
-                            context: context,
-                            builder: (_) => const JoinGroupDialog(),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Text(
+                            loc.navGroups,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
                           ),
-                          tooltip: loc.joinGroupTooltip,
-                        ),
-                        PrimarySolidButton(
-                          label: loc.groupCreateTooltip,
-                          icon: Icons.add,
-                          compact: true,
-                          onPressed: () => context.push('/groups/create'),
-                        ),
-                      ],
+                          const SizedBox(width: 18),
+                          IconButton(
+                            icon: const Icon(Icons.search_outlined),
+                            onPressed: () => showDialog(
+                              context: context,
+                              builder: (_) => const JoinGroupDialog(),
+                            ),
+                            tooltip: loc.joinGroupTooltip,
+                          ),
+                          PrimarySolidButton(
+                            label: loc.groupCreateTooltip,
+                            icon: Icons.add,
+                            compact: true,
+                            onPressed: () => context.push('/groups/create'),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 18),
                     Expanded(
-                      child: groupState.isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : groupState.groups.isEmpty
-                              ? _GroupEmptyState(message: loc.groupNoGroups)
-                              : context.isCompact
-                                  ? _GroupListPanel(
-                                      groups: groupState.groups,
-                                      isLoading: false,
-                                      onGroupTap: _openGroupChat,
-                                    )
-                                  : _GroupDetailPlaceholder(
-                                      count: groupState.groups.length,
-                                    ),
+                      child: _buildBody(context, groupState, isCompact),
                     ),
                   ],
                 ),
               ),
             ),
-            if (context.isLarge) ...[
-              const SizedBox(width: 18),
-              SizedBox(
-                width: 304,
-                child: GlassPanel(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '今日概览',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                      ),
-                      const SizedBox(height: 16),
-                      _GroupStatCard(
-                        label: loc.navGroups,
-                        value: '${groupState.groups.length}',
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        '最近互动',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: groupState.groups.isEmpty
-                            ? Center(child: Text(loc.groupNoGroups))
-                            : ListView(
-                                children:
-                                    groupState.groups.take(6).map((group) {
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: CircleAvatar(
-                                      backgroundImage: group.avatar != null
-                                          ? NetworkImage(group.avatar!)
-                                          : null,
-                                      child: group.avatar == null
-                                          ? Text(group.name.isNotEmpty
-                                              ? group.name[0]
-                                              : '?')
-                                          : null,
-                                    ),
-                                    title: Text(
-                                      group.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(
-                                        '${group.memberCount ?? 0} members'),
-                                  );
-                                }).toList(),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  void _openGroupChat(dynamic group) {
+  Widget _buildBody(BuildContext context, GroupState groupState, bool isCompact) {
+    final loc = AppLocalizations.of(context)!;
+
+    if (groupState.isLoading && groupState.groups.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (groupState.error != null && groupState.groups.isEmpty) {
+      return _GroupErrorState(
+        message: loc.loadingFailed(groupState.error!),
+        onRetry: _retryLoad,
+      );
+    }
+
+    if (groupState.groups.isEmpty) {
+      return _GroupEmptyState(message: loc.groupNoGroups);
+    }
+
+    if (isCompact) {
+      return _GroupListPanel(
+        groups: groupState.groups,
+        isLoading: groupState.isLoading,
+        selectedGroupId: groupState.selectedGroupId,
+        onGroupTap: (group) => _openGroupDetail(context, group),
+      );
+    }
+
+    final selectedGroup = groupState.selectedGroup;
+    if (selectedGroup == null) {
+      return _GroupDetailPlaceholder(
+        message: loc.groupSelectGroupHint,
+        subMessage: loc.groupTotalGroups(groupState.groups.length),
+      );
+    }
+
+    return GroupDetailView(
+      group: selectedGroup,
+      onEnterChat: () => _openGroupChat(selectedGroup),
+      onLeave: _leaveGroup,
+    );
+  }
+
+  void _selectGroup(Group group) {
+    ref.read(groupStateProvider.notifier).selectGroup(group.id);
+  }
+
+  void _openGroupDetail(BuildContext context, Group group) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GroupDetailPage(group: group),
+      ),
+    );
+  }
+
+  void _openGroupChat(Group group) {
     final sessionKey =
         ref.read(chatStateProvider.notifier).getGroupSessionKey(group.id);
     ref.read(chatStateProvider.notifier).setActiveSession(sessionKey);
     ref.read(chatStateProvider.notifier).loadGroupMessages(group.id);
     context.go('/chat');
+  }
+
+  Future<void> _leaveGroup(Group group) async {
+    final loc = AppLocalizations.of(context)!;
+    final notifier = ref.read(groupStateProvider.notifier);
+    final success = await notifier.leaveGroup(group.id);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (success) {
+      messenger.showSnackBar(SnackBar(content: Text(loc.groupLeaveSuccess)));
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(loc.groupLeaveFailed)));
+    }
+  }
+
+  void _retryLoad() {
+    final userId = ref.read(authStateProvider).user?.id;
+    if (userId != null) {
+      ref.read(groupStateProvider.notifier).loadGroups(userId);
+    }
   }
 }
 
@@ -189,29 +217,42 @@ class _GroupListPanel extends StatelessWidget {
   const _GroupListPanel({
     required this.groups,
     required this.isLoading,
+    this.selectedGroupId,
     required this.onGroupTap,
   });
 
-  final List<dynamic> groups;
+  final List<Group> groups;
   final bool isLoading;
-  final ValueChanged<dynamic> onGroupTap;
+  final String? selectedGroupId;
+  final ValueChanged<Group> onGroupTap;
 
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    if (isLoading) return const Center(child: CircularProgressIndicator());
+    if (isLoading && groups.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (groups.isEmpty) return _GroupEmptyState(message: loc.groupNoGroups);
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: groups.length,
       itemBuilder: (context, index) {
         final group = groups[index];
+        final isSelected = selectedGroupId == group.id;
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: HoverLiftCard(
-            padding: EdgeInsets.zero,
-            onTap: () => onGroupTap(group),
-            child: GroupTile(group: group),
+          child: ColoredBox(
+            color: isSelected
+                ? Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.08)
+                : Colors.transparent,
+            child: HoverLiftCard(
+              padding: EdgeInsets.zero,
+              onTap: () => onGroupTap(group),
+              child: GroupTile(group: group),
+            ),
           ),
         );
       },
@@ -252,10 +293,52 @@ class _GroupEmptyState extends StatelessWidget {
   }
 }
 
-class _GroupDetailPlaceholder extends StatelessWidget {
-  const _GroupDetailPlaceholder({required this.count});
+class _GroupErrorState extends StatelessWidget {
+  const _GroupErrorState({required this.message, required this.onRetry});
 
-  final int count;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.error.withValues(alpha: 0.48),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: onRetry,
+            child: Text(loc.retry),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupDetailPlaceholder extends StatelessWidget {
+  const _GroupDetailPlaceholder({
+    required this.message,
+    required this.subMessage,
+  });
+
+  final String message;
+  final String subMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -272,14 +355,15 @@ class _GroupDetailPlaceholder extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              '选择一个群组开始聊天',
+              message,
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 6),
             Text(
-              '当前共有 $count 个群组',
+              subMessage,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -287,44 +371,6 @@ class _GroupDetailPlaceholder extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _GroupStatCard extends StatelessWidget {
-  const _GroupStatCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: imGlassBrand,
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ),
     );
   }

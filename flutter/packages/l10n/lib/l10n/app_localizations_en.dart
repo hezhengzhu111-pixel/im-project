@@ -144,6 +144,50 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsDeleteFriendFailed => 'Failed to remove friend';
 
   @override
+  String get contactsSendMessage => 'Send message';
+
+  @override
+  String get contactsVoiceCall => 'Voice call';
+
+  @override
+  String get contactsVideoCall => 'Video call';
+
+  @override
+  String get contactsNoValue => 'Not set';
+
+  @override
+  String get contactsPermission => 'Permission';
+
+  @override
+  String get contactsSource => 'Source';
+
+  @override
+  String get contactsAddedTime => 'Added';
+
+  @override
+  String get contactsOnlineStatus => 'Online status';
+
+  @override
+  String get contactsSignature => 'Signature';
+
+  @override
+  String get contactsMoments => 'Moments';
+
+  @override
+  String get contactsDailyOverview => 'Daily overview';
+
+  @override
+  String get contactsRecentInteractions => 'Recent interactions';
+
+  @override
+  String get contactsSearchNoResults => 'No matching contacts';
+
+  @override
+  String contactsNewRequestFrom(Object name) {
+    return 'New friend request from $name';
+  }
+
+  @override
   String get retry => 'Retry';
 
   @override
@@ -802,6 +846,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupSelectMembers => 'Select members';
 
   @override
+  String get groupAvatarLabel => 'Group avatar URL';
+
+  @override
+  String get groupEnterChat => 'Enter chat';
+
+  @override
+  String get groupLeave => 'Leave group';
+
+  @override
+  String groupLeaveConfirm(Object name) {
+    return 'Leave $name?';
+  }
+
+  @override
+  String get groupLeaveSuccess => 'Left group';
+
+  @override
+  String get groupLeaveFailed => 'Failed to leave group';
+
+  @override
+  String get groupMembers => 'Members';
+
+  @override
+  String get groupMemberListTitle => 'Group members';
+
+  @override
+  String get groupNoDescription => 'No description';
+
+  @override
+  String get groupNoMembers => 'No members yet';
+
+  @override
+  String get groupLoadMembersFailed => 'Failed to load members';
+
+  @override
+  String get groupSelectGroupHint => 'Select a group to view details';
+
+  @override
+  String groupTotalGroups(Object count) {
+    return '$count groups';
+  }
+
+  @override
   String get notFoundTitle => 'Page not found';
 
   @override
@@ -1244,6 +1331,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatNoMoreHistory => 'No earlier messages';
 
   @override
+  String get chatSessionNotFoundTitle => 'Conversation not found';
+
+  @override
+  String get chatSessionNotFoundMessage =>
+      'The conversation does not exist or you no longer have access.';
+
+  @override
+  String get chatBackToSessions => 'Back to conversations';
+
+  @override
+  String get chatLoadingConversation => 'Loading conversation...';
+
+  @override
+  String get chatNoMessages => 'No messages yet';
+
+  @override
+  String get chatMessagesLoadFailed => 'Failed to load messages';
+
+  @override
+  String get chatMentionUnavailable =>
+      'Member list unavailable; @ mentions are disabled';
+
+  @override
+  String get chatGroupChat => 'Group chat';
+
+  @override
+  String get chatE2eeStartFailed => 'Failed to start encryption negotiation.';
+
+  @override
+  String get chatE2eeAcceptFailed => 'Failed to accept encryption request.';
+
+  @override
+  String get chatE2eeEncryptFailed =>
+      'Failed to encrypt message. Please restart encryption negotiation.';
+
+  @override
+  String get chatE2eeGroupUnavailable =>
+      'Group E2EE requires sender-key support before it can be enabled.';
+
+  @override
+  String get chatE2eeGroupUnavailableTooltip => 'Group E2EE unavailable';
+
+  @override
   String get joinGroup => 'Join Group';
 
   @override
@@ -1285,4 +1415,147 @@ class AppLocalizationsEn extends AppLocalizations {
   String avatarUploadFailed(Object error) {
     return 'Upload failed: $error';
   }
+
+  @override
+  String get settingsDeleteAccount => 'Delete account';
+
+  @override
+  String get settingsDeleteAccountConfirm =>
+      'Are you sure you want to delete your account?';
+
+  @override
+  String get settingsDeleteAccountWarning =>
+      'After account deletion, all data will be permanently removed and cannot be recovered.';
+
+  @override
+  String get settingsDeleteAccountPasswordHint =>
+      'Enter your password to confirm';
+
+  @override
+  String get settingsDeleteAccountAcknowledge => 'I understand the risks';
+
+  @override
+  String get settingsDeleteAccountFailed => 'Delete failed';
+
+  @override
+  String get settingsSecurity => 'Security';
+
+  @override
+  String get settingsComingSoon => 'Coming soon';
+
+  @override
+  String get verificationCode => 'Verification code';
+
+  @override
+  String get sendVerificationCode => 'Send code';
+
+  @override
+  String get verificationCodeSent => 'Verification code sent';
+
+  @override
+  String get unsavedChangesTitle => 'Unsaved changes';
+
+  @override
+  String get unsavedChangesMessage => 'You have unsaved changes. Discard them?';
+
+  @override
+  String get unsavedChangesDiscard => 'Discard';
+
+  @override
+  String get unsavedChangesKeepEditing => 'Keep editing';
+
+  @override
+  String get accountTitle => 'Account';
+
+  @override
+  String get accountProfile => 'Profile';
+
+  @override
+  String get accountProfileDesc => 'View avatar, nickname and account info';
+
+  @override
+  String get accountPassword => 'Password';
+
+  @override
+  String get accountPasswordDesc => 'Change login password';
+
+  @override
+  String get accountLogout => 'Logout';
+
+  @override
+  String get accountDelete => 'Delete account';
+
+  @override
+  String get accountId => 'ID';
+
+  @override
+  String get accountPhone => 'Phone';
+
+  @override
+  String get accountEmail => 'Email';
+
+  @override
+  String get appearanceTitle => 'Appearance';
+
+  @override
+  String get appearanceTheme => 'Theme';
+
+  @override
+  String get appearanceLanguage => 'Language';
+
+  @override
+  String get themeLight => 'Light';
+
+  @override
+  String get themeDark => 'Dark';
+
+  @override
+  String get themeSystem => 'System';
+
+  @override
+  String get notificationTitle => 'Notifications';
+
+  @override
+  String get notificationEnable => 'Enable notifications';
+
+  @override
+  String get notificationEnableDesc =>
+      'Receive push notifications for new messages';
+
+  @override
+  String get notificationSound => 'Sound';
+
+  @override
+  String get notificationVibrate => 'Vibrate';
+
+  @override
+  String get securityTitle => 'Security';
+
+  @override
+  String get securityPrivacy => 'Privacy';
+
+  @override
+  String get securityAddFriend => 'Allow friend requests';
+
+  @override
+  String get securityAddFriendDesc =>
+      'Allow strangers to send you friend requests';
+
+  @override
+  String get securityOnlineStatus => 'Show online status';
+
+  @override
+  String get aiAssistant => 'AI Assistant';
+
+  @override
+  String get aiComingSoon => 'Coming soon';
+
+  @override
+  String get logoutConfirmTitle => 'Logout';
+
+  @override
+  String get logoutConfirmMessage => 'Are you sure you want to logout?';
+
+  @override
+  String get logoutConfirmAction => 'Logout';
 }

@@ -356,6 +356,90 @@ abstract class AppLocalizations {
   /// **'Failed to remove friend'**
   String get contactsDeleteFriendFailed;
 
+  /// No description provided for @contactsSendMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Send message'**
+  String get contactsSendMessage;
+
+  /// No description provided for @contactsVoiceCall.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice call'**
+  String get contactsVoiceCall;
+
+  /// No description provided for @contactsVideoCall.
+  ///
+  /// In en, this message translates to:
+  /// **'Video call'**
+  String get contactsVideoCall;
+
+  /// No description provided for @contactsNoValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get contactsNoValue;
+
+  /// No description provided for @contactsPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Permission'**
+  String get contactsPermission;
+
+  /// No description provided for @contactsSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get contactsSource;
+
+  /// No description provided for @contactsAddedTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get contactsAddedTime;
+
+  /// No description provided for @contactsOnlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Online status'**
+  String get contactsOnlineStatus;
+
+  /// No description provided for @contactsSignature.
+  ///
+  /// In en, this message translates to:
+  /// **'Signature'**
+  String get contactsSignature;
+
+  /// No description provided for @contactsMoments.
+  ///
+  /// In en, this message translates to:
+  /// **'Moments'**
+  String get contactsMoments;
+
+  /// No description provided for @contactsDailyOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily overview'**
+  String get contactsDailyOverview;
+
+  /// No description provided for @contactsRecentInteractions.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent interactions'**
+  String get contactsRecentInteractions;
+
+  /// No description provided for @contactsSearchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching contacts'**
+  String get contactsSearchNoResults;
+
+  /// No description provided for @contactsNewRequestFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'New friend request from {name}'**
+  String contactsNewRequestFrom(Object name);
+
   /// No description provided for @retry.
   ///
   /// In en, this message translates to:
@@ -1598,6 +1682,84 @@ abstract class AppLocalizations {
   /// **'Select members'**
   String get groupSelectMembers;
 
+  /// No description provided for @groupAvatarLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Group avatar URL'**
+  String get groupAvatarLabel;
+
+  /// No description provided for @groupEnterChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter chat'**
+  String get groupEnterChat;
+
+  /// No description provided for @groupLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave group'**
+  String get groupLeave;
+
+  /// No description provided for @groupLeaveConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave {name}?'**
+  String groupLeaveConfirm(Object name);
+
+  /// No description provided for @groupLeaveSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Left group'**
+  String get groupLeaveSuccess;
+
+  /// No description provided for @groupLeaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to leave group'**
+  String get groupLeaveFailed;
+
+  /// No description provided for @groupMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get groupMembers;
+
+  /// No description provided for @groupMemberListTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Group members'**
+  String get groupMemberListTitle;
+
+  /// No description provided for @groupNoDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'No description'**
+  String get groupNoDescription;
+
+  /// No description provided for @groupNoMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'No members yet'**
+  String get groupNoMembers;
+
+  /// No description provided for @groupLoadMembersFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load members'**
+  String get groupLoadMembersFailed;
+
+  /// No description provided for @groupSelectGroupHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a group to view details'**
+  String get groupSelectGroupHint;
+
+  /// No description provided for @groupTotalGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} groups'**
+  String groupTotalGroups(Object count);
+
   /// No description provided for @notFoundTitle.
   ///
   /// In en, this message translates to:
@@ -2384,6 +2546,84 @@ abstract class AppLocalizations {
   /// **'No earlier messages'**
   String get chatNoMoreHistory;
 
+  /// No description provided for @chatSessionNotFoundTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation not found'**
+  String get chatSessionNotFoundTitle;
+
+  /// No description provided for @chatSessionNotFoundMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The conversation does not exist or you no longer have access.'**
+  String get chatSessionNotFoundMessage;
+
+  /// No description provided for @chatBackToSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to conversations'**
+  String get chatBackToSessions;
+
+  /// No description provided for @chatLoadingConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading conversation...'**
+  String get chatLoadingConversation;
+
+  /// No description provided for @chatNoMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages yet'**
+  String get chatNoMessages;
+
+  /// No description provided for @chatMessagesLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load messages'**
+  String get chatMessagesLoadFailed;
+
+  /// No description provided for @chatMentionUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Member list unavailable; @ mentions are disabled'**
+  String get chatMentionUnavailable;
+
+  /// No description provided for @chatGroupChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Group chat'**
+  String get chatGroupChat;
+
+  /// No description provided for @chatE2eeStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to start encryption negotiation.'**
+  String get chatE2eeStartFailed;
+
+  /// No description provided for @chatE2eeAcceptFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to accept encryption request.'**
+  String get chatE2eeAcceptFailed;
+
+  /// No description provided for @chatE2eeEncryptFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to encrypt message. Please restart encryption negotiation.'**
+  String get chatE2eeEncryptFailed;
+
+  /// No description provided for @chatE2eeGroupUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Group E2EE requires sender-key support before it can be enabled.'**
+  String get chatE2eeGroupUnavailable;
+
+  /// No description provided for @chatE2eeGroupUnavailableTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Group E2EE unavailable'**
+  String get chatE2eeGroupUnavailableTooltip;
+
   /// No description provided for @joinGroup.
   ///
   /// In en, this message translates to:
@@ -2455,6 +2695,282 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Upload failed: {error}'**
   String avatarUploadFailed(Object error);
+
+  /// No description provided for @settingsDeleteAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get settingsDeleteAccount;
+
+  /// No description provided for @settingsDeleteAccountConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete your account?'**
+  String get settingsDeleteAccountConfirm;
+
+  /// No description provided for @settingsDeleteAccountWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'After account deletion, all data will be permanently removed and cannot be recovered.'**
+  String get settingsDeleteAccountWarning;
+
+  /// No description provided for @settingsDeleteAccountPasswordHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your password to confirm'**
+  String get settingsDeleteAccountPasswordHint;
+
+  /// No description provided for @settingsDeleteAccountAcknowledge.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand the risks'**
+  String get settingsDeleteAccountAcknowledge;
+
+  /// No description provided for @settingsDeleteAccountFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete failed'**
+  String get settingsDeleteAccountFailed;
+
+  /// No description provided for @settingsSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsSecurity;
+
+  /// No description provided for @settingsComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get settingsComingSoon;
+
+  /// No description provided for @verificationCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification code'**
+  String get verificationCode;
+
+  /// No description provided for @sendVerificationCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Send code'**
+  String get sendVerificationCode;
+
+  /// No description provided for @verificationCodeSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification code sent'**
+  String get verificationCodeSent;
+
+  /// No description provided for @unsavedChangesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsaved changes'**
+  String get unsavedChangesTitle;
+
+  /// No description provided for @unsavedChangesMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You have unsaved changes. Discard them?'**
+  String get unsavedChangesMessage;
+
+  /// No description provided for @unsavedChangesDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get unsavedChangesDiscard;
+
+  /// No description provided for @unsavedChangesKeepEditing.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get unsavedChangesKeepEditing;
+
+  /// No description provided for @accountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountTitle;
+
+  /// No description provided for @accountProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get accountProfile;
+
+  /// No description provided for @accountProfileDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'View avatar, nickname and account info'**
+  String get accountProfileDesc;
+
+  /// No description provided for @accountPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get accountPassword;
+
+  /// No description provided for @accountPasswordDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Change login password'**
+  String get accountPasswordDesc;
+
+  /// No description provided for @accountLogout.
+  ///
+  /// In en, this message translates to:
+  /// **'Logout'**
+  String get accountLogout;
+
+  /// No description provided for @accountDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountDelete;
+
+  /// No description provided for @accountId.
+  ///
+  /// In en, this message translates to:
+  /// **'ID'**
+  String get accountId;
+
+  /// No description provided for @accountPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get accountPhone;
+
+  /// No description provided for @accountEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountEmail;
+
+  /// No description provided for @appearanceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get appearanceTitle;
+
+  /// No description provided for @appearanceTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get appearanceTheme;
+
+  /// No description provided for @appearanceLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get appearanceLanguage;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeSystem;
+
+  /// No description provided for @notificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notificationTitle;
+
+  /// No description provided for @notificationEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable notifications'**
+  String get notificationEnable;
+
+  /// No description provided for @notificationEnableDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive push notifications for new messages'**
+  String get notificationEnableDesc;
+
+  /// No description provided for @notificationSound.
+  ///
+  /// In en, this message translates to:
+  /// **'Sound'**
+  String get notificationSound;
+
+  /// No description provided for @notificationVibrate.
+  ///
+  /// In en, this message translates to:
+  /// **'Vibrate'**
+  String get notificationVibrate;
+
+  /// No description provided for @securityTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get securityTitle;
+
+  /// No description provided for @securityPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy'**
+  String get securityPrivacy;
+
+  /// No description provided for @securityAddFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow friend requests'**
+  String get securityAddFriend;
+
+  /// No description provided for @securityAddFriendDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow strangers to send you friend requests'**
+  String get securityAddFriendDesc;
+
+  /// No description provided for @securityOnlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Show online status'**
+  String get securityOnlineStatus;
+
+  /// No description provided for @aiAssistant.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Assistant'**
+  String get aiAssistant;
+
+  /// No description provided for @aiComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get aiComingSoon;
+
+  /// No description provided for @logoutConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Logout'**
+  String get logoutConfirmTitle;
+
+  /// No description provided for @logoutConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to logout?'**
+  String get logoutConfirmMessage;
+
+  /// No description provided for @logoutConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Logout'**
+  String get logoutConfirmAction;
 }
 
 class _AppLocalizationsDelegate

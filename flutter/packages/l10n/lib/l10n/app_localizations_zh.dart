@@ -144,6 +144,50 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contactsDeleteFriendFailed => '删除好友失败';
 
   @override
+  String get contactsSendMessage => '发送消息';
+
+  @override
+  String get contactsVoiceCall => '语音通话';
+
+  @override
+  String get contactsVideoCall => '视频通话';
+
+  @override
+  String get contactsNoValue => '未设置';
+
+  @override
+  String get contactsPermission => '权限';
+
+  @override
+  String get contactsSource => '来源';
+
+  @override
+  String get contactsAddedTime => '添加时间';
+
+  @override
+  String get contactsOnlineStatus => '在线状态';
+
+  @override
+  String get contactsSignature => '个性签名';
+
+  @override
+  String get contactsMoments => '朋友圈';
+
+  @override
+  String get contactsDailyOverview => '每日概览';
+
+  @override
+  String get contactsRecentInteractions => '最近互动';
+
+  @override
+  String get contactsSearchNoResults => '未找到匹配的联系人';
+
+  @override
+  String contactsNewRequestFrom(Object name) {
+    return '$name 请求添加你为好友';
+  }
+
+  @override
   String get retry => '重试';
 
   @override
@@ -783,6 +827,49 @@ class AppLocalizationsZh extends AppLocalizations {
   String get groupSelectMembers => '选择成员';
 
   @override
+  String get groupAvatarLabel => '群组头像 URL';
+
+  @override
+  String get groupEnterChat => '进入聊天';
+
+  @override
+  String get groupLeave => '退出群聊';
+
+  @override
+  String groupLeaveConfirm(Object name) {
+    return '确定退出 $name？';
+  }
+
+  @override
+  String get groupLeaveSuccess => '已退出群聊';
+
+  @override
+  String get groupLeaveFailed => '退出群聊失败';
+
+  @override
+  String get groupMembers => '成员';
+
+  @override
+  String get groupMemberListTitle => '群成员';
+
+  @override
+  String get groupNoDescription => '暂无描述';
+
+  @override
+  String get groupNoMembers => '暂无成员';
+
+  @override
+  String get groupLoadMembersFailed => '加载成员失败';
+
+  @override
+  String get groupSelectGroupHint => '选择一个群组查看详情';
+
+  @override
+  String groupTotalGroups(Object count) {
+    return '$count 个群组';
+  }
+
+  @override
   String get notFoundTitle => '页面不存在';
 
   @override
@@ -1202,6 +1289,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatNoMoreHistory => '没有更早的消息了';
 
   @override
+  String get chatSessionNotFoundTitle => '会话不存在';
+
+  @override
+  String get chatSessionNotFoundMessage => '该会话不存在或您已无权访问。';
+
+  @override
+  String get chatBackToSessions => '返回会话列表';
+
+  @override
+  String get chatLoadingConversation => '正在加载会话...';
+
+  @override
+  String get chatNoMessages => '暂无消息';
+
+  @override
+  String get chatMessagesLoadFailed => '消息加载失败';
+
+  @override
+  String get chatMentionUnavailable => '成员列表加载失败，@ 功能暂不可用';
+
+  @override
+  String get chatGroupChat => '群聊';
+
+  @override
+  String get chatE2eeStartFailed => '开启加密协商失败。';
+
+  @override
+  String get chatE2eeAcceptFailed => '接受加密请求失败。';
+
+  @override
+  String get chatE2eeEncryptFailed => '消息加密失败，请重新开启加密协商。';
+
+  @override
+  String get chatE2eeGroupUnavailable => '群聊端到端加密需要 Sender Key 支持，暂不可用。';
+
+  @override
+  String get chatE2eeGroupUnavailableTooltip => '群聊加密不可用';
+
+  @override
   String get joinGroup => '加入群聊';
 
   @override
@@ -1242,4 +1368,142 @@ class AppLocalizationsZh extends AppLocalizations {
   String avatarUploadFailed(Object error) {
     return '上传失败：$error';
   }
+
+  @override
+  String get settingsDeleteAccount => '删除账号';
+
+  @override
+  String get settingsDeleteAccountConfirm => '确定要删除账号吗？';
+
+  @override
+  String get settingsDeleteAccountWarning => '删除账号后，所有数据将被永久删除，且无法恢复。';
+
+  @override
+  String get settingsDeleteAccountPasswordHint => '请输入密码确认';
+
+  @override
+  String get settingsDeleteAccountAcknowledge => '我已了解风险';
+
+  @override
+  String get settingsDeleteAccountFailed => '删除失败';
+
+  @override
+  String get settingsSecurity => '安全';
+
+  @override
+  String get settingsComingSoon => '即将推出';
+
+  @override
+  String get verificationCode => '验证码';
+
+  @override
+  String get sendVerificationCode => '发送验证码';
+
+  @override
+  String get verificationCodeSent => '验证码已发送';
+
+  @override
+  String get unsavedChangesTitle => '未保存的更改';
+
+  @override
+  String get unsavedChangesMessage => '您有未保存的更改，确定放弃吗？';
+
+  @override
+  String get unsavedChangesDiscard => '放弃';
+
+  @override
+  String get unsavedChangesKeepEditing => '继续编辑';
+
+  @override
+  String get accountTitle => '账号';
+
+  @override
+  String get accountProfile => '个人资料';
+
+  @override
+  String get accountProfileDesc => '查看头像、昵称和账号信息';
+
+  @override
+  String get accountPassword => '密码';
+
+  @override
+  String get accountPasswordDesc => '修改登录密码';
+
+  @override
+  String get accountLogout => '退出登录';
+
+  @override
+  String get accountDelete => '删除账号';
+
+  @override
+  String get accountId => 'ID';
+
+  @override
+  String get accountPhone => '手机';
+
+  @override
+  String get accountEmail => '邮箱';
+
+  @override
+  String get appearanceTitle => '外观';
+
+  @override
+  String get appearanceTheme => '主题';
+
+  @override
+  String get appearanceLanguage => '语言';
+
+  @override
+  String get themeLight => '浅色';
+
+  @override
+  String get themeDark => '深色';
+
+  @override
+  String get themeSystem => '跟随系统';
+
+  @override
+  String get notificationTitle => '通知';
+
+  @override
+  String get notificationEnable => '启用通知';
+
+  @override
+  String get notificationEnableDesc => '接收新消息推送';
+
+  @override
+  String get notificationSound => '声音';
+
+  @override
+  String get notificationVibrate => '振动';
+
+  @override
+  String get securityTitle => '安全';
+
+  @override
+  String get securityPrivacy => '隐私';
+
+  @override
+  String get securityAddFriend => '允许添加好友';
+
+  @override
+  String get securityAddFriendDesc => '允许陌生人发送好友请求';
+
+  @override
+  String get securityOnlineStatus => '显示在线状态';
+
+  @override
+  String get aiAssistant => 'AI 助手';
+
+  @override
+  String get aiComingSoon => '即将推出';
+
+  @override
+  String get logoutConfirmTitle => '退出登录';
+
+  @override
+  String get logoutConfirmMessage => '确定要退出登录吗？';
+
+  @override
+  String get logoutConfirmAction => '退出登录';
 }
