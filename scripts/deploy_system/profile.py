@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import yaml
 
-PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "deploy" / "profiles"
+PROFILES_DIR = Path(__file__).resolve().parent.parent / "deploy" / "profiles"
 
 
 @dataclass

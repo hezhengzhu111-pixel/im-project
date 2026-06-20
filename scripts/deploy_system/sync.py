@@ -188,6 +188,7 @@ def sync_rust_source(
     """Sync Rust source code with appropriate ignore patterns."""
     ignore_patterns = [
         "target/",
+        "vendor/",
         "*.pdb",
         "*.rlib",
         "*.lib",

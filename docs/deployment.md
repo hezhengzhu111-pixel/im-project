@@ -24,7 +24,7 @@ python scripts/imctl.py <command> [options]
 
 所有部署行为都通过配置文件控制，而不是命令行参数。
 
-配置文件位于：`deploy/profiles/`
+配置文件位于：`scripts/deploy/profiles/`
 
 | Profile | 说明 |
 |---|---|
@@ -199,7 +199,7 @@ build/
 
 ## Profile 配置文件
 
-配置文件位于 `deploy/profiles/` 目录下，格式为 YAML：
+配置文件位于 `scripts/deploy/profiles/` 目录下，格式为 YAML：
 
 ```yaml
 # 本地开发环境配置

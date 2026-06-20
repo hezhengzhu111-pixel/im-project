@@ -19,27 +19,40 @@ POLLUTION_PATTERNS = [
     ".flutter-plugins-dependencies",
     "pubspec.lock",
 
+    # Python artifacts
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".venv/",
+    "venv/",
+    ".pytest_cache/",
+    ".cache/",
+    "coverage/",
+
     # Node.js artifacts
     "node_modules/",
 
-    # Java/Maven artifacts
+    # IDE / tool artifacts
+    ".codex/",
+    ".idea/",
+    ".vscode/",
+    "*.iml",
+
+    # Java/Maven build artifacts
     "*.class",
     "*.jar",
-    ".mvn/",
 
     # General build artifacts
     "build/",
     "dist/",
     "out/",
+    "vendor/",
+    "tests/build/",
     "*.log",
     "*.tar",
     "*.tar.gz",
     "*.zip",
-
-    # IDE artifacts
-    "*.iml",
-    ".idea/",
-    ".vscode/",
 ]
 
 # Directories to scan (relative to project root)
@@ -48,6 +61,7 @@ SOURCE_DIRS = [
     "flutter",
     "spring-ai",
     "sql",
+    "tests",
 ]
 
 
@@ -83,8 +97,8 @@ class PollutionDetector:
         """Recursively scan a directory for pollution."""
         try:
             for item in directory.iterdir():
-                if item.name.startswith('.'):
-                    # Skip hidden files (like .git)
+                # Only skip VCS directories; hidden dirs like .dart_tool may be pollution.
+                if item.name == '.git':
                     continue
 
                 relative_path = item.relative_to(self.project_root)
@@ -96,9 +110,18 @@ class PollutionDetector:
         except PermissionError:
             pass
 
+    # Paths that match a pattern but are legitimate source, not pollution.
+    EXEMPTIONS: Set[str] = {
+        "tests/coverage",
+        "tests/coverage/",
+    }
+
     def _is_pollution(self, path: Path, relative_path: Path) -> bool:
         """Check if a path matches pollution patterns."""
         path_str = str(relative_path).replace('\\', '/')
+
+        if path_str in self.EXEMPTIONS or f"{path_str}/" in self.EXEMPTIONS:
+            return False
 
         for pattern in POLLUTION_PATTERNS:
             if self._matches_pattern(path, path_str, pattern):
@@ -125,8 +148,8 @@ class PollutionDetector:
 
     def _should_skip_dir(self, path: Path) -> bool:
         """Determine if a directory should be skipped during scanning."""
-        # Skip .git and other hidden directories
-        if path.name.startswith('.'):
+        # Skip VCS directories
+        if path.name == '.git':
             return True
 
         # Skip node_modules at any level (already detected as pollution)

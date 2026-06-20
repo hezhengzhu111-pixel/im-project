@@ -33,6 +33,8 @@ target/
 # 统一编译产物目录
 # ===========================================
 build/
+rust/vendor/
+tests/build/
 *.dill
 *.dill.track.dill
 *.cache.dill*
@@ -115,3 +117,5 @@ ssh/*.key
 .parcel-cache
 .eslintcache
 .stylelintcache
+ssh
+
