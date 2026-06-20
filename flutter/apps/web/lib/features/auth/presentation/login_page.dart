@@ -88,7 +88,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           FormValidators.required(loc.validationRequired),
           FormValidators.minLength(8, loc.validationPasswordMinLength(8)),
           FormValidators.maxLength(64, loc.validationPasswordMaxLength(64)),
-          FormValidators.passwordStrength(loc.validationPasswordStrength),
+          FormValidators.noWhitespace(loc.validationPasswordNoWhitespace),
         ],
       ),
     ]));
@@ -105,6 +105,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
         return loc.authServerError;
       case AuthErrorCode.tooManyRequests:
         return loc.authTooManyRequests;
+      case AuthErrorCode.accountLocked:
+        return loc.authAccountLocked;
       case AuthErrorCode.unknown:
         return loc.authUnknownError;
     }

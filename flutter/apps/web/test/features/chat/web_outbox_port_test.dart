@@ -4,8 +4,6 @@
 /// - retryAllFailed processes both pending and failed messages.
 /// - Failed retries persist only safe error codes, not raw exception text.
 /// - Max-retries enforcement marks messages as failed with a safe code.
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
 import 'package:im_core/core.dart';
