@@ -1298,13 +1298,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seoAiSettingsDescription => 'Configure AI assistant';
 
   @override
-  String get seoForbiddenTitle => 'Access Denied - IM';
-
-  @override
-  String get seoForbiddenDescription =>
-      'You don\'t have permission to access this page';
-
-  @override
   String get authInvalidCredentials => 'Invalid username or password.';
 
   @override

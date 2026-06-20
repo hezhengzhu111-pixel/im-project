@@ -1260,12 +1260,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get seoAiSettingsDescription => '配置 AI 助手';
 
   @override
-  String get seoForbiddenTitle => '无权访问 - IM';
-
-  @override
-  String get seoForbiddenDescription => '您没有权限访问此页面';
-
-  @override
   String get authInvalidCredentials => '用户名或密码错误。';
 
   @override

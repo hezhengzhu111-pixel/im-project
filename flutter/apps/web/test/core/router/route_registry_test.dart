@@ -14,8 +14,6 @@ void main() {
       expect(entry.requiresAuth, isTrue);
       expect(entry.hideForAuth, isFalse);
       expect(entry.permission, isNull);
-      expect(entry.ogImage, isNull);
-      expect(entry.ogType, isNull);
     });
 
     test('constructs with all fields', () {
@@ -43,8 +41,8 @@ void main() {
       expect(entry!.canonicalOverride, '/chat');
     });
 
-    test('contains all 12 routes', () {
-      expect(routeRegistry.length, 12);
+    test('contains all 13 routes', () {
+      expect(routeRegistry.length, 13);
     });
 
     test('all entries have titleKey and descriptionKey', () {
@@ -61,11 +59,16 @@ void main() {
       expect(routeRegistry['/register']!.requiresAuth, isFalse);
     });
 
+    test('/forbidden does not require auth', () {
+      expect(routeRegistry['/forbidden'], isNotNull);
+      expect(routeRegistry['/forbidden']!.requiresAuth, isFalse);
+    });
+
     test('debug/gallery not in registry', () {
       expect(routeRegistry.containsKey('/debug/gallery'), isFalse);
     });
 
-    test('all 12 expected routes exist', () {
+    test('all 13 expected routes exist', () {
       const expectedPaths = [
         '/login',
         '/register',
@@ -79,6 +82,7 @@ void main() {
         '/settings',
         '/settings/profile',
         '/settings/ai',
+        '/forbidden',
       ];
       for (final path in expectedPaths) {
         expect(routeRegistry.containsKey(path), isTrue,
@@ -114,6 +118,12 @@ void main() {
       final meta = resolveRouteMeta('/contacts/add');
       expect(meta, isNotNull);
       expect(meta!.title, 'seoAddFriendTitle');
+    });
+
+    test('resolves /forbidden to exact match', () {
+      final meta = resolveRouteMeta('/forbidden');
+      expect(meta, isNotNull);
+      expect(meta!.title, 'seoForbiddenTitle');
     });
 
     test('returns null for unknown path (404)', () {
