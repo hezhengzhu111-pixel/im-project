@@ -270,6 +270,7 @@ class MobileWsClient implements WsClientPort {
     _stateController.add(state);
   }
 
+  @override
   void dispose() {
     _stopHeartbeat();
     _reconnectTimer?.cancel();

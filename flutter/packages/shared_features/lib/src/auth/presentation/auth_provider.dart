@@ -114,6 +114,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         rememberMe: rememberMe,
         permissions: response.permissions ?? [],
       );
+      _analytics.setUserId(response.user?.id);
       _analytics.trackEvent('login_success', {'method': 'password'});
       // Connect WebSocket after successful login.
       // WS failures must NOT roll back the authenticated state.
@@ -156,6 +157,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         errorCode: _mapExceptionToErrorCode(e),
       );
     }
+  }
+
+  /// Marks the session as invalid without attempting a server logout.
+  ///
+  /// Used by the HTTP adapter when a 401 refresh fails, ensuring the app does
+  /// not stay in the authenticated state while every API call is rejected.
+  void invalidateSession() {
+    _wsClient.disconnect();
+    _analytics.setUserId(null);
+    state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
   /// 登出当前用户。

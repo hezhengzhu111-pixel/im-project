@@ -19,6 +19,7 @@ import 'adapters/services/noop_analytics_adapter.dart';
 import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
+import 'core/di/rust_bridge_init_provider.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';
@@ -57,20 +58,12 @@ Future<void> main() async {
   final share = WebShareAdapter();
   final audioRecorder = WebAudioRecorderAdapter();
   final storage = WebStorageAdapter();
-  final wsClient = WebWsClient(
-    ticketUrl: AuthEndpoints.wsTicket,
-    wsBaseUrl: wsEndpoint,
-    ticketProvider: () async {
-      final response = await httpClient.post<Map<String, dynamic>>(
-        AuthEndpoints.wsTicket,
-        fromJson: (json) => json,
-      );
-      return response.data['ticket'] as String?;
-    },
-  );
   final analytics = NoopAnalyticsAdapter();
   final errorReporter = NoopErrorReporterAdapter();
   final push = NoopPushAdapter();
+
+  final rustBridgeInit =
+      StateController<AsyncValue<void>>(const AsyncValue.loading());
 
   runApp(ProviderScope(
     overrides: [
@@ -84,7 +77,29 @@ Future<void> main() async {
       secureStorageProvider.overrideWithValue(secureStorage),
       storageProvider.overrideWithValue(storage),
       httpClientProvider.overrideWithValue(httpClient),
-      wsClientProvider.overrideWithValue(wsClient),
+      // The WS client is created inside the provider tree so its lifecycle is
+      // tied to ProviderScope disposal. Reading [httpClientProvider] here
+      // returns the overridden [WebHttpClient] instance.
+      wsClientProvider.overrideWith((ref) {
+        final client = WebWsClient(
+          ticketUrl: AuthEndpoints.wsTicket,
+          wsBaseUrl: wsEndpoint,
+          ticketProvider: () async {
+            final response = await ref.read(httpClientProvider).post<
+                Map<String, dynamic>>(
+              AuthEndpoints.wsTicket,
+              fromJson: (json) => json,
+            );
+            return response.data['ticket'] as String?;
+          },
+        );
+        ref.onDispose(client.dispose);
+        return client;
+      }),
+      rustBridgeInitProvider.overrideWith((ref) {
+        ref.onDispose(rustBridgeInit.dispose);
+        return rustBridgeInit;
+      }),
       // E2EE adapter
       e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWith((ref) {
@@ -102,7 +117,9 @@ Future<void> main() async {
       core_flutter.secureStorageProvider.overrideWithValue(secureStorage),
       core_flutter.storageProvider.overrideWithValue(storage),
       core_flutter.httpClientProvider.overrideWithValue(httpClient),
-      core_flutter.wsClientProvider.overrideWithValue(wsClient),
+      core_flutter.wsClientProvider.overrideWith(
+        (ref) => ref.read(wsClientProvider),
+      ),
       core_flutter.e2eeAdapterProvider.overrideWithValue(rustGateway),
       core_flutter.analyticsProvider.overrideWithValue(analytics),
       core_flutter.errorReporterProvider.overrideWithValue(errorReporter),
@@ -119,20 +136,5 @@ Future<void> main() async {
     child: const App(),
   ));
 
-  warmUpRustBridge(rustGateway);
-}
-
-void warmUpRustBridge(RustGateway rustGateway) {
-  unawaited(
-    rustGateway.init().catchError((Object error, StackTrace stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'im_web',
-          context: ErrorDescription('while warming up the Rust bridge'),
-        ),
-      );
-    }),
-  );
+  warmUpRustBridge(rustGateway.init, rustBridgeInit);
 }

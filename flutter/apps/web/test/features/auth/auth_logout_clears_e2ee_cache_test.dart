@@ -77,6 +77,9 @@ class FakeWsClientPort implements WsClientPort {
   @override
   Stream<WsConnectionState> get connectionState =>
       Stream.value(WsConnectionState.connected);
+
+  @override
+  void dispose() {}
 }
 
 /// Fake HttpClientPort for testing.

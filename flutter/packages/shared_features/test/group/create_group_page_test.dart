@@ -24,6 +24,8 @@ class _FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+  @override
+  void dispose() {}
 }
 
 Widget _buildApp({

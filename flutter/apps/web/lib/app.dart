@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import 'adapters/web_http_adapter.dart';
 import 'core/di/providers.dart';
 import 'core/logging/app_logger.dart';
 import 'core/router/app_router.dart';
@@ -23,6 +24,14 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> {
   final _webMetaService = createWebMetaService();
 
+  /// Guards the one-time startup auth check so hot restarts / rebuilds do not
+  /// race with an in-flight [AuthNotifier.checkAuth].
+  bool _authInitialized = false;
+
+  /// Guards the realtime bootstrap (sessions + friends) so rapid auth state
+  /// changes cannot spawn concurrent loads.
+  bool _isBootstrapping = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,7 +45,7 @@ class _AppState extends ConsumerState<App> {
     });
     ref.listenManual<AuthState>(authStateProvider, (prev, next) {
       if (next.isAuthenticated && prev?.user?.id != next.user?.id) {
-        unawaited(_bootstrapRealtimeState());
+        unawaited(_bootstrapRealtimeStateGuarded(next.user?.id));
       }
       // The shared AuthNotifier no longer receives the web E2EE sent-message
       // cache, so clear it here when the user logs out.
@@ -56,12 +65,40 @@ class _AppState extends ConsumerState<App> {
       }
     });
 
+    // Observe Rust bridge warm-up failures so they are visible in logs and
+    // Sentry/error reporters rather than silently swallowed.
+    final bridgeInitController = ref.read(rustBridgeInitProvider);
+    bridgeInitController.addListener((status) {
+      status.whenOrNull(
+        error: (err, st) => AppLogger.instance.error(
+          'Rust bridge initialization failed',
+          err,
+          st,
+          'rust',
+        ),
+      );
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       AppLogger.init(errorReporter: ref.read(errorReporterProvider));
       final analytics = ref.read(analyticsProvider);
       analytics.trackEvent('app_start', {'platform': 'web'});
-      ref.read(authStateProvider.notifier).checkAuth();
+
+      // Wire the HTTP adapter's auth failure path into the global auth state.
+      // This is set up here because the provider tree is now mounted.
+      final httpClient = ref.read(httpClientProvider);
+      if (httpClient is WebHttpClient) {
+        httpClient.onAuthFailure = () {
+          if (!mounted) return;
+          ref.read(authStateProvider.notifier).invalidateSession();
+        };
+      }
+
+      if (!_authInitialized) {
+        _authInitialized = true;
+        ref.read(authStateProvider.notifier).checkAuth();
+      }
 
       final locale = ref.read(languageProvider);
       final l10n = lookupAppLocalizations(Locale(locale));
@@ -69,7 +106,9 @@ class _AppState extends ConsumerState<App> {
     });
   }
 
-  Future<void> _bootstrapRealtimeState() async {
+  Future<void> _bootstrapRealtimeStateGuarded(String? userId) async {
+    if (_isBootstrapping) return;
+    _isBootstrapping = true;
     try {
       await Future.wait([
         ref.read(chatStateProvider.notifier).loadSessions(),
@@ -77,6 +116,8 @@ class _AppState extends ConsumerState<App> {
       ]);
     } catch (e, st) {
       AppLogger.instance.error('Realtime bootstrap failed', e, st, 'ws');
+    } finally {
+      _isBootstrapping = false;
     }
   }
 

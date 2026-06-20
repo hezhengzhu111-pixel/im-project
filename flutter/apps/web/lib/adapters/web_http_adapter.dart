@@ -68,17 +68,31 @@ List<dynamic> _redactList(List<dynamic> list) {
 class WebHttpClient implements HttpClientPort {
   WebHttpClient({
     required String baseUrl,
+    this.onAuthFailure,
+    HttpClientAdapter? adapter,
   }) : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
           extra: const {'withCredentials': true},
         )) {
+    if (adapter != null) {
+      _dio.httpClientAdapter = adapter;
+    }
     _dio.interceptors.addAll([
-      _AuthInterceptor(_dio),
+      _AuthInterceptor(_dio, onAuthFailure: onAuthFailure),
       _SensitiveLogInterceptor(),
     ]);
   }
 
   final Dio _dio;
+
+  /// Called when the auth interceptor detects that the session is irrecoverable
+  /// (e.g. the refresh endpoint returns 401). The web app wires this to the
+  /// global auth state so the UI does not stay "authenticated" while every API
+  /// call fails.
+  void Function()? onAuthFailure;
 
   @override
   Future<ApiResponse<T>> get<T>(
@@ -86,11 +100,17 @@ class WebHttpClient implements HttpClientPort {
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      path,
-      queryParameters: queryParameters,
-    );
-    return _parseResponse(response, fromJson);
+    try {
+      final response = await _dio.get<dynamic>(
+        path,
+        queryParameters: queryParameters,
+      );
+      return _parseResponse(response, fromJson);
+    } on DioException {
+      rethrow;
+    } catch (e, st) {
+      throw _wrapUnexpectedError(e, st);
+    }
   }
 
   @override
@@ -99,8 +119,14 @@ class WebHttpClient implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response = await _dio.post<Map<String, dynamic>>(path, data: body);
-    return _parseResponse(response, fromJson);
+    try {
+      final response = await _dio.post<dynamic>(path, data: body);
+      return _parseResponse(response, fromJson);
+    } on DioException {
+      rethrow;
+    } catch (e, st) {
+      throw _wrapUnexpectedError(e, st);
+    }
   }
 
   @override
@@ -109,8 +135,14 @@ class WebHttpClient implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response = await _dio.put<Map<String, dynamic>>(path, data: body);
-    return _parseResponse(response, fromJson);
+    try {
+      final response = await _dio.put<dynamic>(path, data: body);
+      return _parseResponse(response, fromJson);
+    } on DioException {
+      rethrow;
+    } catch (e, st) {
+      throw _wrapUnexpectedError(e, st);
+    }
   }
 
   @override
@@ -120,19 +152,77 @@ class WebHttpClient implements HttpClientPort {
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response = await _dio.delete<Map<String, dynamic>>(
-      path,
-      data: body,
-      queryParameters: queryParameters,
-    );
-    return _parseResponse(response, fromJson);
+    try {
+      final response = await _dio.delete<dynamic>(
+        path,
+        data: body,
+        queryParameters: queryParameters,
+      );
+      return _parseResponse(response, fromJson);
+    } on DioException {
+      rethrow;
+    } catch (e, st) {
+      throw _wrapUnexpectedError(e, st);
+    }
   }
 
   ApiResponse<T> _parseResponse<T>(
-    Response<Map<String, dynamic>> response,
+    Response<dynamic> response,
     T Function(Map<String, dynamic>) fromJson,
   ) {
-    final data = response.data!;
+    final rawBody = response.data;
+
+    if (rawBody == null || (rawBody is String && rawBody.trim().isEmpty)) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: 'Empty response body',
+      );
+    }
+
+    final Map<String, dynamic> data;
+    if (rawBody is Map<String, dynamic>) {
+      data = rawBody;
+    } else if (rawBody is String) {
+      final trimmed = rawBody.trim();
+      if (trimmed.startsWith('<')) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+          message: 'Server returned an HTML error page',
+        );
+      }
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
+        } else {
+          throw DioException(
+            requestOptions: response.requestOptions,
+            response: response,
+            type: DioExceptionType.badResponse,
+            message: 'Response body is not a JSON object',
+          );
+        }
+      } catch (e) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+          message: 'Invalid JSON response: $e',
+        );
+      }
+    } else {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: 'Unexpected response body type: ${rawBody.runtimeType}',
+      );
+    }
+
     final code = data['code'] as int? ?? 0;
     final message = data['message'] as String? ?? '';
     final success = data['success'] as bool?;
@@ -156,22 +246,48 @@ class WebHttpClient implements HttpClientPort {
       parsedData = fromJson({'items': rawData});
     } else if (rawData == null) {
       // Server returned null data — pass through as null instead of crashing.
+      // Callers that require non-null data (e.g. login) will get a cast error
+      // which is surfaced as a bad-response exception by the public wrappers.
       parsedData = null;
     } else {
       parsedData = rawData;
     }
-    return ApiResponse<T>(
-      code: code,
-      message: message,
-      data: parsedData as T,
-      timestamp: data['timestamp'] as int?,
+
+    try {
+      return ApiResponse<T>(
+        code: code,
+        message: message,
+        data: parsedData as T,
+        timestamp: data['timestamp'] as int?,
+      );
+    } on TypeError catch (e) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: 'Response data incompatible with expected type: $e',
+      );
+    }
+  }
+
+  DioException _wrapUnexpectedError(Object error, StackTrace stackTrace) {
+    return DioException(
+      requestOptions: RequestOptions(path: ''),
+      type: DioExceptionType.unknown,
+      error: error,
+      message: 'Unexpected HTTP error: $error',
     );
   }
 }
 
 class _AuthInterceptor extends Interceptor {
-  _AuthInterceptor(this._dio);
+  _AuthInterceptor(
+    this._dio, {
+    this.onAuthFailure,
+  });
+
   final Dio _dio;
+  final void Function()? onAuthFailure;
   bool _isRefreshing = false;
   final List<Completer<void>> _refreshQueue = [];
 
@@ -239,6 +355,19 @@ class _AuthInterceptor extends Interceptor {
         }
         _refreshQueue.clear();
 
+        // The session is no longer valid; notify the app so it can move the
+        // auth state out of authenticated instead of leaving the user stuck.
+        try {
+          onAuthFailure?.call();
+        } catch (callbackError, callbackSt) {
+          AppLogger.instance.error(
+            'Auth failure callback threw',
+            callbackError,
+            callbackSt,
+            'auth',
+          );
+        }
+
         handler.next(err);
       } finally {
         _isRefreshing = false;
@@ -297,9 +426,28 @@ class _SensitiveLogInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) {
     final path = err.requestOptions.uri.path;
     final statusCode = err.response?.statusCode;
+    final typeLabel = err.type.name;
+    final message = switch (err.type) {
+      DioExceptionType.connectionTimeout =>
+        'Connection timed out',
+      DioExceptionType.receiveTimeout =>
+        'Receive timed out',
+      DioExceptionType.sendTimeout =>
+        'Send timed out',
+      DioExceptionType.connectionError =>
+        'Network connection error',
+      DioExceptionType.cancel =>
+        'Request cancelled',
+      DioExceptionType.badResponse =>
+        'Bad response (${statusCode ?? 'N/A'})',
+      DioExceptionType.badCertificate =>
+        'Bad certificate',
+      DioExceptionType.unknown =>
+        'Unknown error',
+    };
     AppLogger.instance.warn(
       '[http] ERROR ${statusCode ?? 'N/A'} ${err.requestOptions.method} $path'
-      ' type=${err.type.name}',
+      ' type=$typeLabel: $message',
     );
     handler.next(err);
   }

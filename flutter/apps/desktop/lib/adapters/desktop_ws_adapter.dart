@@ -242,6 +242,7 @@ class DesktopWsAdapter implements WsClientPort {
     return resolved.replace(scheme: scheme).toString();
   }
 
+  @override
   void dispose() {
     _stopHeartbeat();
     _reconnectTimer?.cancel();
