@@ -99,11 +99,13 @@ class _AppState extends ConsumerState<App> {
         _authInitialized = true;
         ref.read(authStateProvider.notifier).checkAuth();
       }
-
-      final locale = ref.read(languageProvider);
-      final l10n = lookupAppLocalizations(Locale(locale));
-      _webMetaService.apply(fallbackMetaForLocale(l10n), locale: locale);
     });
+  }
+
+  @override
+  void dispose() {
+    _router?.routeInformationProvider.removeListener(_onRouteChanged);
+    super.dispose();
   }
 
   Future<void> _bootstrapRealtimeStateGuarded(String? userId) async {

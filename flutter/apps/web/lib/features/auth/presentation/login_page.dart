@@ -88,7 +88,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           FormValidators.required(loc.validationRequired),
           FormValidators.minLength(8, loc.validationPasswordMinLength(8)),
           FormValidators.maxLength(64, loc.validationPasswordMaxLength(64)),
-          FormValidators.passwordStrength(loc.validationPasswordStrength),
+          FormValidators.noWhitespace(loc.validationPasswordNoWhitespace),
         ],
       ),
     ]));
@@ -105,6 +105,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
         return loc.authServerError;
       case AuthErrorCode.tooManyRequests:
         return loc.authTooManyRequests;
+      case AuthErrorCode.accountLocked:
+        return loc.authAccountLocked;
       case AuthErrorCode.unknown:
         return loc.authUnknownError;
     }
@@ -172,28 +174,28 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Widget _buildDesktopLayout(AppLocalizations loc) {
+    final theme = Theme.of(context);
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: SingleChildScrollView(
+        constraints: const BoxConstraints(maxWidth: 1200),
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 左侧品牌展示区 — 限制最大宽度防止拉伸
-              // 右侧登录卡片 — 固定宽度，居中对齐
+              // 左侧品牌展示区
               Expanded(
-                flex: 4,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: AuthCard(
-                        title: loc.loginTitle,
-                        subtitle: loc.loginSubtitle,
-                        child: _buildForm(loc),
-                      ),
-                    ),
+                child: _buildBrandSection(loc, theme),
+              ),
+              const SizedBox(width: 80),
+              // 右侧登录卡片
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SingleChildScrollView(
+                  child: AuthCard(
+                    title: loc.loginTitle,
+                    subtitle: loc.loginSubtitle,
+                    child: _buildForm(loc),
                   ),
                 ),
               ),
@@ -201,6 +203,117 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBrandSection(AppLocalizations loc, ThemeData theme) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 品牌标识
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: const Color(0xFF07C160),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(
+            Icons.chat_bubble_outline,
+            color: Colors.white,
+            size: 40,
+          ),
+        ),
+        const SizedBox(height: 32),
+        // 品牌标题
+        Text(
+          loc.brandTitle,
+          style: theme.textTheme.headlineLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 品牌描述
+        Text(
+          loc.brandSubtitle,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.6,
+          ),
+        ),
+        const SizedBox(height: 48),
+        // 功能特性
+        _buildFeatureItem(
+          icon: Icons.lock,
+          title: loc.brandFeatureE2eeLabel,
+          subtitle: loc.brandFeatureE2ee,
+          theme: theme,
+        ),
+        const SizedBox(height: 24),
+        _buildFeatureItem(
+          icon: Icons.speed,
+          title: loc.brandFeatureRealtimeLabel,
+          subtitle: loc.brandFeatureRealtime,
+          theme: theme,
+        ),
+        const SizedBox(height: 24),
+        _buildFeatureItem(
+          icon: Icons.devices,
+          title: loc.brandFeatureDeviceTrustLabel,
+          subtitle: loc.brandFeatureDeviceTrust,
+          theme: theme,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required ThemeData theme,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: theme.colorScheme.primary,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -285,27 +398,36 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   Widget _buildLangChip(String label, String value, String currentLang) {
     final isSelected = currentLang == value;
-    return GestureDetector(
-      onTap: () {
-        ref.read(languageProvider.notifier).state = value;
-        getPlatformAdapter().setLocalStorage('app_language', value);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Theme.of(context).colorScheme.surfaceContainerHighest
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(3),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
+    final theme = Theme.of(context);
+    return Semantics(
+      label: 'Switch to $label',
+      button: true,
+      selected: isSelected,
+      child: InkWell(
+        onTap: () {
+          ref.read(languageProvider.notifier).state = value;
+          getPlatformAdapter().setLocalStorage('app_language', value);
+        },
+        focusColor: theme.colorScheme.primary.withOpacity(0.1),
+        highlightColor: theme.colorScheme.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(3),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
             color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ? theme.colorScheme.surfaceContainerHighest
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
         ),
       ),

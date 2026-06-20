@@ -138,6 +138,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
         return loc.authServerError;
       case AuthErrorCode.tooManyRequests:
         return loc.authTooManyRequests;
+      case AuthErrorCode.accountLocked:
+        return loc.authAccountLocked;
       case AuthErrorCode.unknown:
         return loc.authUnknownError;
     }

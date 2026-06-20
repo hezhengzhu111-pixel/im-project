@@ -25,6 +25,13 @@ class FormValidators {
     };
   }
 
+  static Validator noWhitespace(String message) {
+    return (value) {
+      if (value != null && value.contains(' ')) return message;
+      return null;
+    };
+  }
+
   static Validator pattern(RegExp regex, String message) {
     return (value) {
       if (value != null && !regex.hasMatch(value)) return message;

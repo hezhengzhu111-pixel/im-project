@@ -12,6 +12,9 @@ enum AuthErrorCode {
   /// 请求过于频繁
   tooManyRequests,
 
+  /// 账号已锁定
+  accountLocked,
+
   /// 未知错误
   unknown,
 }
