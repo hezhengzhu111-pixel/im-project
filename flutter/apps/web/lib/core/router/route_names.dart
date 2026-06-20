@@ -16,4 +16,5 @@ class RouteNames {
   static const settingsProfile = 'settingsProfile';
   static const settingsAi = 'settingsAi';
   static const notFound = 'notFound';
+  static const forbidden = 'forbidden';
 }

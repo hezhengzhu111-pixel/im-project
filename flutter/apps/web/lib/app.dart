@@ -24,31 +24,36 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> {
   final _webMetaService = createWebMetaService();
 
-  /// Guards the one-time startup auth check so hot restarts / rebuilds do not
-  /// race with an in-flight [AuthNotifier.checkAuth].
   bool _authInitialized = false;
-
-  /// Guards the realtime bootstrap (sessions + friends) so rapid auth state
-  /// changes cannot spawn concurrent loads.
   bool _isBootstrapping = false;
+  GoRouter? _router;
+
+  void _onRouteChanged() {
+    final path = _router?.routeInformationProvider.value.uri.path;
+    if (path != null) {
+      _updateMetaForPath(path);
+    }
+  }
+
+  void _updateMetaForPath(String path) {
+    final locale = ref.read(languageProvider);
+    final l10n = lookupAppLocalizations(Locale(locale));
+    final meta = metaForPath(path, l10n);
+    _webMetaService.apply(meta, locale: locale);
+  }
 
   @override
   void initState() {
     super.initState();
     unawaited(_loadPersistedSettings());
-    ref.listenManual<GoRouter>(routerProvider, (prev, next) {
-      final path = next.routeInformationProvider.value.uri.path;
-      final locale = ref.read(languageProvider);
-      final l10n = lookupAppLocalizations(Locale(locale));
-      final meta = metaForPath(path, l10n);
-      _webMetaService.apply(meta, locale: locale);
-    });
+    final router = ref.read(routerProvider);
+    _router = router;
+    _updateMetaForPath(router.routeInformationProvider.value.uri.path);
+    router.routeInformationProvider.addListener(_onRouteChanged);
     ref.listenManual<AuthState>(authStateProvider, (prev, next) {
       if (next.isAuthenticated && prev?.user?.id != next.user?.id) {
         unawaited(_bootstrapRealtimeStateGuarded(next.user?.id));
       }
-      // The shared AuthNotifier no longer receives the web E2EE sent-message
-      // cache, so clear it here when the user logs out.
       if (prev?.isAuthenticated == true && !next.isAuthenticated) {
         unawaited(
           ref.read(e2eeSentMessageCacheProvider).clearAll().catchError(
@@ -65,8 +70,6 @@ class _AppState extends ConsumerState<App> {
       }
     });
 
-    // Observe Rust bridge warm-up failures so they are visible in logs and
-    // Sentry/error reporters rather than silently swallowed.
     final bridgeInitController = ref.read(rustBridgeInitProvider);
     bridgeInitController.addListener((status) {
       status.whenOrNull(
@@ -85,8 +88,6 @@ class _AppState extends ConsumerState<App> {
       final analytics = ref.read(analyticsProvider);
       analytics.trackEvent('app_start', {'platform': 'web'});
 
-      // Wire the HTTP adapter's auth failure path into the global auth state.
-      // This is set up here because the provider tree is now mounted.
       final httpClient = ref.read(httpClientProvider);
       if (httpClient is WebHttpClient) {
         httpClient.onAuthFailure = () {

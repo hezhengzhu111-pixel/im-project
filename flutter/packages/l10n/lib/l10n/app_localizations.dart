@@ -1208,6 +1208,12 @@ abstract class AppLocalizations {
   /// **'Password must contain both letters and digits'**
   String get validationPasswordStrength;
 
+  /// No description provided for @validationPasswordNoWhitespace.
+  ///
+  /// In en, this message translates to:
+  /// **'Password cannot contain spaces'**
+  String get validationPasswordNoWhitespace;
+
   /// No description provided for @validationPasswordMismatch.
   ///
   /// In en, this message translates to:
@@ -1781,7 +1787,7 @@ abstract class AppLocalizations {
   /// No description provided for @forbiddenMessage.
   ///
   /// In en, this message translates to:
-  /// **'You don't have permission to access this page.'**
+  /// **'You don\'t have permission to access this page.'**
   String get forbiddenMessage;
 
   /// No description provided for @forbiddenBackHome.
@@ -2510,6 +2516,12 @@ abstract class AppLocalizations {
   /// **'Too many attempts. Please try again later.'**
   String get authTooManyRequests;
 
+  /// No description provided for @authAccountLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Account locked. Please contact support.'**
+  String get authAccountLocked;
+
   /// No description provided for @authUnknownError.
   ///
   /// In en, this message translates to:
@@ -2527,6 +2539,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'IM is a secure messaging app with end-to-end encryption, group chat, and more.'**
   String get seoAppDescription;
+
+  /// No description provided for @seoForbiddenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access denied'**
+  String get seoForbiddenTitle;
+
+  /// No description provided for @seoForbiddenDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have permission to view this page.'**
+  String get seoForbiddenDescription;
 
   /// No description provided for @errorShareNotAvailable.
   ///

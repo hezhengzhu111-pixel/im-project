@@ -591,6 +591,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Password must contain both letters and digits';
 
   @override
+  String get validationPasswordNoWhitespace => 'Password cannot contain spaces';
+
+  @override
   String get validationPasswordMismatch => 'Passwords do not match';
 
   @override
@@ -1295,6 +1298,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seoAiSettingsDescription => 'Configure AI assistant';
 
   @override
+  String get seoForbiddenTitle => 'Access Denied - IM';
+
+  @override
+  String get seoForbiddenDescription =>
+      'You don\'t have permission to access this page';
+
+  @override
   String get authInvalidCredentials => 'Invalid username or password.';
 
   @override
@@ -1308,6 +1318,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Too many attempts. Please try again later.';
 
   @override
+  String get authAccountLocked => 'Account locked. Please contact support.';
+
+  @override
   String get authUnknownError =>
       'An unexpected error occurred. Please try again.';
 
@@ -1317,6 +1330,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get seoAppDescription =>
       'IM is a secure messaging app with end-to-end encryption, group chat, and more.';
+
+  @override
+  String get seoForbiddenTitle => 'Access denied';
+
+  @override
+  String get seoForbiddenDescription =>
+      'You do not have permission to view this page.';
 
   @override
   String get errorShareNotAvailable => 'Sharing not available in this browser';

@@ -31,6 +31,8 @@ extension AppLocalizationsExt on AppLocalizations {
       'seoProfileDescription' => seoProfileDescription,
       'seoAiSettingsTitle' => seoAiSettingsTitle,
       'seoAiSettingsDescription' => seoAiSettingsDescription,
+      'seoForbiddenTitle' => seoForbiddenTitle,
+      'seoForbiddenDescription' => seoForbiddenDescription,
       _ => key,
     };
   }

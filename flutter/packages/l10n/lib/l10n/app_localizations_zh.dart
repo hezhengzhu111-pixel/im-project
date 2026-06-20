@@ -580,6 +580,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get validationPasswordStrength => '密码必须包含字母和数字';
 
   @override
+  String get validationPasswordNoWhitespace => '密码不能包含空格';
+
+  @override
   String get validationPasswordMismatch => '两次输入的密码不一致';
 
   @override
@@ -1257,6 +1260,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get seoAiSettingsDescription => '配置 AI 助手';
 
   @override
+  String get seoForbiddenTitle => '无权访问 - IM';
+
+  @override
+  String get seoForbiddenDescription => '您没有权限访问此页面';
+
+  @override
   String get authInvalidCredentials => '用户名或密码错误。';
 
   @override
@@ -1269,6 +1278,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get authTooManyRequests => '尝试次数过多，请稍后重试。';
 
   @override
+  String get authAccountLocked => '账号已锁定，请联系客服。';
+
+  @override
   String get authUnknownError => '发生未知错误，请重试。';
 
   @override
@@ -1276,6 +1288,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get seoAppDescription => 'IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能';
+
+  @override
+  String get seoForbiddenTitle => '无访问权限';
+
+  @override
+  String get seoForbiddenDescription => '您没有权限查看此页面。';
 
   @override
   String get errorShareNotAvailable => '当前浏览器不支持分享';

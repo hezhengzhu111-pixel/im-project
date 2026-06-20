@@ -408,8 +408,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ref.read(languageProvider.notifier).state = value;
           getPlatformAdapter().setLocalStorage('app_language', value);
         },
-        focusColor: theme.colorScheme.primary.withOpacity(0.1),
-        highlightColor: theme.colorScheme.primary.withOpacity(0.1),
+        focusColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+        highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(3),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
