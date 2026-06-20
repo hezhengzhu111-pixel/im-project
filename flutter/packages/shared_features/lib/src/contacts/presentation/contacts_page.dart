@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/chat.dart';
 import 'contacts_provider.dart';
 import 'contacts_providers.dart';
@@ -22,7 +23,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   String _searchKeyword = '';
   ContactsSortMode _sortMode = ContactsSortMode.name;
   String? _selectedFriendId;
-  final Set<String> _processingRequestIds = <String>{};
 
   @override
   void initState() {
@@ -39,26 +39,24 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final loc = AppLocalizations.of(context)!;
     final selectedFriend = _selectedFriend(contactsState.friends);
 
+    ref.listen(
+      contactsStateProvider.select((s) => s.requestEventVersion),
+      (previous, next) {
+        if (next == previous) return;
+        final request = ref.read(contactsStateProvider).lastIncomingRequest;
+        if (request == null || !mounted) return;
+        final name = request.applicantNickname ?? request.applicantUsername;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.contactsNewRequestFrom(name))),
+        );
+        ref.read(contactsStateProvider.notifier).clearLastIncomingRequest();
+      },
+    );
+
     if (context.isCompact) {
-      return Column(
-        children: [
-          _buildListPanel(contactsState, loc),
-          const Divider(height: 1),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _ContactDetailPanel(
-                friend: selectedFriend,
-                onEditRemark: selectedFriend == null
-                    ? null
-                    : () => _showRemarkDialog(selectedFriend),
-                onMessage: selectedFriend == null
-                    ? null
-                    : () => _openChatWithFriend(selectedFriend),
-              ),
-            ),
-          ),
-        ],
+      return Scaffold(
+        appBar: AppBar(title: Text(loc.navContacts)),
+        body: _buildListPanel(contactsState, loc),
       );
     }
 
@@ -101,6 +99,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Widget _buildListPanel(ContactsState contactsState, AppLocalizations loc) {
+    final currentUserId = ref.read(currentUserIdProvider) ?? '';
+    final incomingPendingCount = contactsState.friendRequests
+        .where(
+          (request) =>
+              request.status == 'PENDING' && request.targetUserId == currentUserId,
+        )
+        .length;
+
     return Column(
       children: [
         Padding(
@@ -115,10 +121,22 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                         text:
                             loc.contactsFriends(contactsState.friends.length)),
                     Tab(
-                      text: contactsState.friendRequests.isNotEmpty
-                          ? loc.contactsRequests(
-                              contactsState.friendRequests.length)
-                          : loc.contactsFriendRequests,
+                      child: incomingPendingCount > 0
+                          ? Badge(
+                              label: Text('$incomingPendingCount'),
+                              child: Text(
+                                contactsState.friendRequests.isNotEmpty
+                                    ? loc.contactsRequests(
+                                        contactsState.friendRequests.length)
+                                    : loc.contactsFriendRequests,
+                              ),
+                            )
+                          : Text(
+                              contactsState.friendRequests.isNotEmpty
+                                  ? loc.contactsRequests(
+                                      contactsState.friendRequests.length)
+                                  : loc.contactsFriendRequests,
+                            ),
                     ),
                   ],
                 ),
@@ -159,8 +177,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Widget _buildFriendList(ContactsState state, AppLocalizations loc) {
-    if (state.isLoading) {
+    if (state.isLoading && state.friends.isEmpty && state.error == null) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (state.error != null) {
+      return _LoadError(
+        message: loc.loadingFailed(state.error!),
+        onRetry: () => ref.read(contactsStateProvider.notifier).loadFriends(),
+      );
     }
     if (state.friends.isEmpty) {
       return Center(child: Text(loc.contactsNoFriends));
@@ -168,7 +192,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 
     final filteredFriends = _filterAndSortFriends(state.friends);
     if (filteredFriends.isEmpty) {
-      return Center(child: Text(loc.contactsNoFriends));
+      return Center(child: Text(loc.contactsSearchNoResults));
     }
 
     return ListView.builder(
@@ -182,10 +206,27 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               (_selectedFriendId ?? state.friends.first.friendId),
           onEditRemark: () => _showRemarkDialog(friend),
           onDelete: () => _confirmDeleteFriend(friend),
-          onTap: () => setState(() => _selectedFriendId = friend.friendId),
+          onTap: () => _selectFriend(friend),
         );
       },
     );
+  }
+
+  void _selectFriend(Friendship friend) {
+    if (!mounted) return;
+    if (context.isCompact) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _ContactDetailPage(
+            friend: friend,
+            onEditRemark: () => _showRemarkDialog(friend),
+            onMessage: () => _openChatWithFriend(friend),
+          ),
+        ),
+      );
+    } else {
+      setState(() => _selectedFriendId = friend.friendId);
+    }
   }
 
   Future<void> _openChatWithFriend(Friendship friend) async {
@@ -272,19 +313,34 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         .deleteFriend(friend.friendId);
     if (!mounted) return;
 
+    if (ok) {
+      if (_selectedFriendId == friend.friendId) {
+        setState(() => _selectedFriendId = null);
+      }
+      _clearActiveChatIfNeeded(friend.friendId);
+    }
+
     final message =
         ok ? loc.contactsDeleteFriendDone : loc.contactsDeleteFriendFailed;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _clearActiveChatIfNeeded(String friendId) {
+    final chatState = ref.read(chatStateProvider);
+    final activeId = chatState.activeSessionId;
+    if (activeId == null) return;
+    final session =
+        chatState.sessions.where((s) => s.id == activeId).firstOrNull;
+    if (session != null && session.targetId == friendId) {
+      ref.read(chatStateProvider.notifier).setActiveSession(null);
+    }
+  }
+
   Future<void> _handleRequestAction(
     FriendRequest request, {
     required bool accept,
   }) async {
-    if (_processingRequestIds.contains(request.id)) return;
-    setState(() => _processingRequestIds.add(request.id));
-
     final notifier = ref.read(contactsStateProvider.notifier);
     final ok = accept
         ? await notifier.acceptRequest(request.id)
@@ -303,8 +359,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         : (error ?? loc.commonFailed);
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
-
-    setState(() => _processingRequestIds.remove(request.id));
   }
 
   List<Friendship> _filterAndSortFriends(List<Friendship> friends) {
@@ -348,8 +402,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Widget _buildRequestList(ContactsState state, AppLocalizations loc) {
-    if (state.isLoading) {
+    if (state.isLoading && state.friendRequests.isEmpty && state.error == null) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (state.error != null) {
+      return _LoadError(
+        message: loc.loadingFailed(state.error!),
+        onRetry: () => ref.read(contactsStateProvider.notifier).loadFriends(),
+      );
     }
     if (state.friendRequests.isEmpty) {
       return Center(child: Text(loc.contactsNoRequests));
@@ -362,7 +422,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         final request = state.friendRequests[index];
         return _RequestTile(
           request: request,
-          isBusy: _processingRequestIds.contains(request.id),
+          isBusy: state.processingIds.contains('request:${request.id}'),
           onAccept: () => _handleRequestAction(request, accept: true),
           onReject: () => _handleRequestAction(request, accept: false),
         );
@@ -374,6 +434,46 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+}
+
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: onRetry,
+                child: Text(loc.retry),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -400,8 +500,12 @@ class _FriendTile extends StatelessWidget {
         : (friend.nickname ?? friend.username);
     final subtitleParts = <String>[
       if (displayName != friend.username) '@${friend.username}',
-      friend.signature ??
-          (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
+      if (friend.signature != null && friend.signature!.isNotEmpty)
+        friend.signature!
+      else if (friend.isOnline == true)
+        loc.contactsOnline
+      else if (friend.isOnline == false)
+        loc.contactsOffline,
     ];
 
     return Padding(
@@ -477,6 +581,8 @@ class _FriendAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showStatusDot = friend.isOnline != null;
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -493,22 +599,55 @@ class _FriendAvatar extends StatelessWidget {
                 )
               : null,
         ),
-        Positioned(
-          right: 0,
-          bottom: 0,
-          child: Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: friend.isOnline == true
-                  ? const Color(0xFF23D5AB)
-                  : Colors.blueGrey.shade200,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+        if (showStatusDot)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: friend.isOnline == true
+                    ? const Color(0xFF23D5AB)
+                    : Colors.blueGrey.shade200,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
             ),
           ),
-        ),
       ],
+    );
+  }
+}
+
+class _ContactDetailPage extends StatelessWidget {
+  const _ContactDetailPage({
+    required this.friend,
+    this.onEditRemark,
+    this.onMessage,
+  });
+
+  final Friendship friend;
+  final VoidCallback? onEditRemark;
+  final VoidCallback? onMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = (friend.remark?.trim().isNotEmpty ?? false)
+        ? friend.remark!.trim()
+        : (friend.nickname ?? friend.username);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(displayName),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: _ContactDetailPanel(
+          friend: friend,
+          onEditRemark: onEditRemark,
+          onMessage: onMessage,
+        ),
+      ),
     );
   }
 }
@@ -579,12 +718,13 @@ class _ContactDetailPanel extends StatelessWidget {
                 ],
               ),
             ),
-            _StatusPill(
-              text: current.isOnline == true
-                  ? loc.contactsOnline
-                  : loc.contactsOffline,
-              active: current.isOnline == true,
-            ),
+            if (current.isOnline != null)
+              _StatusPill(
+                text: current.isOnline == true
+                    ? loc.contactsOnline
+                    : loc.contactsOffline,
+                active: current.isOnline == true,
+              ),
           ],
         ),
         const SizedBox(height: 24),
@@ -593,29 +733,32 @@ class _ContactDetailPanel extends StatelessWidget {
           runSpacing: 12,
           children: [
             PrimarySolidButton(
-              label: '发消息',
+              label: loc.contactsSendMessage,
               icon: Icons.chat_bubble_outline,
               onPressed: onMessage,
             ),
-            _DisabledAction(label: '语音聊天', icon: Icons.call_outlined),
-            _DisabledAction(label: '视频聊天', icon: Icons.videocam_outlined),
+            _DisabledAction(label: loc.contactsVoiceCall, icon: Icons.call_outlined),
+            _DisabledAction(label: loc.contactsVideoCall, icon: Icons.videocam_outlined),
           ],
         ),
         const SizedBox(height: 28),
         _DetailGrid(
           items: [
-            _DetailItem('备注', current.remark ?? '暂无', onTap: onEditRemark),
-            _DetailItem('权限', '暂无'),
-            _DetailItem('来源', '暂无'),
-            _DetailItem(
-                '添加时间', current.createdAt ?? current.createTime ?? '暂无'),
-            _DetailItem('在线状态', current.lastSeen ?? current.lastActiveLabel),
-            _DetailItem('签名', current.signature ?? '暂无'),
+            _DetailItem(loc.contactsRemarkLabel,
+                current.remark ?? loc.contactsNoValue, onTap: onEditRemark),
+            _DetailItem(loc.contactsPermission, loc.contactsNoValue),
+            _DetailItem(loc.contactsSource, loc.contactsNoValue),
+            _DetailItem(loc.contactsAddedTime,
+                current.createdAt ?? current.createTime ?? loc.contactsNoValue),
+            _DetailItem(loc.contactsOnlineStatus,
+                current.lastSeen ?? current.lastActiveTime ?? loc.contactsNoValue),
+            _DetailItem(loc.contactsSignature,
+                current.signature ?? loc.contactsNoValue),
           ],
         ),
         const SizedBox(height: 24),
         Text(
-          '朋友圈',
+          loc.contactsMoments,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -630,7 +773,7 @@ class _ContactDetailPanel extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              '暂无',
+              loc.contactsNoValue,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -639,13 +782,6 @@ class _ContactDetailPanel extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-extension on Friendship {
-  String get lastActiveLabel {
-    final value = lastActiveTime ?? lastSeen;
-    return value == null || value.isEmpty ? '暂无' : value;
   }
 }
 
@@ -778,7 +914,7 @@ class _ContactsRightPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '今日概览',
+                loc.contactsDailyOverview,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -804,7 +940,7 @@ class _ContactsRightPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '最近互动',
+                  loc.contactsRecentInteractions,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -827,7 +963,11 @@ class _ContactsRightPanel extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Text(friend.lastActiveLabel),
+                              subtitle: Text(
+                                friend.lastActiveTime ??
+                                    friend.lastSeen ??
+                                    loc.contactsNoValue,
+                              ),
                             );
                           }).toList(),
                         ),

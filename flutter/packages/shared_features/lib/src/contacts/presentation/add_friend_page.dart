@@ -171,27 +171,12 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       }
     } catch (e) {
       if (mounted) {
-        final msg = e.toString();
-        const duplicateRequestBackendMarker =
-            '\u5df2\u6709\u5f85\u5904\u7406\u7684\u597d\u53cb\u7533\u8bf7';
-        if (msg.contains(duplicateRequestBackendMarker)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                AppLocalizations.of(context)!.addFriendRequestDuplicate,
-              ),
-            ),
-          );
-          ref.read(contactsStateProvider.notifier).markRequestSent(user.id);
-          unawaited(ref.read(contactsStateProvider.notifier).loadFriends());
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content:
-                  Text(AppLocalizations.of(context)!.addFriendRequestFailed),
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(AppLocalizations.of(context)!.addFriendRequestFailed),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -205,28 +190,31 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     if (_processingRequestIds.contains(request.id)) return;
     setState(() => _processingRequestIds.add(request.id));
 
-    final notifier = ref.read(contactsStateProvider.notifier);
-    final success = accept
-        ? await notifier.acceptRequest(request.id)
-        : await notifier.rejectRequest(request.id);
+    try {
+      final notifier = ref.read(contactsStateProvider.notifier);
+      final success = accept
+          ? await notifier.acceptRequest(request.id)
+          : await notifier.rejectRequest(request.id);
 
-    if (mounted) {
-      final loc = AppLocalizations.of(context)!;
-      final fallbackMessage = accept ? loc.contactsAccept : loc.contactsReject;
-      final error = ref.read(contactsStateProvider).error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? (accept ? loc.contactsAccepted : loc.contactsRejected)
-                : (error ?? fallbackMessage),
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        final fallbackMessage =
+            accept ? loc.contactsAccept : loc.contactsReject;
+        final error = ref.read(contactsStateProvider).error;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? (accept ? loc.contactsAccepted : loc.contactsRejected)
+                  : (error ?? fallbackMessage),
+            ),
           ),
-        ),
-      );
-    }
-
-    if (mounted) {
-      setState(() => _processingRequestIds.remove(request.id));
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingRequestIds.remove(request.id));
+      }
     }
   }
 
@@ -260,7 +248,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     final contactsState = ref.watch(contactsStateProvider);
     final loc = AppLocalizations.of(context)!;
     return Scaffold(
-      backgroundColor: Colors.transparent, // 让外层渐变背景透出
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(loc.addFriendTitle),
       ),
@@ -332,9 +320,29 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
-              child: Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _searchController.text.trim().isEmpty
+                        ? null
+                        : () => _performSearch(_searchController.text.trim()),
+                    child: Text(loc.retry),
+                  ),
+                ],
               ),
             ),
           if (!_isSearching &&
