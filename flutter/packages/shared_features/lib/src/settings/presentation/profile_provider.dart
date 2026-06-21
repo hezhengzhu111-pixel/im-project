@@ -9,21 +9,26 @@ class ProfileState {
     this.loading = false,
     this.saving = false,
     this.user,
+    this.error,
   });
 
   final bool loading;
   final bool saving;
   final User? user;
+  final String? error;
 
   ProfileState copyWith({
     bool? loading,
     bool? saving,
     User? user,
+    String? error,
+    bool clearError = false,
   }) {
     return ProfileState(
       loading: loading ?? this.loading,
       saving: saving ?? this.saving,
       user: user ?? this.user,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }
@@ -34,18 +39,22 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
   final SettingsApi _api;
 
   Future<void> loadProfile(User currentUser) async {
-    state = state.copyWith(loading: true, user: currentUser);
+    state = state.copyWith(loading: true, user: currentUser, clearError: true);
     state = state.copyWith(loading: false);
   }
 
   Future<User> updateProfile(UpdateProfileRequest request) async {
-    state = state.copyWith(saving: true);
+    if (state.saving) return state.user!;
+    state = state.copyWith(saving: true, clearError: true);
     try {
       final updatedUser = await _api.updateProfile(request);
       state = state.copyWith(saving: false, user: updatedUser);
       return updatedUser;
     } catch (e) {
-      state = state.copyWith(saving: false);
+      state = state.copyWith(
+        saving: false,
+        error: e is Exception ? e.toString() : 'Update failed: $e',
+      );
       rethrow;
     }
   }
@@ -55,7 +64,8 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     String fileName, {
     required User currentUser,
   }) async {
-    state = state.copyWith(saving: true);
+    if (state.saving) return state.user ?? currentUser;
+    state = state.copyWith(saving: true, clearError: true);
     try {
       final avatarUrl = await _api.uploadAvatar(bytes, fileName);
       final baseUser = state.user ?? currentUser;
@@ -63,7 +73,10 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
       state = state.copyWith(saving: false, user: updatedUser);
       return updatedUser;
     } catch (e) {
-      state = state.copyWith(saving: false);
+      state = state.copyWith(
+        saving: false,
+        error: e is Exception ? e.toString() : 'Upload failed: $e',
+      );
       rethrow;
     }
   }

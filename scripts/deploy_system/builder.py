@@ -48,7 +48,7 @@ def _run(command: Sequence[object], *, cwd: Path, env: dict[str, str] | None = N
     )
 
 
-def _sync_sources(verbose: bool = False) -> None:
+def _sync_sources(verbose: bool = False, *, skip_spring_ai: bool = False) -> None:
     """Sync source code to work directories with appropriate ignore patterns."""
     print("[SYNC] Syncing source code to work directories...")
 
@@ -60,9 +60,9 @@ def _sync_sources(verbose: bool = False) -> None:
     stats = sync_flutter_source(paths.FLUTTER_SOURCE, paths.FLUTTER_WORK, verbose=verbose)
     print(f"[SYNC] Flutter: {stats}")
 
-    # Sync Spring AI
-    stats = sync_spring_ai_source(paths.SPRING_AI_SOURCE, paths.SPRING_AI_WORK, verbose=verbose)
-    print(f"[SYNC] Spring AI: {stats}")
+    if not skip_spring_ai:
+        stats = sync_spring_ai_source(paths.SPRING_AI_SOURCE, paths.SPRING_AI_WORK, verbose=verbose)
+        print(f"[SYNC] Spring AI: {stats}")
 
     # Copy SQL directory (simple copy, no filtering needed)
     if paths.SQL_SOURCE.exists():
@@ -174,7 +174,7 @@ def build_web(profile: str) -> None:
     wasm_pack = _ensure_tool("wasm-pack", ["wasm-pack"])
     python_cmd = _ensure_tool("Python", ["python", "python3"])
 
-    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-e2ee-wasm"
+    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-flutter-bridge"
     wasm_output_dir = paths.FLUTTER_WORK / "apps" / "web" / "pkg"
 
     wasm_args = [
@@ -188,7 +188,6 @@ def build_web(profile: str) -> None:
 
     env = _rust_env()
     env["RUSTFLAGS"] = "-C target-feature=-atomics,-bulk-memory,-mutable-globals"
-    env["WASM_OPT"] = "0"
 
     _run(
         [wasm_pack, *wasm_args],
@@ -203,13 +202,25 @@ def build_web(profile: str) -> None:
             [python_cmd, str(patch_script), str(wasm_output_dir / "im_rust_bridge.js")],
             cwd=wasm_bridge_dir,
         )
+        # Guard against deploying an unpatched bridge, which panics at runtime
+        # with "DataCloneError: #<Memory> could not be cloned".
+        _run(
+            [python_cmd, str(patch_script), "--verify", str(wasm_output_dir / "im_rust_bridge.js")],
+            cwd=wasm_bridge_dir,
+        )
 
     # Build Flutter web
     flutter = _ensure_tool("flutter", ["flutter"])
     web_dir = paths.FLUTTER_WORK / "apps" / "web"
     output_dir = paths.DIST_DIR / "flutter" / "web"
+    # Flutter on Windows has trouble writing shaders to a relative output path
+    # outside the app directory. Build into the app-local build/web directory and
+    # copy the result to the dist location afterwards.
+    local_output = web_dir / "build" / "web"
 
     # Clean and rebuild
+    if local_output.exists():
+        shutil.rmtree(local_output)
     if output_dir.exists():
         shutil.rmtree(output_dir)
 
@@ -221,9 +232,9 @@ def build_web(profile: str) -> None:
         capture_output=True,
     ).stdout
 
-    output_arg = f"--output={output_dir}"
+    output_arg = f"--output={local_output}"
     if "--output" not in help_text:
-        output_arg = f"--output-dir={output_dir}"
+        output_arg = f"--output-dir={local_output}"
 
     args = ["build", "web", f"--{profile}", "--pwa-strategy=none", output_arg]
     if "wasm-dry-run" in help_text:
@@ -232,9 +243,10 @@ def build_web(profile: str) -> None:
     _run([flutter, "pub", "get"], cwd=web_dir, env=_flutter_env())
     _run([flutter, *args], cwd=web_dir, env=_flutter_env())
 
-    if not (output_dir / "index.html").is_file():
-        raise RuntimeError(f"Flutter web build did not produce {paths.relative(output_dir / 'index.html')}")
+    if not (local_output / "index.html").is_file():
+        raise RuntimeError(f"Flutter web build did not produce {paths.relative(local_output / 'index.html')}")
 
+    shutil.copytree(local_output, output_dir)
     print(f"[BUILD] Flutter web: {paths.relative(output_dir)}")
 
 
@@ -253,7 +265,6 @@ def build_docker_images(config: DeploymentConfig, services: Sequence[str], *, pa
         "im-api-server": "im-project-sit/im-api-server:latest",
         "im-server": "im-project-sit/im-server:latest",
         "im-frontend": "im-project-sit/im-frontend:latest",
-        "im-spring-ai": "im-project-sit/im-spring-ai:latest",
     }
 
     generated: dict[str, str] = {}
@@ -305,7 +316,7 @@ def build_all(config: DeploymentConfig, options: BuildOptions) -> None:
         paths.ensure_build_structure()
 
         # Sync source code to work directories
-        _sync_sources(verbose=options.profile == "debug")
+        _sync_sources(verbose=options.profile == "debug", skip_spring_ai=options.skip_spring_ai)
 
         # Build tasks
         tasks: list[tuple[str, callable]] = []
@@ -335,8 +346,6 @@ def build_all(config: DeploymentConfig, options: BuildOptions) -> None:
 
         if options.docker:
             services = ["im-api-server", "im-server", "im-frontend"]
-            if not options.skip_spring_ai:
-                services.append("im-spring-ai")
             build_docker_images(config, services, package_images=options.package_images)
 
         # Write build manifest

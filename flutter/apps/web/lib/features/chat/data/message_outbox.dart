@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:idb_shim/idb_shim.dart';
-import 'package:im_shared_features/chat.dart' show E2eeHistoryRecovery;
+import 'package:im_shared_features/chat.dart'
+    show E2eeHistoryRecovery, RetryableErrorClassifier;
 import '../../../core/logging/app_logger.dart';
 import '../data/message_api.dart';
 
@@ -31,6 +32,7 @@ class OutboxMessage {
     this.error,
     this.isEncrypted = false,
     this.e2eeEnvelope,
+    this.e2eeEnvelopes,
     this.e2eeDeviceId,
     this.mediaUrl,
     this.mediaName,
@@ -54,6 +56,7 @@ class OutboxMessage {
   final String? error;
   final bool isEncrypted;
   final Map<String, dynamic>? e2eeEnvelope;
+  final List<Map<String, dynamic>>? e2eeEnvelopes;
   final String? e2eeDeviceId;
   final String? mediaUrl;
   final String? mediaName;
@@ -83,6 +86,7 @@ class OutboxMessage {
       error: error,
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
+      e2eeEnvelopes: e2eeEnvelopes,
       e2eeDeviceId: e2eeDeviceId,
       mediaUrl: mediaUrl,
       mediaName: mediaName,
@@ -109,6 +113,7 @@ class OutboxMessage {
       'error': error,
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope != null ? jsonEncode(e2eeEnvelope) : null,
+      'e2eeEnvelopes': e2eeEnvelopes != null ? jsonEncode(e2eeEnvelopes) : null,
       'e2eeDeviceId': e2eeDeviceId,
       'mediaUrl': mediaUrl,
       'mediaName': mediaName,
@@ -143,6 +148,11 @@ class OutboxMessage {
       isEncrypted: map['isEncrypted'] as bool? ?? false,
       e2eeEnvelope: map['e2eeEnvelope'] != null
           ? jsonDecode(map['e2eeEnvelope'] as String) as Map<String, dynamic>
+          : null,
+      e2eeEnvelopes: map['e2eeEnvelopes'] != null
+          ? (jsonDecode(map['e2eeEnvelopes'] as String) as List)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList()
           : null,
       e2eeDeviceId: map['e2eeDeviceId'] as String?,
       mediaUrl: map['mediaUrl'] as String?,
@@ -245,6 +255,7 @@ class MessageOutbox {
     String? groupId,
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? e2eeDeviceId,
     String? mediaUrl,
     String? mediaName,
@@ -271,6 +282,7 @@ class MessageOutbox {
       createdAt: DateTime.now(),
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
+      e2eeEnvelopes: e2eeEnvelopes,
       e2eeDeviceId: e2eeDeviceId,
       mediaUrl: mediaUrl,
       mediaName: mediaName,
@@ -382,13 +394,13 @@ class MessageOutbox {
     if (message.retryCount >= _maxRetries) {
       final failedMessage = message.copyWith(
         status: OutboxMessageStatus.failed,
-        error: 'Max retries exceeded',
+        error: 'max_retries_exceeded',
       );
       await _updateInDb(failedMessage);
       _eventsController.add(OutboxEvent(
         type: OutboxEventType.messageFailed,
         message: failedMessage,
-        error: 'Max retries exceeded',
+        error: 'max_retries_exceeded',
       ));
       return;
     }
@@ -416,6 +428,7 @@ class MessageOutbox {
           e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(
             message.e2eeEnvelope!,
           ),
+          e2eeEnvelopes: message.e2eeEnvelopes,
           e2eeDeviceId: message.e2eeDeviceId ?? '',
           mediaUrl: message.mediaUrl,
           mediaName: message.mediaName,
@@ -465,19 +478,19 @@ class MessageOutbox {
         final failedMessage = message.copyWith(
           status: OutboxMessageStatus.failed,
           retryCount: message.retryCount + 1,
-          error: e.toString(),
+          error: RetryableErrorClassifier.safeErrorCode(e),
         );
         await _updateInDb(failedMessage);
         _eventsController.add(OutboxEvent(
           type: OutboxEventType.messageFailed,
           message: failedMessage,
-          error: e.toString(),
+          error: failedMessage.error,
         ));
       } else {
         final pendingMessage = message.copyWith(
           status: OutboxMessageStatus.pending,
           retryCount: message.retryCount + 1,
-          error: e.toString(),
+          error: RetryableErrorClassifier.safeErrorCode(e),
         );
         await _updateInDb(pendingMessage);
 

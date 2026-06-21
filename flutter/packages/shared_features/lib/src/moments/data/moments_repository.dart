@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:im_core/core.dart';
-import 'package:im_shared_features/src/chat/chat.dart';
+import 'package:im_shared_features/chat.dart';
 import 'moments_api.dart';
 
 class MomentsRepository {

@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:math';
 import 'package:im_core/core.dart';
 import '../core/logging/app_logger.dart';
 
@@ -185,10 +186,19 @@ class WebWsClient implements WsClientPort {
   }
 
   void _scheduleReconnect() {
-    if (_manualDisconnect || _retryCount >= _maxRetries) return;
+    if (_manualDisconnect) return;
+    if (_retryCount >= _maxRetries) {
+      AppLogger.instance.warn(
+        'WS reached max reconnection attempts ($_maxRetries)',
+      );
+      _updateState(WsConnectionState.failed);
+      return;
+    }
     _updateState(WsConnectionState.reconnecting);
 
-    final delay = Duration(seconds: (1 << _retryCount).clamp(1, 30));
+    final baseSeconds = (1 << _retryCount).clamp(1, 30);
+    final jitterMs = Random().nextInt(1000);
+    final delay = Duration(seconds: baseSeconds, milliseconds: jitterMs);
     _retryCount++;
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
@@ -264,14 +274,15 @@ class WebWsClient implements WsClientPort {
   }
 
   void dispose() {
+    _manualDisconnect = true;
     _stopHeartbeat();
     _reconnectTimer?.cancel();
     _onOpenSub?.cancel();
     _onMessageSub?.cancel();
     _onCloseSub?.cancel();
     _onErrorSub?.cancel();
+    _socket?.close();
     _eventsController.close();
     _stateController.close();
-    _socket?.close();
   }
 }

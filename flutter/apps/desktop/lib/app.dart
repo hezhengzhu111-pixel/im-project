@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_l10n/im_l10n.dart';
+import 'package:im_ui/im_ui.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/di/platform_providers.dart';
@@ -41,6 +43,13 @@ class _AppState extends ConsumerState<App> {
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       locale: Locale(locale),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) {
+        return BreakpointScope(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

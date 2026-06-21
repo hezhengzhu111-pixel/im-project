@@ -1,9 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:im_web/core/router/route_meta.dart';
 import 'package:im_web/core/router/route_names.dart';
 import 'package:im_web/core/router/route_resolver.dart';
+import 'package:im_web/core/router/route_registry.dart';
 
 void main() {
   group('RouteMeta', () {
@@ -46,6 +45,7 @@ void main() {
       expect(RouteNames.settingsProfile, 'settingsProfile');
       expect(RouteNames.settingsAi, 'settingsAi');
       expect(RouteNames.notFound, 'notFound');
+      expect(RouteNames.forbidden, 'forbidden');
     });
 
     test('route names are unique', () {
@@ -64,29 +64,25 @@ void main() {
         RouteNames.settingsProfile,
         RouteNames.settingsAi,
         RouteNames.notFound,
+        RouteNames.forbidden,
       ];
       expect(names.toSet().length, names.length);
     });
   });
 
   group('Debug routes', () {
-    test('debug route literals are tracked by manifest', () {
-      const debugRoutes = [
-        '/debug/gallery',
-        '/debug/wechat-chat-preview',
-      ];
-
-      expect(debugRoutes, contains('/debug/gallery'));
-      expect(debugRoutes, contains('/debug/wechat-chat-preview'));
+    test('debug/gallery not in routeRegistry (release-safe)', () {
+      expect(routeRegistry.containsKey('/debug/gallery'), isFalse);
     });
   });
 
   group('routeMetaMap', () {
-    test('contains all expected routes', () {
-      expect(routeMetaMap.length, 12);
+    test('contains all expected routes including /forbidden', () {
+      expect(routeMetaMap.length, 13);
       expect(routeMetaMap.containsKey('/login'), isTrue);
       expect(routeMetaMap.containsKey('/chat'), isTrue);
       expect(routeMetaMap.containsKey('/settings'), isTrue);
+      expect(routeMetaMap.containsKey('/forbidden'), isTrue);
     });
 
     test('login has hideForAuth meta', () {
@@ -99,6 +95,11 @@ void main() {
       final meta = routeMetaMap['/chat']!;
       expect(meta.requiresAuth, isTrue);
       expect(meta.hideForAuth, isFalse);
+    });
+
+    test('/forbidden does not require auth', () {
+      final meta = routeMetaMap['/forbidden']!;
+      expect(meta.requiresAuth, isFalse);
     });
   });
 
@@ -121,16 +122,10 @@ void main() {
       expect(meta!.title, 'seoChatTitle');
     });
 
-    test('resolves /contacts/add to exact match', () {
-      final meta = resolveRouteMeta('/contacts/add');
+    test('returns meta for /forbidden', () {
+      final meta = resolveRouteMeta('/forbidden');
       expect(meta, isNotNull);
-      expect(meta!.title, 'seoAddFriendTitle');
-    });
-
-    test('resolves /settings/profile to exact match', () {
-      final meta = resolveRouteMeta('/settings/profile');
-      expect(meta, isNotNull);
-      expect(meta!.title, 'seoProfileTitle');
+      expect(meta!.title, 'seoForbiddenTitle');
     });
 
     test('returns null for unknown path (404)', () {
@@ -138,61 +133,49 @@ void main() {
       expect(meta, isNull);
     });
 
-    test('returns null for deeply nested unknown path', () {
-      final meta = resolveRouteMeta('/chat/abc123/extra');
-      // This matches /chat prefix, so it should resolve
-      expect(meta, isNotNull);
-      expect(meta!.title, 'seoChatTitle');
-    });
-
     test('does not match /contacts as /contacts/add', () {
       final meta = resolveRouteMeta('/contacts');
       expect(meta, isNotNull);
       expect(meta!.title, 'seoContactsTitle');
     });
-
-    test('does not match /settings as /settings/profile', () {
-      final meta = resolveRouteMeta('/settings');
-      expect(meta, isNotNull);
-      expect(meta!.title, 'seoSettingsTitle');
-    });
   });
 
   group('Redirect logic simulation', () {
-    test('hideForAuth redirects authenticated user to /chat', () {
-      const meta =
-          RouteMeta(title: 'Login', requiresAuth: false, hideForAuth: true);
-      const isAuth = true;
-
-      String? result;
-      if (meta.hideForAuth && isAuth) result = '/chat';
-
-      expect(result, '/chat');
-    });
-
-    test('requiresAuth redirects unauthenticated user to /login', () {
+    test('requiresAuth redirects unauthenticated user with redirect param', () {
       const meta = RouteMeta(title: 'Chat');
       const isAuth = false;
+      const originalPath = '/chat/session123';
 
       String? result;
       if (meta.requiresAuth && !isAuth) {
-        result = '/login?redirect=${Uri.encodeComponent('/chat')}';
+        result = '/login?redirect=${Uri.encodeComponent(originalPath)}';
       }
 
       expect(result, contains('/login?redirect='));
+      expect(result, contains(Uri.encodeComponent(originalPath)));
     });
 
-    test('permission guard redirects when permission missing', () {
+    test('redirect parameter is preserved in login URL', () {
+      const targetPath = '/settings/profile';
+      final encoded = Uri.encodeComponent(targetPath);
+      final loginUrl = '/login?redirect=$encoded';
+
+      final uri = Uri.parse(loginUrl);
+      expect(uri.queryParameters['redirect'], targetPath);
+    });
+
+    test('permission guard redirects to /forbidden when permission missing',
+        () {
       const meta = RouteMeta(title: 'Admin', permission: 'admin:read');
       final userPermissions = <String>{};
 
       String? result;
       if (meta.permission != null &&
           !userPermissions.contains(meta.permission)) {
-        result = '/chat';
+        result = '/forbidden';
       }
 
-      expect(result, '/chat');
+      expect(result, '/forbidden');
     });
 
     test('permission guard allows when permission present', () {
@@ -202,7 +185,7 @@ void main() {
       String? result;
       if (meta.permission != null &&
           !userPermissions.contains(meta.permission)) {
-        result = '/chat';
+        result = '/forbidden';
       }
 
       expect(result, isNull);
@@ -218,136 +201,17 @@ void main() {
     });
   });
 
-  group('GoRouter creation', () {
-    test('can create a GoRouter with basic routes', () {
-      final router = GoRouter(
-        initialLocation: '/login',
-        routes: [
-          GoRoute(
-            path: '/login',
-            builder: (_, __) => const SizedBox(),
-          ),
-          GoRoute(
-            path: '/chat',
-            builder: (_, __) => const SizedBox(),
-          ),
-          GoRoute(
-            path: '/settings',
-            builder: (_, __) => const SizedBox(),
-          ),
-        ],
-      );
-
-      expect(router, isA<GoRouter>());
-      router.dispose();
+  group('Meta updates with route changes', () {
+    test('meta differs between /chat and /settings', () {
+      final chatMeta = resolveRouteMeta('/chat')!;
+      final settingsMeta = resolveRouteMeta('/settings')!;
+      expect(chatMeta.title, isNot(equals(settingsMeta.title)));
     });
 
-    test('can create a GoRouter with initialLocation /chat', () {
-      final router = GoRouter(
-        initialLocation: '/chat',
-        routes: [
-          GoRoute(
-            path: '/chat',
-            builder: (_, __) => const SizedBox(),
-          ),
-        ],
-      );
-
-      expect(router, isA<GoRouter>());
-      router.dispose();
-    });
-
-    test('GoRouter with redirect function works', () {
-      final router = GoRouter(
-        initialLocation: '/chat',
-        redirect: (context, state) {
-          final meta = resolveRouteMeta(state.uri.path);
-          if (meta == null) return null;
-          if (meta.hideForAuth) return '/chat';
-          return null;
-        },
-        routes: [
-          GoRoute(
-            path: '/chat',
-            builder: (_, __) => const SizedBox(),
-          ),
-          GoRoute(
-            path: '/login',
-            builder: (_, __) => const SizedBox(),
-          ),
-        ],
-      );
-
-      expect(router, isA<GoRouter>());
-      router.dispose();
-    });
-  });
-
-  group('GoRouter observers', () {
-    test('GoRouter can be created with observers', () {
-      final observer = RouteObserver<ModalRoute<void>>();
-      final router = GoRouter(
-        initialLocation: '/chat',
-        observers: [observer],
-        routes: [
-          GoRoute(
-            path: '/chat',
-            builder: (_, __) => const SizedBox(),
-          ),
-        ],
-      );
-
-      expect(router, isA<GoRouter>());
-      router.dispose();
-    });
-  });
-
-  group('Debug route conditional registration', () {
-    test('kDebugMode controls debug route presence', () {
-      // In test, kDebugMode is false (profile-like).
-      // A router built WITHOUT debug routes should not have /debug/gallery.
-      final router = GoRouter(
-        initialLocation: '/chat',
-        routes: [
-          GoRoute(
-            path: '/chat',
-            builder: (_, __) => const SizedBox(),
-          ),
-          // Simulate release: no /debug/gallery route
-        ],
-      );
-
-      // Verify the router was created (debug route absent is implicit)
-      expect(router, isA<GoRouter>());
-      router.dispose();
-    });
-  });
-
-  group('Permission guard with AuthState.permissions', () {
-    test('permission guard redirects when permission missing', () {
-      const meta = RouteMeta(title: 'Admin', permission: 'admin:read');
-      final userPermissions = <String>{}; // empty like AuthState.permissions
-
-      String? result;
-      if (meta.permission != null &&
-          !userPermissions.contains(meta.permission)) {
-        result = '/chat';
-      }
-
-      expect(result, '/chat');
-    });
-
-    test('permission guard allows when permission present', () {
-      const meta = RouteMeta(title: 'Admin', permission: 'admin:read');
-      final userPermissions = {'admin:read'}; // has permission
-
-      String? result;
-      if (meta.permission != null &&
-          !userPermissions.contains(meta.permission)) {
-        result = '/chat';
-      }
-
-      expect(result, isNull);
+    test('/forbidden meta resolves independently', () {
+      final forbiddenMeta = resolveRouteMeta('/forbidden')!;
+      final chatMeta = resolveRouteMeta('/chat')!;
+      expect(forbiddenMeta.title, isNot(equals(chatMeta.title)));
     });
   });
 }

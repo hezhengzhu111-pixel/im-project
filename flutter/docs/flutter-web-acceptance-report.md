@@ -239,7 +239,7 @@ observers: [routeObserver],
 | 检查项 | 结果 | 说明 |
 |--------|------|------|
 | manifest.json | 通过 | 完整：name/icons/theme/display/scope |
-| Service Worker | 通过 | 4 层缓存策略，离线 fallback |
+| Service Worker | **注意** | `--pwa-strategy=none`；静态资源缓存由 Nginx gzip + 分层 Cache-Control 承担 |
 | PWA meta tags | 通过 | OG/Twitter/Apple/theme-color |
 | canonical URL | **注意** | 硬编码 localhost:3000 |
 | 离线/在线状态 | 通过 | 三态模型：online/limited/offline，定期健康检查 |

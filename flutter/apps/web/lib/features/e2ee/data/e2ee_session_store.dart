@@ -68,7 +68,10 @@ class E2eeSessionStore implements shared.E2eeSessionStore {
     final db = _db!;
     final txn = db.transaction(_storeName, idb.idbModeReadWrite);
     final store = txn.objectStore(_storeName);
-    await store.put(envelope, sessionId);
+    await store.put(
+      envelope,
+      _sessionStorageKey(sessionId, localDeviceId, remoteDeviceId),
+    );
     await txn.completed;
   }
 
@@ -85,7 +88,10 @@ class E2eeSessionStore implements shared.E2eeSessionStore {
     final db = _db!;
     final txn = db.transaction(_storeName, idb.idbModeReadOnly);
     final store = txn.objectStore(_storeName);
-    final result = await store.getObject(sessionId);
+    final result = await store.getObject(
+          _sessionStorageKey(sessionId, localDeviceId, remoteDeviceId),
+        ) ??
+        await store.getObject(sessionId);
     await txn.completed;
 
     if (result == null) return null;
@@ -133,7 +139,14 @@ class E2eeSessionStore implements shared.E2eeSessionStore {
     final db = _db!;
     final txn = db.transaction(_storeName, idb.idbModeReadOnly);
     final store = txn.objectStore(_storeName);
-    final result = await store.getObject(sessionId);
+    Object? result;
+    await store.openCursor(autoAdvance: true).forEach((cursor) {
+      final value = cursor.value;
+      if (value is! Map) return;
+      if (value['sessionId'] != sessionId) return;
+      if (value['localDeviceId'] != localDeviceId) return;
+      result ??= value;
+    });
     await txn.completed;
 
     if (result == null) return null;
@@ -175,6 +188,15 @@ class E2eeSessionStore implements shared.E2eeSessionStore {
     final txn = db.transaction(_storeName, idb.idbModeReadWrite);
     final store = txn.objectStore(_storeName);
     await store.delete(sessionId);
+    final keysToDelete = <Object>[];
+    await store.openCursor(autoAdvance: true).forEach((cursor) {
+      final value = cursor.value;
+      if (value is! Map || value['sessionId'] != sessionId) return;
+      keysToDelete.add(cursor.key);
+    });
+    for (final key in keysToDelete) {
+      await store.delete(key);
+    }
     await txn.completed;
   }
 
@@ -194,5 +216,13 @@ class E2eeSessionStore implements shared.E2eeSessionStore {
     final bytes = utf8.encode(input);
     final digest = sha256.convert(bytes);
     return digest.toString().substring(0, 16);
+  }
+
+  static String _sessionStorageKey(
+    String sessionId,
+    String localDeviceId,
+    String remoteDeviceId,
+  ) {
+    return '$sessionId::$localDeviceId::$remoteDeviceId';
   }
 }

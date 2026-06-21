@@ -63,6 +63,13 @@ void main() {
           ),
           analyticsProvider.overrideWithValue(NoopAnalyticsPort()),
           errorReporterProvider.overrideWithValue(NoopErrorReporterPort()),
+          rustBridgeInitProvider.overrideWithValue(
+            StateController<AsyncValue<void>>(const AsyncValue.data(null)),
+          ),
+          httpClientProvider.overrideWithValue(FakeHttpClientPort()),
+          wsClientProvider.overrideWithValue(FakeWsClientPort()),
+          storageProvider.overrideWithValue(FakeStoragePort()),
+          secureStorageProvider.overrideWithValue(FakeSecureStoragePort()),
         ];
 
     testWidgets('route change triggers WebMetaService.apply with correct meta',

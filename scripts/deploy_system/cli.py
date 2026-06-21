@@ -49,11 +49,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     # up command - 完整部署
     up = sub.add_parser("up", help="完整部署：准备环境、启动中间件、初始化数据库、启动服务")
+    up_mode = up.add_mutually_exclusive_group()
+    up_mode.add_argument("--all", action="store_true", help="重新部署中间件和应用服务")
+    up_mode.add_argument("--server", action="store_true", help="只部署应用服务，不处理中间件和数据库")
+    up.add_argument("--no-build", action="store_true", help="启动服务时不在服务器上重新构建应用镜像")
     up.add_argument("--dry-run", action="store_true", help="仅显示将要执行的操作，不实际执行")
 
     # build command - 构建
     build = sub.add_parser("build", help="增量构建所有组件")
     build.add_argument("--clean", action="store_true", help="构建前清理工作目录")
+    build.add_argument("--docker-only", action="store_true", help="只构建 Docker 镜像，跳过宿主机 Rust/Flutter 产物构建")
+    build.add_argument(
+        "--package-images",
+        action="store_true",
+        help="Docker 构建后将应用镜像保存到 build/dist/images，便于上传到服务器运行",
+    )
     build.add_argument("--dry-run", action="store_true", help="仅显示将要执行的操作，不实际执行")
 
     # down command - 停止服务
@@ -314,11 +324,11 @@ def main(argv: list[str] | None = None) -> None:
         options = BuildOptions(
             profile=profile.build_profile,
             clean=args.clean,
-            skip_rust=False,
-            skip_web=False,
+            skip_rust=args.docker_only,
+            skip_web=args.docker_only,
             skip_spring_ai=not profile.include_ai,
             docker=profile.docker_build,
-            package_images=False,
+            package_images=args.package_images,
             parallel=profile.parallel_build,
         )
 
@@ -326,6 +336,8 @@ def main(argv: list[str] | None = None) -> None:
             print("[DRY-RUN] Would build with options:")
             print(f"  Profile: {options.profile}")
             print(f"  Docker: {options.docker}")
+            print(f"  Docker only: {args.docker_only}")
+            print(f"  Package images: {options.package_images}")
             print(f"  Include AI: {profile.include_ai}")
             return
 
@@ -340,23 +352,27 @@ def main(argv: list[str] | None = None) -> None:
 
         if args.dry_run:
             print("[DRY-RUN] Would deploy with profile:", profile.profile)
+            print(f"  Mode: {'all' if args.all else 'server' if args.server else 'normal'}")
             print(f"  Services: {services}")
+            print(f"  Docker build: {profile.docker_build and not args.no_build}")
             print(f"  Include AI: {profile.include_ai}")
-            print(f"  Auto DB init: {profile.auto_init_db}")
-            print(f"  Auto migrate: {profile.auto_migrate}")
+            print(f"  Middleware: {'skip' if args.server else 'force recreate' if args.all else 'ensure ready'}")
+            print(f"  Auto DB init: {False if args.server else profile.auto_init_db}")
+            print(f"  Auto migrate: {False if args.server else profile.auto_migrate}")
             print(f"  Health timeout: {profile.health_timeout}s")
             return
 
         # Step 1: Start middleware
-        up_middleware(
-            config,
-            pull=profile.docker_pull,
-            force_recreate=False,
-            timeout_seconds=profile.health_timeout,
-        )
+        if not args.server:
+            up_middleware(
+                config,
+                pull=profile.docker_pull,
+                force_recreate=args.all,
+                timeout_seconds=profile.health_timeout,
+            )
 
         # Step 2: Initialize and migrate database
-        if profile.auto_init_db:
+        if not args.server and profile.auto_init_db:
             ensure_database(
                 config,
                 migrate=profile.auto_migrate,
@@ -367,14 +383,14 @@ def main(argv: list[str] | None = None) -> None:
         up_services(
             config,
             services,
-            build=profile.docker_build,
+            build=profile.docker_build and not args.no_build,
             pull=profile.docker_pull,
-            force_recreate=False,
-            no_deps=False,
+            force_recreate=args.all,
+            no_deps=args.server,
             include_ai=profile.include_ai,
-            skip_middleware=True,  # Already started
-            skip_db=True,  # Already initialized
-            skip_migrations=True,  # Already migrated
+            skip_middleware=True,
+            skip_db=True,
+            skip_migrations=True,
             no_wait=not profile.wait_for_ready,
             timeout_seconds=profile.health_timeout,
         )

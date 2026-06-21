@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart' as core_flutter;
+import 'package:im_shared_features/chat.dart' as chat;
+import 'package:im_shared_features/e2ee.dart' as e2ee;
 
 // ============================================================================
 // Fake implementations
@@ -39,8 +41,7 @@ class _FakeStoragePort implements StoragePort {
   @override
   Future<String?> getString(String key) async => _store[key];
   @override
-  Future<void> setString(String key, String value) async =>
-      _store[key] = value;
+  Future<void> setString(String key, String value) async => _store[key] = value;
   @override
   Future<void> remove(String key) async => _store.remove(key);
   @override
@@ -59,6 +60,7 @@ class _FakeHttpClientPort implements HttpClientPort {
     final empty = <dynamic>[];
     return ApiResponse<T>(code: 200, message: 'ok', data: empty as T);
   }
+
   @override
   Future<ApiResponse<T>> post<T>(
     String path, {
@@ -68,6 +70,7 @@ class _FakeHttpClientPort implements HttpClientPort {
     final empty = <dynamic>[];
     return ApiResponse<T>(code: 200, message: 'ok', data: empty as T);
   }
+
   @override
   Future<ApiResponse<T>> put<T>(
     String path, {
@@ -76,6 +79,7 @@ class _FakeHttpClientPort implements HttpClientPort {
   }) async {
     throw UnimplementedError('put');
   }
+
   @override
   Future<ApiResponse<T>> delete<T>(
     String path, {
@@ -108,6 +112,12 @@ class _FakeWsClientPort implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+
+  @override
+  void dispose() {
+    _eventsController.close();
+    _connectionStateController.close();
+  }
 }
 
 class _FakeE2eeBridge extends E2eeBridge {
@@ -140,7 +150,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> createInboundSession({
     required String sessionId,
@@ -149,7 +160,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     String? localOtkPairBase64,
     required String remoteIdentityKeyBase64,
     required String remoteHandshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> encryptMessage({
     required String stateBase64,
@@ -158,12 +170,14 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String recipientDeviceId,
     required String sessionId,
     String? handshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> decryptMessage({
     required String stateBase64,
     required Map<String, dynamic> envelope,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<String> exportSessionEnvelope({
     required String stateBase64,
@@ -172,7 +186,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
   @override
   Future<String> restoreSessionEnvelope({
     required String envelopeBase64,
@@ -181,7 +196,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
 }
 
 class _FakeAnalyticsPort implements AnalyticsPort {
@@ -198,6 +214,115 @@ class _FakeErrorReporterPort implements ErrorReporterPort {
   void reportError(SanitizedError error) {}
   @override
   void reportMessage(String message, {String? level}) {}
+}
+
+class _FakeE2eeKeyStore extends e2ee.E2eeKeyStore {
+  String? _keyMaterial;
+  String? _deviceId;
+  String? _publicBundle;
+  final _consumedOtks = <int>{};
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<void> saveKeyMaterial(String base64Bundle) async {
+    _keyMaterial = base64Bundle;
+  }
+
+  @override
+  Future<String?> getKeyMaterial() async => _keyMaterial;
+
+  @override
+  Future<void> markOneTimePreKeyConsumed(int oneTimePreKeyId) async {
+    _consumedOtks.add(oneTimePreKeyId);
+  }
+
+  @override
+  Future<void> saveDeviceId(String deviceId) async {
+    _deviceId = deviceId;
+  }
+
+  @override
+  Future<String?> getDeviceId() async => _deviceId;
+
+  @override
+  Future<void> savePublicBundle(String bundleJson) async {
+    _publicBundle = bundleJson;
+  }
+
+  @override
+  Future<String?> getPublicBundle() async => _publicBundle;
+
+  @override
+  Future<void> clearKeyMaterial() async {
+    _keyMaterial = null;
+  }
+
+  @override
+  Future<void> clearAll() async {
+    _keyMaterial = null;
+    _deviceId = null;
+    _publicBundle = null;
+    _consumedOtks.clear();
+  }
+
+  @override
+  void dispose() {}
+}
+
+class _FakeE2eeSessionStore extends e2ee.E2eeSessionStore {
+  final _sessions = <String, String>{};
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<void> saveSession({
+    required String sessionId,
+    required String stateBase64,
+    required String localDeviceId,
+    required String remoteUserId,
+    required String remoteDeviceId,
+    String direction = 'outbound',
+  }) async {
+    _sessions[sessionId] = stateBase64;
+  }
+
+  @override
+  Future<String?> getSession({
+    required String sessionId,
+    required String localDeviceId,
+    required String remoteUserId,
+    required String remoteDeviceId,
+  }) async {
+    return _sessions[sessionId];
+  }
+
+  @override
+  Future<e2ee.SessionLookupResult?> findSessionByLocalDevice({
+    required String sessionId,
+    required String localDeviceId,
+  }) async {
+    final state = _sessions[sessionId];
+    return state == null
+        ? null
+        : e2ee.SessionLookupResult(
+            stateBase64: state,
+            remoteDeviceId: 'remote-device',
+          );
+  }
+
+  @override
+  Future<void> deleteSession(String sessionId) async {
+    _sessions.remove(sessionId);
+  }
+
+  @override
+  Future<void> clearAll() async => _sessions.clear();
+
+  @override
+  void dispose() {}
 }
 
 // NoopPushPort from im_core is used directly — no custom fake needed.
@@ -231,8 +356,7 @@ void main() {
             .overrideWithValue(_FakeHttpClientPort()),
         core_flutter.wsClientProvider.overrideWithValue(_FakeWsClientPort()),
         core_flutter.e2eeAdapterProvider.overrideWithValue(_FakeE2eeBridge()),
-        core_flutter.analyticsProvider
-            .overrideWithValue(_FakeAnalyticsPort()),
+        core_flutter.analyticsProvider.overrideWithValue(_FakeAnalyticsPort()),
         core_flutter.errorReporterProvider
             .overrideWithValue(_FakeErrorReporterPort()),
         core_flutter.pushProvider.overrideWithValue(NoopPushPort()),
@@ -248,13 +372,50 @@ void main() {
         }
       }
 
-      final failures = results.entries
-          .where((e) => !e.value)
-          .map((e) => e.key)
-          .toList();
+      final failures =
+          results.entries.where((e) => !e.value).map((e) => e.key).toList();
 
       expect(failures, isEmpty,
           reason: 'Providers threw during read: $failures');
+    });
+
+    // -------------------------------------------------------------------
+    // Test: Desktop chatStateProvider override wires E2EE dependencies
+    // -------------------------------------------------------------------
+    test('chatStateProvider override has E2EE enabled', () {
+      final container = ProviderContainer(overrides: [
+        core_flutter.secureStorageProvider
+            .overrideWithValue(_FakeSecureStoragePort()),
+        core_flutter.storageProvider.overrideWithValue(_FakeStoragePort()),
+        core_flutter.httpClientProvider
+            .overrideWithValue(_FakeHttpClientPort()),
+        core_flutter.wsClientProvider.overrideWithValue(_FakeWsClientPort()),
+        core_flutter.e2eeAdapterProvider.overrideWithValue(_FakeE2eeBridge()),
+        e2ee.e2eeKeyStoreProvider.overrideWithValue(_FakeE2eeKeyStore()),
+        e2ee.e2eeSessionStoreProvider
+            .overrideWithValue(_FakeE2eeSessionStore()),
+        core_flutter.analyticsProvider.overrideWithValue(_FakeAnalyticsPort()),
+        core_flutter.errorReporterProvider
+            .overrideWithValue(_FakeErrorReporterPort()),
+        core_flutter.pushProvider.overrideWithValue(NoopPushPort()),
+        // Replicate the override from desktop/main.dart so the test proves
+        // the Desktop E2EE wiring is explicit and active.
+        chat.chatStateProvider.overrideWith((ref) {
+          return chat.ChatNotifier(
+            ref.watch(chat.messageApiProvider),
+            chat.MessagePipeline(),
+            ref.watch(core_flutter.wsClientProvider),
+            () => 'desktop-test-user',
+            e2eeManager: ref.watch(e2ee.e2eeManagerProvider),
+            e2eeMetaStore: ref.watch(e2ee.e2eeMetaStoreProvider),
+            sentMessageCache: ref.watch(chat.sentMessageCacheProvider),
+          );
+        }),
+      ]);
+
+      final notifier = container.read(chat.chatStateProvider.notifier);
+
+      expect(notifier.isE2eeEnabledForTesting, isTrue);
     });
 
     // -------------------------------------------------------------------

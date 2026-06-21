@@ -18,7 +18,7 @@
   <description>AI task worker for IM platform - summary, auto-reply, RAG</description>
 
   <properties>
-    <java.version>25</java.version>
+    <java.version>21</java.version>
     <spring-ai.version>1.1.5</spring-ai.version>
   </properties>
 

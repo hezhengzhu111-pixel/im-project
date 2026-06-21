@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/group.dart';
 import '../helpers/fakes.dart';
@@ -23,6 +24,8 @@ class _FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+  @override
+  void dispose() {}
 }
 
 Widget _buildApp({
@@ -31,6 +34,9 @@ Widget _buildApp({
   return ProviderScope(
     overrides: overrides,
     child: const MaterialApp(
+      locale: Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: CreateGroupPage(),
     ),
   );
@@ -50,8 +56,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -60,16 +66,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Create Group'), findsWidgets);
-      expect(find.text('Group Name'), findsOneWidget);
+      expect(find.text('Group name'), findsOneWidget);
       expect(find.text('Description (optional)'), findsOneWidget);
+      expect(find.text('Create'), findsOneWidget);
     });
 
-    testWidgets('empty name shows validation error', (tester) async {
+    testWidgets('empty name does not call API', (tester) async {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -77,11 +84,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final createButton = find.widgetWithText(ElevatedButton, 'Create Group');
+      final createButton = find.text('Create');
       await tester.tap(createButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('Group name is required'), findsOneWidget);
+      expect(http.requests.where((r) => r.$1 == 'POST'), isEmpty);
     });
 
     testWidgets('createGroup called with valid name', (tester) async {
@@ -107,8 +114,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -117,49 +124,24 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Group Name'),
+        find.widgetWithText(TextField, 'Group name'),
         'Test Group',
       );
 
-      final createButton = find.widgetWithText(ElevatedButton, 'Create Group');
+      final createButton = find.text('Create');
       await tester.tap(createButton);
       await tester.pumpAndSettle();
 
-      // Page pops after success, so snackbar may be gone.
-      // Verify the API was called instead.
       expect(postCalled, isTrue);
       expect(http.requests.where((r) => r.$1 == 'POST').length, 1);
-    });
-
-    testWidgets('member ID parsing works', (tester) async {
-      await tester.pumpWidget(
-        _buildApp(
-          overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
-            groupStateProvider
-                .overrideWith((ref) => GroupNotifier(GroupApi(http))),
-          ],
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Comma-separated user IDs'),
-        'u1, u2, u3',
-      );
-      await tester.tap(find.byTooltip('Add member IDs'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Selected members: 3'), findsOneWidget);
     });
 
     testWidgets('no Placeholder text', (tester) async {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],

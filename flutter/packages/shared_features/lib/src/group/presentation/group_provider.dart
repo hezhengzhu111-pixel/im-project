@@ -3,10 +3,13 @@ import 'package:im_core/core.dart';
 import '../data/group_api.dart';
 
 class GroupState {
+  static const _sentinel = Object();
+
   const GroupState({
     this.groups = const [],
     this.searchResults = const [],
     this.membersByGroupId = const {},
+    this.selectedGroupId,
     this.isLoading = false,
     this.error,
   });
@@ -14,22 +17,33 @@ class GroupState {
   final List<Group> groups;
   final List<Group> searchResults;
   final Map<String, List<GroupMember>> membersByGroupId;
+  final String? selectedGroupId;
   final bool isLoading;
   final String? error;
+
+  Group? get selectedGroup {
+    final id = selectedGroupId;
+    if (id == null) return null;
+    return groups.where((g) => g.id == id).firstOrNull;
+  }
 
   GroupState copyWith({
     List<Group>? groups,
     List<Group>? searchResults,
     Map<String, List<GroupMember>>? membersByGroupId,
+    Object? selectedGroupId = _sentinel,
     bool? isLoading,
-    String? error,
+    Object? error = _sentinel,
   }) {
     return GroupState(
       groups: groups ?? this.groups,
       searchResults: searchResults ?? this.searchResults,
       membersByGroupId: membersByGroupId ?? this.membersByGroupId,
+      selectedGroupId: identical(selectedGroupId, _sentinel)
+          ? this.selectedGroupId
+          : selectedGroupId as String?,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: identical(error, _sentinel) ? this.error : error as String?,
     );
   }
 }
@@ -109,9 +123,20 @@ class GroupNotifier extends StateNotifier<GroupState> {
     }
   }
 
-  Future<bool> joinGroup(String groupId) async {
+  void selectGroup(String groupId) {
+    state = state.copyWith(selectedGroupId: groupId);
+  }
+
+  void clearSelectedGroup() {
+    state = state.copyWith(selectedGroupId: null);
+  }
+
+  Future<bool> joinGroup(String groupId, {String? userId}) async {
     try {
       await _groupApi.joinGroup(groupId);
+      if (userId != null && userId.isNotEmpty) {
+        await loadGroups(userId);
+      }
       state = state.copyWith(error: null);
       return true;
     } catch (e) {

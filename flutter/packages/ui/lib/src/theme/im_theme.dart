@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'glass_theme.dart';
 import 'im_tokens.dart';
 
 /// Builds Material 3 [ThemeData] from [ImTokens].
@@ -265,6 +266,7 @@ class ImTheme {
           color: colors.textSecondary,
         ),
       ),
+      extensions: [isLight ? GlassTheme.light : GlassTheme.dark],
     );
   }
 }

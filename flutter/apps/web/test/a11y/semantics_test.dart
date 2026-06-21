@@ -10,7 +10,6 @@ import 'package:im_web/core/network/network_status_provider.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/chat/presentation/chat_providers.dart';
 import 'package:im_web/features/chat/presentation/widgets/message_input.dart';
-import 'package:im_web/features/e2ee/presentation/e2ee_glass_widgets.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 import '../helpers/fakes.dart';
@@ -234,21 +233,6 @@ void main() {
       // Verify it has the correct semantic label
       final voiceButton = find.bySemanticsLabel('Voice input');
       expect(voiceButton, findsOneWidget);
-    });
-
-    testWidgets('E2EE badge has semantic label', (tester) async {
-      await tester.pumpWidget(
-        buildTestWidget(
-          child: const MessageBubbleE2eeBadge(isMe: false),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.bySemanticsLabel('End-to-end encrypted message'),
-        findsOneWidget,
-      );
-      expect(find.byTooltip('End-to-end encrypted message'), findsOneWidget);
     });
   });
 }

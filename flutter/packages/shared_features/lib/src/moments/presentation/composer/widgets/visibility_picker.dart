@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_l10n/im_l10n.dart';
 
 enum MomentVisibility {
   public(0, Icons.public),
@@ -26,7 +27,8 @@ class VisibilityPicker extends StatelessWidget {
       segments: MomentVisibility.values.map((v) {
         return ButtonSegment<MomentVisibility>(
           value: v,
-          label: Text(visibilityLabel(v), style: const TextStyle(fontSize: 12)),
+          label: Text(visibilityLabel(context, v),
+              style: const TextStyle(fontSize: 12)),
           icon: Icon(v.icon, size: 16),
         );
       }).toList(),
@@ -42,10 +44,11 @@ class VisibilityPicker extends StatelessWidget {
   }
 }
 
-String visibilityLabel(MomentVisibility level) {
+String visibilityLabel(BuildContext context, MomentVisibility level) {
+  final l10n = AppLocalizations.of(context)!;
   return switch (level) {
-    MomentVisibility.public => '公开',
-    MomentVisibility.friends => '好友可见',
-    MomentVisibility.self => '仅自己',
+    MomentVisibility.public => l10n.momentsVisibilityPublic,
+    MomentVisibility.friends => l10n.momentsVisibilityFriends,
+    MomentVisibility.self => l10n.momentsVisibilitySelf,
   };
 }

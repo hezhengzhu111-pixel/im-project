@@ -87,7 +87,8 @@ void main() {
     });
 
     // ---- Encrypted outbox missing envelope ----
-    test('encrypted outbox missing envelope fails without plaintext fallback', () async {
+    test('encrypted outbox missing envelope fails without plaintext fallback',
+        () async {
       final msg = _makeEncryptedMessage(envelope: null); // explicit null
       await outbox.enqueue(msg);
 
@@ -124,8 +125,10 @@ void main() {
 
     // ---- Duplicate clientMessageId ----
     test('duplicate clientMessageId does not enqueue twice', () async {
-      final msg1 = _makeEncryptedWithEnvelope(id: 'id-1', clientMessageId: 'dup-1');
-      final msg2 = _makeEncryptedWithEnvelope(id: 'id-2', clientMessageId: 'dup-1');
+      final msg1 =
+          _makeEncryptedWithEnvelope(id: 'id-1', clientMessageId: 'dup-1');
+      final msg2 =
+          _makeEncryptedWithEnvelope(id: 'id-2', clientMessageId: 'dup-1');
 
       await outbox.enqueue(msg1);
       await outbox.enqueue(msg2); // Should be dedup'd.
@@ -141,7 +144,8 @@ void main() {
 
     // ---- pendingCount / failedCount ----
     test('pendingCount and failedCount update correctly', () async {
-      final msg1 = _makeEncryptedWithEnvelope(id: 'id-1', clientMessageId: 'c1');
+      final msg1 =
+          _makeEncryptedWithEnvelope(id: 'id-1', clientMessageId: 'c1');
       final msg2 = _makeEncryptedMessage(
           id: 'id-2', clientMessageId: 'c2', envelope: null);
 
@@ -202,7 +206,8 @@ void main() {
       final msg = _makeEncryptedWithEnvelope(clientMessageId: 'persist-3');
       await outbox.enqueue(msg);
 
-      await outbox.retryAllFailed((_) async => null); // sender returns null → fail
+      await outbox
+          .retryAllFailed((_) async => null); // sender returns null → fail
 
       expect(await outbox.getFailedCount(), 1);
 

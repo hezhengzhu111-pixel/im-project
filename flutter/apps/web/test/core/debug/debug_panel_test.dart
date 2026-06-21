@@ -161,6 +161,9 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
   Future<void> checkAuth() async {}
 
   @override
+  void invalidateSession() {}
+
+  @override
   Future<bool> ensureFreshSession() async => true;
 
   @override

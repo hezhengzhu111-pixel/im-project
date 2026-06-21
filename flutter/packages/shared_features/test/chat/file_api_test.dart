@@ -35,8 +35,7 @@ void main() {
         );
       };
 
-      final result =
-          await api.uploadImage(Uint8List(0), 'img.png');
+      final result = await api.uploadImage(Uint8List(0), 'img.png');
       expect(result.url, 'https://cdn.example.com/img.png');
       expect(result.name, 'img.png');
       expect(result.size, 1024);
@@ -52,7 +51,8 @@ void main() {
         return ApiResponse<T>(
           code: 200,
           message: 'ok',
-          data: fromJson({'url': '/f/doc.pdf', 'name': 'doc.pdf', 'size': 2048}),
+          data:
+              fromJson({'url': '/f/doc.pdf', 'name': 'doc.pdf', 'size': 2048}),
         );
       };
 
@@ -70,7 +70,8 @@ void main() {
         return ApiResponse<T>(
           code: 200,
           message: 'ok',
-          data: fromJson({'url': '/f/audio.mp3', 'name': 'audio.mp3', 'size': 512}),
+          data: fromJson(
+              {'url': '/f/audio.mp3', 'name': 'audio.mp3', 'size': 512}),
         );
       };
 
@@ -88,7 +89,8 @@ void main() {
         return ApiResponse<T>(
           code: 200,
           message: 'ok',
-          data: fromJson({'url': '/f/video.mp4', 'name': 'video.mp4', 'size': 4096}),
+          data: fromJson(
+              {'url': '/f/video.mp4', 'name': 'video.mp4', 'size': 4096}),
         );
       };
 

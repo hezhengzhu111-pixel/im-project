@@ -9,7 +9,8 @@ class FakeFilePickerPort implements FilePickerPort {
   Future<Result<PickedFile>> Function()? fileResult;
 
   @override
-  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+  Future<Result<PickedFile>> pickImage(
+      {ImageSource source = ImageSource.gallery}) async {
     if (imageResult != null) return imageResult!();
     return const Failure(OperationCancelled());
   }
@@ -110,6 +111,27 @@ class FakeHttpClientPort implements HttpClientPort {
   }
 }
 
+/// Fake StoragePort that keeps values in memory.
+class FakeStoragePort implements StoragePort {
+  final _values = <String, String>{};
+
+  @override
+  Future<String?> getString(String key) async => _values[key];
+
+  @override
+  Future<void> setString(String key, String value) async =>
+      _values[key] = value;
+
+  @override
+  Future<void> remove(String key) async => _values.remove(key);
+
+  @override
+  Future<void> clear() async => _values.clear();
+
+  @override
+  Future<bool> containsKey(String key) async => _values.containsKey(key);
+}
+
 /// Fake AnalyticsPort that discards all events.
 class FakeAnalyticsPort implements AnalyticsPort {
   @override
@@ -140,6 +162,8 @@ class FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+  @override
+  void dispose() {}
 }
 
 /// Fake AuthRepository for tests.
@@ -148,8 +172,7 @@ class FakeAuthRepository implements AuthRepository {
   final User? user;
 
   User get _user =>
-      user ??
-      const User(id: 'u1', username: 'testuser', nickname: 'Test');
+      user ?? const User(id: 'u1', username: 'testuser', nickname: 'Test');
 
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {

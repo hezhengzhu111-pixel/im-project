@@ -35,6 +35,7 @@ from typing import Optional, Dict, List
 import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "e2e"))
 from e2ee_rust_bridge import (
     RustE2eeEngine,
     parse_rust_handshake,

@@ -3,22 +3,29 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_ui/im_ui.dart';
-import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_shared_features/navigation.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
-import 'package:im_web/features/contacts/presentation/add_friend_page.dart';
 import 'package:im_web/features/contacts/presentation/contacts_page.dart';
-import 'package:im_web/features/group/presentation/create_group_page.dart';
 import 'package:im_web/features/group/presentation/group_list_page.dart';
 import 'package:im_web/features/moments/presentation/moments_main_page.dart';
-import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart';
-import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
-import 'package:im_web/features/settings/presentation/profile_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
+
+// Low-frequency pages loaded as separate JS chunks to reduce initial bundle.
+import 'package:im_web/features/contacts/presentation/add_friend_page.dart'
+    deferred as add_friend_page;
+import 'package:im_web/features/group/presentation/create_group_page.dart'
+    deferred as create_group_page;
+import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart'
+    deferred as moments_notifications_page;
+import 'package:im_web/features/settings/presentation/ai_settings_page.dart'
+    deferred as ai_settings_page;
+import 'package:im_web/features/settings/presentation/profile_page.dart'
+    deferred as profile_page;
+
+import 'deferred_route_page.dart';
 import 'package:im_web/features/debug/presentation/component_gallery_page.dart';
-import 'package:im_web/features/debug/presentation/wechat_chat_preview_page.dart';
 import 'package:im_web/features/auth/domain/auth_status.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
@@ -27,6 +34,7 @@ import 'route_resolver.dart';
 import 'route_observer.dart';
 export 'route_resolver.dart' show routeMetaMap, resolveRouteMeta;
 import 'not_found_page.dart';
+import 'forbidden_page.dart';
 
 final _routerRefreshProvider = Provider<_RouterRefreshListenable>((ref) {
   final refresh = _RouterRefreshListenable();
@@ -65,10 +73,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
       }
 
-      // permission: user lacks required permission -> /chat
+      // permission: user lacks required permission -> /forbidden
       if (meta.permission != null) {
         if (!authState.permissions.contains(meta.permission!)) {
-          return '/chat';
+          return '/forbidden';
         }
       }
 
@@ -90,50 +98,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/debug/gallery',
           builder: (context, state) => const ComponentGalleryPage(),
         ),
-      if (kDebugMode)
-        GoRoute(
-          path: '/debug/wechat-chat-preview',
-          builder: (context, state) => const WechatChatPreviewPage(),
-        ),
       ShellRoute(
         builder: (context, state, child) {
-          final l10n = AppLocalizations.of(context);
-          final selectedIndex = _indexFromPath(state.uri.path);
-
           return _ProtectedShellGate(
             location: state.uri.toString(),
-            child: ResponsiveScaffold(
-              destinations: [
-                ResponsiveNavDestination(
-                  icon: Icons.chat_outlined,
-                  selectedIcon: Icons.chat,
-                  label: l10n?.navChat ?? '聊天',
-                ),
-                ResponsiveNavDestination(
-                  icon: Icons.people_outlined,
-                  selectedIcon: Icons.people,
-                  label: l10n?.navContacts ?? '联系人',
-                ),
-                ResponsiveNavDestination(
-                  icon: Icons.group_outlined,
-                  selectedIcon: Icons.group,
-                  label: l10n?.navGroups ?? '群组',
-                ),
-                ResponsiveNavDestination(
-                  icon: Icons.camera_alt_outlined,
-                  selectedIcon: Icons.camera_alt,
-                  label: l10n?.navMoments ?? '朋友圈',
-                ),
-                ResponsiveNavDestination(
-                  icon: Icons.settings_outlined,
-                  selectedIcon: Icons.settings,
-                  label: l10n?.navSettings ?? '设置',
-                ),
-              ],
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) => _onNavigate(context, index),
-              child: child,
-            ),
+            child: NavigationShell(child: child),
           );
         },
         routes: [
@@ -164,7 +133,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/contacts/add',
             name: RouteNames.contactsAdd,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: const AddFriendPage(),
+              child: DeferredRoutePage(
+                loadLibrary: add_friend_page.loadLibrary,
+                builder: () => add_friend_page.AddFriendPage(),
+              ),
             ),
           ),
           GoRoute(
@@ -176,7 +148,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/groups/create',
             name: RouteNames.groupsCreate,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: const CreateGroupPage(),
+              child: DeferredRoutePage(
+                loadLibrary: create_group_page.loadLibrary,
+                builder: () => create_group_page.CreateGroupPage(),
+              ),
             ),
           ),
           GoRoute(
@@ -191,7 +166,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/moments/notifications',
             name: RouteNames.momentsNotifications,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: const MomentsNotificationsPage(),
+              child: DeferredRoutePage(
+                loadLibrary: moments_notifications_page.loadLibrary,
+                builder: () =>
+                    moments_notifications_page.MomentsNotificationsPage(),
+              ),
             ),
           ),
           GoRoute(
@@ -203,17 +182,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings/profile',
             name: RouteNames.settingsProfile,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: const ProfilePage(),
+              child: DeferredRoutePage(
+                loadLibrary: profile_page.loadLibrary,
+                builder: () => profile_page.ProfilePage(),
+              ),
             ),
           ),
           GoRoute(
             path: '/settings/ai',
             name: RouteNames.settingsAi,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: const AiSettingsPage(),
+              child: DeferredRoutePage(
+                loadLibrary: ai_settings_page.loadLibrary,
+                builder: () => ai_settings_page.AiSettingsPage(),
+              ),
             ),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/forbidden',
+        name: RouteNames.forbidden,
+        builder: (_, __) => const ForbiddenPage(),
       ),
       // 404 catch-all -- must be last
       GoRoute(
@@ -260,30 +250,4 @@ class _ProtectedShellGate extends ConsumerWidget {
 
 class _RouterRefreshListenable extends ChangeNotifier {
   void refresh() => notifyListeners();
-}
-
-int _indexFromPath(String path) {
-  if (path.startsWith('/chat')) return 0;
-  if (path.startsWith('/contacts')) return 1;
-  if (path.startsWith('/groups')) return 2;
-  if (path.startsWith('/moments')) return 3;
-  if (path.startsWith('/settings')) return 4;
-  return 0;
-}
-
-void _onNavigate(BuildContext context, int index) {
-  switch (index) {
-    case 0:
-      context.go('/chat');
-    case 1:
-      context.go('/contacts');
-    case 2:
-      context.go('/groups');
-    case 3:
-      context.go('/moments');
-    case 4:
-      context.go('/settings');
-    default:
-      assert(false, 'Unexpected navigation index: $index');
-  }
 }

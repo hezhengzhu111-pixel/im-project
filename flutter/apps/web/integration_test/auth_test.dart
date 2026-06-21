@@ -83,6 +83,9 @@ class _MockWsClient implements WsClientPort {
 
   @override
   bool get isConnected => false;
+
+  @override
+  void dispose() {}
 }
 
 /// Mock 实现：HttpClientPort

@@ -105,6 +105,9 @@ Future<void> main() async {
           e2eeMetaStore: ref.watch(e2eeMetaStoreProvider),
           sentMessageCache: ref.watch(mobileSentMessageCacheProvider),
           outbox: ref.watch(mobileMessageOutboxProvider),
+          onE2eeStatusChanged: (sessionId) {
+            ref.invalidate(e2eeSessionStatusProvider(sessionId));
+          },
         );
       }),
       // Third-party service adapters

@@ -136,8 +136,7 @@ void main() {
 
       expect(
         () => api.registerDevice(
-            const PushDeviceRegisterRequest(
-                deviceToken: 't', platform: 'web')),
+            const PushDeviceRegisterRequest(deviceToken: 't', platform: 'web')),
         throwsA(isA<Exception>()),
       );
     });

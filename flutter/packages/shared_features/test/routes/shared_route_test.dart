@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/chat.dart';
 import 'package:im_shared_features/contacts.dart';
@@ -11,16 +13,32 @@ import '../helpers/fakes.dart';
 
 void main() {
   group('Shared pages are real widgets, not placeholders', () {
+    Widget _buildApp(
+        {required List<Override> overrides, required Widget home}) {
+      return ProviderScope(
+        overrides: [
+          storageProvider.overrideWithValue(FakeStoragePort()),
+          ...overrides,
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: home),
+        ),
+      );
+    }
+
     testWidgets('AddFriendPage renders', (tester) async {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       await tester.pumpWidget(
-        ProviderScope(
+        _buildApp(
           overrides: [
             contactsStateProvider.overrideWith(
                 (ref) => ContactsNotifier(ContactsApi(http), FakeWsClient())),
             currentUserIdProvider.overrideWithValue('u1'),
           ],
-          child: const MaterialApp(home: AddFriendPage()),
+          home: const AddFriendPage(),
         ),
       );
       await tester.pumpAndSettle();
@@ -32,34 +50,33 @@ void main() {
     testWidgets('CreateGroupPage renders', (tester) async {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       await tester.pumpWidget(
-        ProviderScope(
+        _buildApp(
           overrides: [
             contactsStateProvider.overrideWith(
                 (ref) => ContactsNotifier(ContactsApi(http), FakeWsClient())),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
-          child: const MaterialApp(home: CreateGroupPage()),
+          home: const CreateGroupPage(),
         ),
       );
       await tester.pumpAndSettle();
 
       expect(find.byType(CreateGroupPage), findsOneWidget);
-      expect(find.text('Group Name'), findsOneWidget);
+      expect(find.text('Group name'), findsOneWidget);
     });
 
     testWidgets('MomentsNotificationsPage renders', (tester) async {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       final api = MomentsApi(http);
-      final repo =
-          MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
+      final repo = MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
       await tester.pumpWidget(
-        ProviderScope(
+        _buildApp(
           overrides: [
             notificationsProvider
                 .overrideWith((ref) => MomentsNotificationsNotifier(repo)),
           ],
-          child: const MaterialApp(home: MomentsNotificationsPage()),
+          home: const MomentsNotificationsPage(),
         ),
       );
       await tester.pumpAndSettle();
@@ -71,40 +88,40 @@ void main() {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       final authNotifier = createTestAuthNotifier(httpClient: http);
       await tester.pumpWidget(
-        ProviderScope(
+        _buildApp(
           overrides: [
             settingsApiProvider.overrideWithValue(SettingsApi(http)),
             profileStateProvider
                 .overrideWith((ref) => ProfileNotifier(SettingsApi(http))),
             authStateProvider.overrideWith((ref) => authNotifier),
           ],
-          child: const MaterialApp(home: ProfileSettingsPage()),
+          home: const ProfileSettingsPage(),
         ),
       );
       await tester.pumpAndSettle();
 
       expect(find.byType(ProfileSettingsPage), findsOneWidget);
-      expect(find.text('Profile Settings'), findsOneWidget);
+      expect(find.text('Basic info'), findsOneWidget);
     });
 
     testWidgets('AiSettingsPage renders', (tester) async {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       final api = AiApi(http);
       await tester.pumpWidget(
-        ProviderScope(
+        _buildApp(
           overrides: [
             aiSettingsStateProvider
                 .overrideWith((ref) => AiSettingsNotifier(api)),
             settingsApiProvider.overrideWithValue(SettingsApi(http)),
             aiApiProvider.overrideWithValue(api),
           ],
-          child: const MaterialApp(home: AiSettingsPage()),
+          home: const AiSettingsPage(),
         ),
       );
       await tester.pumpAndSettle();
 
       expect(find.byType(AiSettingsPage), findsOneWidget);
-      expect(find.text('AI Settings'), findsWidgets);
+      expect(find.text('AI Assistant'), findsWidgets);
     });
   });
 }

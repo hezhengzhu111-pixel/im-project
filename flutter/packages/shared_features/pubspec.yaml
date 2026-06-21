@@ -11,12 +11,18 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^2.5.1
   go_router: ^13.0.0
+  meta: ^1.11.0
   im_core:
     path: ../core
   im_core_flutter:
     path: ../core_flutter
   im_ui:
     path: ../ui
+  im_l10n:
+    path: ../l10n
+  file_picker: ^11.0.2
+  url_launcher: ^6.2.0
+  video_player: ^2.8.0
 
 dev_dependencies:
   flutter_test:

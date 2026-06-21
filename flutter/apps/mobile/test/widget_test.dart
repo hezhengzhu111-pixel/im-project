@@ -71,6 +71,9 @@ class _MockWsClientPort implements WsClientPort {
 
   @override
   void send(Map<String, dynamic> message) {}
+
+  @override
+  void dispose() {}
 }
 
 // ---------------------------------------------------------------------------
