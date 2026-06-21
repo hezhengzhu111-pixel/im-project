@@ -25,6 +25,11 @@ WORKDIR /workspace/flutter/apps/web
 # Melos-generated overrides may contain Windows-style paths that break Linux builds.
 RUN find /workspace/flutter -name pubspec_overrides.yaml -delete
 RUN flutter pub get
+# im_core contains generated .freezed.dart / .g.dart files ignored by git.
+# Generate them inside the build container so the web app compiles.
+WORKDIR /workspace/flutter/packages/core
+RUN flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs
+WORKDIR /workspace/flutter/apps/web
 ARG FRONTEND_BUILD_MODE=sit
 RUN test -f web/pkg/im_rust_bridge.js && test -f web/pkg/im_rust_bridge_bg.wasm
 RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then \
