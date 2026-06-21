@@ -10,6 +10,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   FLUTTER_VERSION: "3.29"
+  MYSQL_ROOT_PASSWORD: im-main-full-ci
+  REDIS_PASSWORD: im-main-full-ci
 
 jobs:
   main-full:
