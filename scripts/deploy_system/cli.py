@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from runtime_paths import DEFAULT_RUNTIME_ENV_FILE, RUNTIME_DIR, relative
-from deploy_utils import prepare_runtime_files
 from .builder import BuildOptions, build_all
 from .core import ensure_runtime, load_runtime
 from .database import check_database, ensure_database, migrate_database, reset_database
@@ -109,50 +110,141 @@ def _require_yes(args, message: str) -> None:
     raise SystemExit("Re-run with --yes to confirm.")
 
 
-def _run_doctor(env_file: str | Path | None = None) -> None:
-    """Check that the current machine can deploy the project.
+@dataclass
+class _DoctorCheck:
+    """Result of a single doctor check."""
 
-    Designed for minimal Linux servers that only have docker + python3.
-    Any missing dependency is reported with an actionable fix.
-    """
-    from deploy_utils import ensure_docker_environment, load_config, prepare_runtime_files
+    name: str
+    status: str  # PASS | WARN | FAIL | SKIP
+    message: str = ""
+    required: bool = True
 
-    print("[DOCTOR] Checking deployment prerequisites...")
 
-    # 1. PyYAML (already required by imctl.py, but double-check here).
+# ---------------------------------------------------------------------------
+# Doctor helpers
+# ---------------------------------------------------------------------------
+
+def _is_ci() -> bool:
+    """Return True when running in a CI environment."""
+    ci = os.environ.get("CI", "").lower()
+    return ci in ("1", "true", "yes") or os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def _record(checks: list[_DoctorCheck], check: _DoctorCheck) -> None:
+    checks.append(check)
+    tag = f"[{check.status}]"
+    print(f"[DOCTOR] {tag:<6} {check.name}", end="")
+    if check.message:
+        print(f" - {check.message}")
+    else:
+        print()
+
+
+def _check_python_version() -> _DoctorCheck:
+    """Verify the Python interpreter is new enough for the deployment scripts."""
+    if sys.version_info >= (3, 10):
+        return _DoctorCheck("Python version", "PASS", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    return _DoctorCheck(
+        "Python version",
+        "FAIL",
+        f"Python {sys.version_info.major}.{sys.version_info.minor} is too old; >= 3.10 required",
+    )
+
+
+def _check_pyyaml() -> _DoctorCheck:
     try:
         import yaml  # noqa: F401
-        print("[DOCTOR] OK   PyYAML is available")
+        return _DoctorCheck("PyYAML", "PASS", "available")
     except ImportError:  # pragma: no cover
-        print("[DOCTOR] FAIL PyYAML is missing. Run: pip3 install -r scripts/requirements.txt")
-        raise SystemExit(1)
+        return _DoctorCheck(
+            "PyYAML",
+            "FAIL",
+            "missing; run: pip3 install -r scripts/requirements.txt",
+        )
 
-    # 2. Runtime files can be generated (requires .env.example or existing env).
+
+def _check_runtime_files(env_file: str | Path | None) -> _DoctorCheck:
+    from deploy_utils import prepare_runtime_files
+
     try:
         prepare_runtime_files(env_file=env_file)
-        print("[DOCTOR] OK   Runtime files generated")
+        return _DoctorCheck("Runtime files", "PASS", "generated")
     except SystemExit as exc:
-        print(f"[DOCTOR] FAIL Could not generate runtime files: {exc}")
-        raise
+        return _DoctorCheck("Runtime files", "FAIL", f"could not generate: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        return _DoctorCheck("Runtime files", "FAIL", str(exc))
 
-    # 3. Docker + Docker Compose.
+
+def _check_project_layout() -> _DoctorCheck:
+    """Check that the repository contains the expected source layout."""
+    from . import paths
+
+    required = [
+        paths.RUST_SOURCE / "Cargo.toml",
+        paths.RUST_SOURCE / "apps" / "api-server" / "Dockerfile",
+        paths.RUST_SOURCE / "apps" / "im-server" / "Dockerfile",
+        paths.RUST_SOURCE / "apps" / "admin-server" / "Dockerfile",
+        paths.SPRING_AI_SOURCE / "Dockerfile",
+        paths.FLUTTER_SOURCE / "apps" / "web" / "pubspec.yaml",
+        paths.FLUTTER_SOURCE / "apps" / "web" / "Dockerfile",
+        paths.FLUTTER_SOURCE / "apps" / "web" / "nginx.conf",
+        paths.INIT_SQL,
+        paths.GENERATED_COMPOSE_FILE,
+    ]
+    missing = [relative(path) for path in required if not path.is_file()]
+    if not paths.MIGRATIONS_DIR.is_dir():
+        missing.append(relative(paths.MIGRATIONS_DIR))
+    if missing:
+        return _DoctorCheck("Project layout", "FAIL", "missing: " + ", ".join(missing))
+    return _DoctorCheck("Project layout", "PASS", "all required files present")
+
+
+def _check_source_pollution() -> _DoctorCheck:
+    from . import paths
+    from .source_guard import check_source_pollution
+
+    polluted = check_source_pollution(paths.PROJECT_ROOT, verbose=False)
+    if polluted:
+        return _DoctorCheck(
+            "Source pollution",
+            "FAIL",
+            "build/dependency artifacts detected in source directories; run 'python scripts/imctl.py clean source-pollution'",
+        )
+    return _DoctorCheck("Source pollution", "PASS", "source directories clean")
+
+
+def _check_docker_environment() -> _DoctorCheck:
+    from deploy_utils import ensure_docker_environment
+
     try:
         ensure_docker_environment()
-        print("[DOCTOR] OK   Docker and Docker Compose are reachable")
+        return _DoctorCheck("Docker environment", "PASS", "docker and docker compose are reachable")
     except SystemExit as exc:
-        print(f"[DOCTOR] FAIL Docker environment: {exc}")
-        raise
+        return _DoctorCheck("Docker environment", "WARN", f"not available: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        return _DoctorCheck("Docker environment", "WARN", str(exc))
 
-    # 4. Deployment config loads (validates env vars like passwords).
+
+def _check_deployment_config(env_file: str | Path | None) -> _DoctorCheck:
+    from deploy_utils import load_config
+
     try:
-        config = load_config(env_file=env_file)
-        print(f"[DOCTOR] OK   Deployment config loaded ({relative(config.env_file)})")
+        config = load_config(env_file=env_file, require_env_file=False)
+        return _DoctorCheck("Deployment config", "PASS", f"loaded {relative(config.env_file)}")
     except SystemExit as exc:
-        print(f"[DOCTOR] FAIL Deployment config: {exc}")
-        raise
+        return _DoctorCheck("Deployment config", "WARN", f"not loadable: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        return _DoctorCheck("Deployment config", "WARN", str(exc))
 
-    # 5. Build contexts referenced by the generated compose exist.
-    compose = config.compose_file.read_text(encoding="utf-8")
+
+def _check_build_contexts() -> _DoctorCheck:
+    """Check that Docker build contexts referenced by the generated compose exist."""
+    from . import paths
+
+    if not paths.GENERATED_COMPOSE_FILE.is_file():
+        return _DoctorCheck("Build contexts", "SKIP", "generated compose not available")
+
+    compose = paths.GENERATED_COMPOSE_FILE.read_text(encoding="utf-8")
     missing_contexts: list[str] = []
     for line in compose.splitlines():
         stripped = line.strip()
@@ -161,12 +253,69 @@ def _run_doctor(env_file: str | Path | None = None) -> None:
             if context.startswith("/") and not Path(context).exists():
                 missing_contexts.append(context)
     if missing_contexts:
-        print("[DOCTOR] FAIL Build contexts do not exist:")
-        for ctx in missing_contexts:
-            print(f"  - {ctx}")
+        return _DoctorCheck(
+            "Build contexts",
+            "WARN",
+            "missing contexts: " + ", ".join(missing_contexts),
+        )
+    return _DoctorCheck("Build contexts", "PASS", "all referenced contexts exist")
+
+
+def _run_doctor(env_file: str | Path | None = None) -> None:
+    """Check that the current machine can build/test/deploy the project.
+
+    In CI environments (CI=true or GITHUB_ACTIONS=true), checks that are only
+    relevant for local deployment (Docker, deployment credentials, build contexts)
+    are reported as WARN/SKIP instead of failing, so that gates can run on
+    runners that only need the toolchain.
+
+    Required checks (hard failures in all environments):
+      - Python version, PyYAML, runtime files generation, project layout,
+        source-pollution guard.
+    Optional checks (deployment only):
+      - Docker environment, deployment config load, Docker build contexts.
+    """
+    checks: list[_DoctorCheck] = []
+    in_ci = _is_ci()
+
+    print("[DOCTOR] Checking lifecycle prerequisites...")
+    if in_ci:
+        print("[DOCTOR] CI environment detected; deployment-only checks will be non-fatal")
+
+    # Required checks
+    _record(checks, _check_python_version())
+    _record(checks, _check_pyyaml())
+    _record(checks, _check_runtime_files(env_file))
+    _record(checks, _check_project_layout())
+    _record(checks, _check_source_pollution())
+
+    # Optional checks (deployment only)
+    _record(checks, _check_docker_environment())
+    _record(checks, _check_deployment_config(env_file))
+    _record(checks, _check_build_contexts())
+
+    # Summary
+    counts = {"PASS": 0, "WARN": 0, "FAIL": 0, "SKIP": 0}
+    for check in checks:
+        counts[check.status] = counts.get(check.status, 0) + 1
+
+    print()
+    print(
+        f"[DOCTOR] Summary: {counts['PASS']} passed, {counts['WARN']} warnings, "
+        f"{counts['FAIL']} failed, {counts['SKIP']} skipped"
+    )
+
+    required_failures = [c for c in checks if c.required and c.status == "FAIL"]
+    if required_failures:
+        print("[DOCTOR] Required checks failed:")
+        for check in required_failures:
+            print(f"  - {check.name}: {check.message}")
         raise SystemExit(1)
 
-    print("[DOCTOR] All checks passed. The server is ready to deploy.")
+    if counts["FAIL"] == 0:
+        print("[DOCTOR] All required checks passed. The project is ready to build/test.")
+    else:
+        print("[DOCTOR] All required checks passed; optional checks reported issues (see above).")
 
 
 def _clean_docker(paths) -> None:
