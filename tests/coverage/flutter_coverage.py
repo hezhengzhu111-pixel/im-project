@@ -12,20 +12,23 @@ from pathlib import Path
 _TESTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_TESTS_DIR / "common"))
 sys.path.insert(0, str(_TESTS_DIR))
+sys.path.insert(0, str(_TESTS_DIR.parents[1] / "scripts"))
 from coverage.check_lcov_thresholds import parse_lcov  # noqa: E402
 from coverage.merge_lcov import merge  # noqa: E402
 from gate_common import ROOT, run_step, skip_step, write_gate_reports  # noqa: E402
+from workspace import ensure_work_workspace, setup_isolated_env  # noqa: E402
+from deploy_system.flutter_codegen import generate_flutter_core_code  # noqa: E402
 
 
-FLUTTER_ROOT = ROOT / "flutter"
+FLUTTER_WORK_ROOT = ROOT / "build" / "work" / "flutter"
 OUT_DIR = ROOT / "build" / "reports" / "coverage" / "flutter"
 TARGETS = {
-    "core": FLUTTER_ROOT / "packages" / "core",
-    "core_flutter": FLUTTER_ROOT / "packages" / "core_flutter",
-    "shared_features": FLUTTER_ROOT / "packages" / "shared_features",
-    "web": FLUTTER_ROOT / "apps" / "web",
-    "mobile": FLUTTER_ROOT / "apps" / "mobile",
-    "desktop": FLUTTER_ROOT / "apps" / "desktop",
+    "core": FLUTTER_WORK_ROOT / "packages" / "core",
+    "core_flutter": FLUTTER_WORK_ROOT / "packages" / "core_flutter",
+    "shared_features": FLUTTER_WORK_ROOT / "packages" / "shared_features",
+    "web": FLUTTER_WORK_ROOT / "apps" / "web",
+    "mobile": FLUTTER_WORK_ROOT / "apps" / "mobile",
+    "desktop": FLUTTER_WORK_ROOT / "apps" / "desktop",
 }
 THRESHOLDS = {
     "core": 85.0,
@@ -121,6 +124,10 @@ def main() -> int:
     if shutil.which("flutter") is None and not args.skip_run:
         print("flutter is required for Flutter coverage")
         return 1
+    ensure_work_workspace()
+    env = setup_isolated_env()
+    # All coverage targets depend on im_core generated Freezed/JSON code.
+    generate_flutter_core_code(FLUTTER_WORK_ROOT / "packages" / "core", env=env)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     baseline_path = OUT_DIR / "baseline.json"
     existing_baseline = read_existing_baseline(baseline_path)
@@ -132,7 +139,7 @@ def main() -> int:
             results.append(skip_step(f"Flutter coverage {target}", f"missing target path {target_dir}", critical=True))
             continue
         if not args.skip_run:
-            results.append(run_step(f"Flutter coverage {target}", ["flutter", "test", "--coverage"], cwd=target_dir, timeout=1200))
+            results.append(run_step(f"Flutter coverage {target}", ["flutter", "test", "--coverage"], cwd=target_dir, timeout=1200, env=env))
             if results[-1].status == "FAIL":
                 continue
         lcov_path = target_dir / "coverage" / "lcov.info"
