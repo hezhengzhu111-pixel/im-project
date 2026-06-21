@@ -161,7 +161,7 @@ void main() {
       await tester.tap(find.text('Test Group'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Leave group'));
+      await tester.tap(find.byKey(const Key('group_leave_button')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(TextButton, 'Leave group'));

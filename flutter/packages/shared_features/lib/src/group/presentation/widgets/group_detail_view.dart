@@ -154,6 +154,7 @@ class _GroupDetailViewState extends ConsumerState<GroupDetailView> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
+                  key: const Key('group_leave_button'),
                   icon: const Icon(Icons.logout),
                   label: _isLeaving
                       ? SizedBox(
