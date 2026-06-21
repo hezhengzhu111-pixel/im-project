@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_l10n/im_l10n.dart';
+import '../../../core/string_extensions.dart';
 import '../../../e2ee/presentation/e2ee_glass_widgets.dart';
 import 'file_bubble.dart';
 import 'image_bubble.dart';
@@ -314,14 +315,13 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safeFallback = fallback.isEmpty ? '?' : fallback;
     return CircleAvatar(
       radius: 18,
       backgroundColor: ImTokens.wechatAvatarBg,
       backgroundImage: avatar != null ? NetworkImage(avatar!) : null,
       child: avatar == null
           ? Text(
-              safeFallback.substring(0, 1).toUpperCase(),
+              fallback.safeFirstCharUpper(),
               style: const TextStyle(fontSize: 13, color: Color(0xFF4A4A4A)),
             )
           : null,

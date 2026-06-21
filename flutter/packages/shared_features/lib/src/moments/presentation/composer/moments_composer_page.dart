@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 import '../moments_providers.dart';
 import 'composer_provider.dart';
 import 'widgets/media_upload_grid.dart';
@@ -61,8 +62,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
                 backgroundImage:
                     user?.avatar != null ? NetworkImage(user!.avatar!) : null,
                 child: user?.avatar == null
-                    ? Text(
-                        (user?.nickname ?? 'U').substring(0, 1).toUpperCase())
+                    ? Text((user?.nickname ?? 'U').safeFirstCharUpper())
                     : null,
               ),
               const SizedBox(width: 12),

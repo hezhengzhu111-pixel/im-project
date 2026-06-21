@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 
 class SettingsNavPanel extends ConsumerWidget {
   final int selectedIndex;
@@ -42,8 +43,7 @@ class SettingsNavPanel extends ConsumerWidget {
                 child: user?.avatar == null
                     ? Text(
                         (user?.nickname ?? user?.username ?? '?')
-                            .substring(0, 1)
-                            .toUpperCase(),
+                            .safeFirstCharUpper(),
                         style: const TextStyle(fontSize: 16),
                       )
                     : null,

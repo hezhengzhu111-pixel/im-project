@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 import '../../utils/time_formatter.dart';
 import '../moments_interactions_provider.dart';
 
@@ -213,8 +214,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             child: comment.userAvatar == null
                 ? Text(
                     (comment.userNickname ?? comment.userName ?? '?')
-                        .substring(0, 1)
-                        .toUpperCase(),
+                        .safeFirstCharUpper(),
                     style: const TextStyle(fontSize: 12))
                 : null,
           ),
@@ -287,6 +287,10 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   }
 
   String _formatTime(String time) {
-    return formatRelativeTime(context, DateTime.parse(time));
+    final parsed = DateTime.tryParse(time);
+    if (parsed != null) {
+      return formatRelativeTime(context, parsed);
+    }
+    return time;
   }
 }

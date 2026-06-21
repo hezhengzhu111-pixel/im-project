@@ -5,6 +5,7 @@ import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import '../moments_providers.dart';
 import '../utils/time_formatter.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 
 class MomentsNotificationsPage extends ConsumerStatefulWidget {
   const MomentsNotificationsPage({super.key});
@@ -128,8 +129,7 @@ class _MomentsNotificationsPageState
                     (notification.userNickname ??
                             notification.userName ??
                             loc.momentsUserFallback)
-                        .substring(0, 1)
-                        .toUpperCase(),
+                        .safeFirstCharUpper(fallback: '?'),
                     style: const TextStyle(fontSize: 14))
                 : null,
           ),
@@ -184,6 +184,14 @@ class _MomentsNotificationsPageState
   }
 
   String _formatTime(String time) {
-    return formatRelativeTime(context, DateTime.parse(time));
+    try {
+      final parsed = DateTime.tryParse(time);
+      if (parsed != null) {
+        return formatRelativeTime(context, parsed);
+      }
+    } catch (_) {
+      // Fall through to raw fallback.
+    }
+    return time;
   }
 }

@@ -426,4 +426,88 @@ void main() {
       expect(capturedSessionIds, contains(sessionId));
     });
   });
+
+  group('ChatNotifier markRead', () {
+    late FakeHttpClientPort http;
+    late MessageApi messageApi;
+    late _FakeWsClient ws;
+    late ChatNotifier notifier;
+
+    setUp(() {
+      http = FakeHttpClientPort();
+      messageApi = MessageApi(http);
+      ws = _FakeWsClient();
+      notifier = ChatNotifier(
+        messageApi,
+        MessagePipeline(),
+        ws,
+        () => 'u1',
+      );
+    });
+
+    tearDown(() {
+      notifier.dispose();
+      ws.dispose();
+    });
+
+    test('markRead uses conversationId from session', () async {
+      const sessionKey = 'u1_u2';
+      const conversationId = 'conv-123';
+      notifier.state = notifier.state.copyWith(
+        sessions: [
+          const ChatSession(
+            id: sessionKey,
+            type: 'private',
+            targetId: 'u2',
+            targetName: 'User Two',
+            unreadCount: 3,
+            conversationId: conversationId,
+          ),
+        ],
+      );
+
+      String? capturedPath;
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        capturedPath = path;
+        return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
+      };
+
+      await notifier.markRead(sessionKey);
+
+      expect(capturedPath, MessageEndpoints.markRead(conversationId));
+    });
+
+    test('markRead skips when conversationId is missing', () async {
+      const sessionKey = 'u1_u2';
+      notifier.state = notifier.state.copyWith(
+        sessions: const [
+          ChatSession(
+            id: sessionKey,
+            type: 'private',
+            targetId: 'u2',
+            targetName: 'User Two',
+            unreadCount: 3,
+          ),
+        ],
+      );
+
+      var called = false;
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        called = true;
+        return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
+      };
+
+      await notifier.markRead(sessionKey);
+
+      expect(called, isFalse);
+    });
+  });
 }

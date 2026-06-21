@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 
 class MomentsSidebar extends ConsumerWidget {
   const MomentsSidebar({required this.onComposeTap, super.key});
@@ -57,8 +58,7 @@ class MomentsSidebar extends ConsumerWidget {
               child: user?.avatar == null
                   ? Text(
                       (user?.nickname ?? user?.username ?? 'U')
-                          .substring(0, 1)
-                          .toUpperCase(),
+                          .safeFirstCharUpper(fallback: 'U'),
                       style: const TextStyle(fontSize: 20),
                     )
                   : null,

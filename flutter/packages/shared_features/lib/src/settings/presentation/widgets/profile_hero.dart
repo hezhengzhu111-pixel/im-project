@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 
 class ProfileHero extends StatelessWidget {
   const ProfileHero({
@@ -39,8 +40,7 @@ class ProfileHero extends StatelessWidget {
                   child: user?.avatar == null
                       ? Text(
                           (user?.nickname ?? user?.username ?? '?')
-                              .substring(0, 1)
-                              .toUpperCase(),
+                              .safeFirstCharUpper(),
                           style: const TextStyle(fontSize: 24),
                         )
                       : null,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/time_formatter.dart';
 import 'comment_section.dart';
@@ -80,8 +81,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                             (widget.post.userNickname ??
                                     widget.post.post.userName ??
                                     '?')
-                                .substring(0, 1)
-                                .toUpperCase(),
+                                .safeFirstCharUpper(),
                             style: const TextStyle(fontSize: 14),
                           )
                         : null,
@@ -370,7 +370,11 @@ class _PostCardState extends ConsumerState<PostCard> {
   }
 
   String _formatTime(String time) {
-    return formatRelativeTime(context, DateTime.parse(time));
+    final parsed = DateTime.tryParse(time);
+    if (parsed != null) {
+      return formatRelativeTime(context, parsed);
+    }
+    return time;
   }
 
   bool get _isOwnPost {

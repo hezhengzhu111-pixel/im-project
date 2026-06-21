@@ -6,6 +6,7 @@ import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/chat.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 import 'contacts_provider.dart';
 import 'contacts_providers.dart';
 import 'widgets/contacts_toolbar.dart';
@@ -596,8 +597,7 @@ class _FriendAvatar extends StatelessWidget {
           child: friend.avatar == null
               ? Text(
                   (friend.nickname ?? friend.username)
-                      .substring(0, 1)
-                      .toUpperCase(),
+                      .safeFirstCharUpper(),
                   style: TextStyle(fontSize: radius * 0.72),
                 )
               : null,
@@ -1061,8 +1061,7 @@ class _RequestTile extends StatelessWidget {
               child: request.applicantAvatar == null
                   ? Text(
                       (request.applicantNickname ?? request.applicantUsername)
-                          .substring(0, 1)
-                          .toUpperCase(),
+                          .safeFirstCharUpper(),
                     )
                   : null,
             ),

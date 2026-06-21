@@ -6,6 +6,7 @@ import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
 import 'contacts_provider.dart';
 import 'contacts_providers.dart';
 
@@ -390,8 +391,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                     child: user.avatar == null
                         ? Text(
                             (user.nickname ?? user.username)
-                                .substring(0, 1)
-                                .toUpperCase(),
+                                .safeFirstCharUpper(),
                             style: const TextStyle(fontSize: ImTokens.textBase),
                           )
                         : null,

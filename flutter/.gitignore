@@ -61,3 +61,6 @@ coverage/
 
 # Pubspec lock (for packages)
 **/packages/*/pubspec.lock
+
+# Melos generated dependency overrides
+**/pubspec_overrides.yaml

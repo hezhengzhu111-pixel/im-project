@@ -1267,7 +1267,18 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
   }
 
-  Future<void> markRead(String conversationId) async {
+  Future<void> markRead(String sessionId) async {
+    final normalizedKey = _normalizeIncomingSessionKey(sessionId);
+    final session = state.sessions
+        .where((s) => s.id == normalizedKey)
+        .firstOrNull;
+    final conversationId = session?.conversationId;
+    if (conversationId == null || conversationId.isEmpty) {
+      AppLogger.instance.warn(
+        'markRead skipped: no conversationId for session $normalizedKey',
+      );
+      return;
+    }
     try {
       await _messageApi.markRead(conversationId);
     } catch (e, st) {

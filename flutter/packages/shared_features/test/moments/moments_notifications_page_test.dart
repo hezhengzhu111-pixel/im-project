@@ -215,6 +215,47 @@ void main() {
       expect(notifier.state.unreadCount, 0);
     });
 
+    testWidgets('renders notifications with invalid createdAt without crashing',
+        (tester) async {
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({
+            'items': [
+              {
+                'id': 'n-invalid-time',
+                'type': 'like',
+                'createdAt': 'not-a-date',
+                'isRead': false,
+                'userName': 'BadTimeUser',
+                'userNickname': 'BadTime',
+              },
+            ],
+          }),
+        );
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('BadTime liked your moment'), findsOneWidget);
+      // The raw invalid timestamp should be shown as a fallback.
+      expect(find.text('not-a-date'), findsOneWidget);
+    });
+
     testWidgets('no Placeholder text', (tester) async {
       http.onGet = <T>(
         String path, {

@@ -33,12 +33,19 @@ void main() async {
   final savedThemeMode = settingsPersistence.getThemeMode();
 
   final rustGateway = FrbRustGateway();
-  await rustGateway.init();
 
-  // Initialize logger
+  // Initialize logger first so Rust bridge failures are visible.
   AppLogger.init(
     errorReporter: NoopErrorReporterAdapter(),
   );
+
+  // Initialize Rust bridge. A failure here is logged but does not crash the
+  // app, so the user can still reach the UI and see an error message.
+  try {
+    await rustGateway.init();
+  } catch (e, st) {
+    AppLogger.instance.error('Rust bridge initialization failed', e, st, 'rust');
+  }
 
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
