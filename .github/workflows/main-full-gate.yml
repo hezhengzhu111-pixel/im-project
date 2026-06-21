@@ -36,7 +36,11 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
+          # Disable flutter-action's built-in caching: it computes a cache key
+          # with hashFiles('**/pubspec.lock'), which fails when generated lock
+          # files live under build/work and avoids relying on committed lock
+          # files that this project treats as source pollution.
+          cache: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
