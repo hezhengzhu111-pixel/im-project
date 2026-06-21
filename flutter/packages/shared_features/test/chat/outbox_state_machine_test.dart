@@ -39,14 +39,16 @@ class _FakeMessageApi extends MessageApi {
     int? page,
     int? size,
     String? deviceId,
-  }) async => [];
+  }) async =>
+      [];
 
   @override
   Future<List<Message>> getGroupHistory(
     String groupId, {
     int? page,
     int? size,
-  }) async => [];
+  }) async =>
+      [];
 
   @override
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
@@ -61,10 +63,12 @@ class _FakeMessageApi extends MessageApi {
     sendGroupMessageCallCount++;
     lastGroupRequest = request;
     if (groupException != null) throw groupException!;
-    return groupResponse ?? _dummyMessage(request.clientMessageId, isGroupChat: true);
+    return groupResponse ??
+        _dummyMessage(request.clientMessageId, isGroupChat: true);
   }
 
-  Message _dummyMessage(String? clientMessageId, {bool isGroupChat = false}) => Message(
+  Message _dummyMessage(String? clientMessageId, {bool isGroupChat = false}) =>
+      Message(
         id: 'server-id',
         senderId: 'u1',
         receiverId: isGroupChat ? '' : 'u2',
@@ -218,7 +222,8 @@ void main() {
       expect(cid1, isNot(equals(cid2)));
     });
 
-    test('identical content does not dedupe across different messages', () async {
+    test('identical content does not dedupe across different messages',
+        () async {
       await notifier.sendMessage('u2', 'duplicate');
       await notifier.sendMessage('u2', 'duplicate');
 
@@ -227,7 +232,8 @@ void main() {
 
     test('retryable private send failure enqueues outbox and marks PENDING',
         () async {
-      messageApi.privateException = Exception('SocketException: connection refused');
+      messageApi.privateException =
+          Exception('SocketException: connection refused');
       await notifier.sendMessage('u2', 'retry me');
 
       expect(outbox.enqueued, hasLength(1));
@@ -255,7 +261,8 @@ void main() {
       expect(local.status, 'PENDING');
     });
 
-    test('non-retryable private send failure does not enqueue outbox', () async {
+    test('non-retryable private send failure does not enqueue outbox',
+        () async {
       messageApi.privateException = Exception('HTTP 403 forbidden');
       await notifier.sendMessage('u2', 'no retry');
 
@@ -297,7 +304,8 @@ void main() {
       expect(outbox.retryAllFailedCallCount, 1);
     });
 
-    test('retryPendingOutboxIfNeeded skips when both counts are zero', () async {
+    test('retryPendingOutboxIfNeeded skips when both counts are zero',
+        () async {
       outbox.pendingCountValue = 0;
       outbox.failedCountValue = 0;
 

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_shared_features/chat.dart' show SentMessageCachePort, OutboxPort;
+import 'package:im_shared_features/chat.dart'
+    show SentMessageCachePort, OutboxPort;
 import '../data/mobile_sent_message_cache.dart';
 import '../data/mobile_message_outbox.dart';
 

@@ -428,22 +428,14 @@ class _SensitiveLogInterceptor extends Interceptor {
     final statusCode = err.response?.statusCode;
     final typeLabel = err.type.name;
     final message = switch (err.type) {
-      DioExceptionType.connectionTimeout =>
-        'Connection timed out',
-      DioExceptionType.receiveTimeout =>
-        'Receive timed out',
-      DioExceptionType.sendTimeout =>
-        'Send timed out',
-      DioExceptionType.connectionError =>
-        'Network connection error',
-      DioExceptionType.cancel =>
-        'Request cancelled',
-      DioExceptionType.badResponse =>
-        'Bad response (${statusCode ?? 'N/A'})',
-      DioExceptionType.badCertificate =>
-        'Bad certificate',
-      DioExceptionType.unknown =>
-        'Unknown error',
+      DioExceptionType.connectionTimeout => 'Connection timed out',
+      DioExceptionType.receiveTimeout => 'Receive timed out',
+      DioExceptionType.sendTimeout => 'Send timed out',
+      DioExceptionType.connectionError => 'Network connection error',
+      DioExceptionType.cancel => 'Request cancelled',
+      DioExceptionType.badResponse => 'Bad response (${statusCode ?? 'N/A'})',
+      DioExceptionType.badCertificate => 'Bad certificate',
+      DioExceptionType.unknown => 'Unknown error',
     };
     AppLogger.instance.warn(
       '[http] ERROR ${statusCode ?? 'N/A'} ${err.requestOptions.method} $path'

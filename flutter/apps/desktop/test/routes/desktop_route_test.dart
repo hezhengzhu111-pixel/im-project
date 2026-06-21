@@ -88,7 +88,8 @@ class _FakeStoragePort implements StoragePort {
   @override
   Future<String?> getString(String key) async => _values[key];
   @override
-  Future<void> setString(String key, String value) async => _values[key] = value;
+  Future<void> setString(String key, String value) async =>
+      _values[key] = value;
   @override
   Future<void> remove(String key) async => _values.remove(key);
   @override
@@ -144,12 +145,11 @@ Widget _buildRouteApp(Widget page) {
       contactsStateProvider.overrideWith(
           (ref) => ContactsNotifier(ContactsApi(http), _FakeWsClient())),
       groupStateProvider.overrideWith((ref) => GroupNotifier(GroupApi(http))),
-      notificationsProvider.overrideWith(
-          (ref) => MomentsNotificationsNotifier(momentsRepo)),
+      notificationsProvider
+          .overrideWith((ref) => MomentsNotificationsNotifier(momentsRepo)),
       profileStateProvider.overrideWith((ref) => ProfileNotifier(settingsApi)),
       settingsApiProvider.overrideWithValue(settingsApi),
-      aiSettingsStateProvider
-          .overrideWith((ref) => AiSettingsNotifier(aiApi)),
+      aiSettingsStateProvider.overrideWith((ref) => AiSettingsNotifier(aiApi)),
       aiApiProvider.overrideWithValue(aiApi),
     ],
     child: MaterialApp(

@@ -1060,10 +1060,7 @@ mod tests {
             .decode(wire_b64)
             .expect("decode wire");
 
-        assert_eq!(wire.get(0), Some(&0));
-        assert_eq!(wire.get(1), Some(&0));
-        assert_eq!(wire.get(2), Some(&0));
-        assert_eq!(wire.get(3), Some(&52));
+        assert!(wire.starts_with(&[0, 0, 0, 52]));
         assert!(wire.len() > 4 + 52);
 
         let decrypt_config = serde_json::json!({

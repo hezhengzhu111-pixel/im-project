@@ -1,1 +1,2 @@
-export 'package:im_shared_features/group.dart' show groupApiProvider, groupStateProvider;
+export 'package:im_shared_features/group.dart'
+    show groupApiProvider, groupStateProvider;

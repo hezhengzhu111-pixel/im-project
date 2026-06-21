@@ -11,41 +11,17 @@ List<Message> mergeMessagesChronologically(
   List<Message> existing,
   List<Message> incoming,
 ) {
-  // Build a map from canonical keys to Message objects.
-  // Canonical key is the server id if available, otherwise clientMessageId.
-  final merged = <String, Message>{};
-  // Track which keys point to the same logical message for deduplication.
-  final keyToCanonical = <String, String>{};
+  final buckets = <_MessageBucket>[];
 
-  // Add existing messages first.
   for (final msg in existing) {
-    _addMessageToMap(merged, keyToCanonical, msg);
+    _mergeIntoBuckets(buckets, msg);
   }
 
-  // Merge incoming messages.
   for (final msg in incoming) {
-    final canonicalKey = _findCanonicalKey(merged, keyToCanonical, msg);
-    if (canonicalKey != null && merged.containsKey(canonicalKey)) {
-      // Merge with existing message.
-      final existingMsg = merged[canonicalKey]!;
-      final mergedMsg = _mergeTwoMessages(existingMsg, msg);
-      // Remove old keys and add merged message with fresh keys.
-      _removeAllKeysForMessage(merged, keyToCanonical, existingMsg);
-      _addMessageToMap(merged, keyToCanonical, mergedMsg);
-    } else {
-      // New message, add it.
-      _addMessageToMap(merged, keyToCanonical, msg);
-    }
+    _mergeIntoBuckets(buckets, msg);
   }
 
-  // Convert to list, deduplicate by object identity, and sort by sendTime.
-  final seen = <Message>{};
-  final result = <Message>[];
-  for (final msg in merged.values) {
-    if (seen.add(msg)) {
-      result.add(msg);
-    }
-  }
+  final result = buckets.map((bucket) => bucket.message).toList();
   result.sort((a, b) {
     final timeA = DateTime.tryParse(a.sendTime) ?? DateTime(2000);
     final timeB = DateTime.tryParse(b.sendTime) ?? DateTime(2000);
@@ -55,88 +31,63 @@ List<Message> mergeMessagesChronologically(
   return result;
 }
 
-/// Finds the canonical key for a message, or null if it's a new message.
-String? _findCanonicalKey(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  // Check by server id first.
-  if (msg.id.isNotEmpty && !msg.id.startsWith('local_')) {
-    if (keyToCanonical.containsKey(msg.id)) {
-      return keyToCanonical[msg.id];
-    }
-    if (merged.containsKey(msg.id)) {
-      return msg.id;
+void _mergeIntoBuckets(List<_MessageBucket> buckets, Message message) {
+  final messageKeys = _messageKeys(message);
+  final matchedIndexes = <int>[];
+  for (var i = 0; i < buckets.length; i++) {
+    if (buckets[i].hasAny(messageKeys)) {
+      matchedIndexes.add(i);
     }
   }
 
-  // Check by clientMessageId.
-  if (msg.clientMessageId != null && msg.clientMessageId!.isNotEmpty) {
-    if (keyToCanonical.containsKey(msg.clientMessageId!)) {
-      return keyToCanonical[msg.clientMessageId!];
-    }
-    if (merged.containsKey(msg.clientMessageId!)) {
-      return msg.clientMessageId;
-    }
+  if (matchedIndexes.isEmpty) {
+    buckets.add(_MessageBucket(message));
+    return;
   }
 
-  return null;
+  final firstIndex = matchedIndexes.first;
+  var merged = buckets[firstIndex].message;
+  for (final index in matchedIndexes.skip(1)) {
+    merged = _mergeTwoMessages(merged, buckets[index].message);
+  }
+  merged = _mergeTwoMessages(merged, message);
+
+  for (final index in matchedIndexes.skip(1).toList().reversed) {
+    buckets.removeAt(index);
+  }
+  buckets[firstIndex] = _MessageBucket(merged);
 }
 
-/// Adds a message to the map with all its keys.
-void _addMessageToMap(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  // Use server id as canonical key if available, otherwise clientMessageId.
-  final canonicalKey = (msg.id.isNotEmpty && !msg.id.startsWith('local_'))
-      ? msg.id
-      : (msg.clientMessageId ?? msg.id);
+class _MessageBucket {
+  _MessageBucket(this.message) : keys = _messageKeys(message);
 
-  // Add under server id.
-  if (msg.id.isNotEmpty) {
-    merged[msg.id] = msg;
-    keyToCanonical[msg.id] = canonicalKey;
-  }
+  final Message message;
+  final Set<String> keys;
 
-  // Add under clientMessageId.
-  if (msg.clientMessageId != null && msg.clientMessageId!.isNotEmpty) {
-    merged[msg.clientMessageId!] = msg;
-    keyToCanonical[msg.clientMessageId!] = canonicalKey;
+  bool hasAny(Set<String> otherKeys) {
+    for (final key in otherKeys) {
+      if (keys.contains(key)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
-/// Removes all keys that pointed to a message.
-void _removeAllKeysForMessage(
-  Map<String, Message> merged,
-  Map<String, String> keyToCanonical,
-  Message msg,
-) {
-  final keysToRemove = <String>[];
-
-  // Find all keys that point to this message.
-  for (final entry in keyToCanonical.entries) {
-    if (entry.value == msg.id || entry.value == msg.clientMessageId) {
-      keysToRemove.add(entry.key);
-    }
-  }
-
-  // Remove them.
-  for (final key in keysToRemove) {
-    merged.remove(key);
-    keyToCanonical.remove(key);
-  }
+Set<String> _messageKeys(Message message) {
+  return {
+    if (message.id.trim().isNotEmpty) message.id,
+    if (message.messageId?.trim().isNotEmpty ?? false) message.messageId!,
+    if (message.clientMessageId?.trim().isNotEmpty ?? false)
+      message.clientMessageId!,
+  };
 }
 
 /// Merges two messages, preferring non-empty values from the incoming message.
 Message _mergeTwoMessages(Message existing, Message incoming) {
   return Message(
     // Prefer server id (non-local) over local id.
-    id: (incoming.id.isNotEmpty && !incoming.id.startsWith('local_'))
-        ? incoming.id
-        : existing.id,
+    id: _preferredMessageId(existing, incoming),
     senderId:
         incoming.senderId.isNotEmpty ? incoming.senderId : existing.senderId,
     isGroupChat: incoming.isGroupChat,
@@ -177,4 +128,31 @@ Message _mergeTwoMessages(Message existing, Message incoming) {
     e2eeEnvelope: incoming.e2eeEnvelope ?? existing.e2eeEnvelope,
     decryptStatus: incoming.decryptStatus ?? existing.decryptStatus,
   );
+}
+
+String _preferredMessageId(Message existing, Message incoming) {
+  final incomingServerId =
+      _serverIdCandidate(incoming.messageId, incoming.clientMessageId) ??
+          _serverIdCandidate(incoming.id, incoming.clientMessageId);
+  if (incomingServerId != null) return incomingServerId;
+
+  final existingServerId =
+      _serverIdCandidate(existing.messageId, existing.clientMessageId) ??
+          _serverIdCandidate(existing.id, existing.clientMessageId);
+  if (existingServerId != null) return existingServerId;
+
+  return incoming.id.isNotEmpty ? incoming.id : existing.id;
+}
+
+String? _serverIdCandidate(String? id, String? clientMessageId) {
+  if (id == null || id.isEmpty) return null;
+  return _isLocalMessageId(id, clientMessageId) ? null : id;
+}
+
+bool _isLocalMessageId(String id, String? clientMessageId) {
+  if (id.isEmpty) return true;
+  if (id.startsWith('local_') || id.startsWith('local-')) return true;
+  return clientMessageId != null &&
+      clientMessageId.isNotEmpty &&
+      id == clientMessageId;
 }

@@ -150,8 +150,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
-              leading: Icon(Icons.delete_forever,
-                  color: theme.colorScheme.error),
+              leading:
+                  Icon(Icons.delete_forever, color: theme.colorScheme.error),
               title: Text(
                 loc.accountDelete,
                 style: TextStyle(color: theme.colorScheme.error),

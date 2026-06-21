@@ -231,7 +231,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Loading failed: Exception: network down'), findsOneWidget);
+      expect(
+          find.text('Loading failed: Exception: network down'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
     });
   });

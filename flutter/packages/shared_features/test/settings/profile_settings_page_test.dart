@@ -351,11 +351,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'Updated Nickname');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Nickname'), 'Updated Nickname');
       await tester.pump();
 
-      await tester.ensureVisible(find.text('Save changes'));
-      await tester.tap(find.text('Save changes'));
+      final saveButton = find.byKey(const ValueKey('profile-save-button'));
+      await tester.ensureVisible(saveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(saveButton);
       await tester.pumpAndSettle();
 
       expect(authNotifier.state.user?.nickname, 'Updated Nickname');
@@ -407,7 +410,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('profile-body-compact')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('profile-body-compact')), findsOneWidget);
     });
 
     testWidgets('rapid save taps only call update once', (tester) async {
@@ -451,14 +455,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'A');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Nickname'), 'A');
       await tester.pump();
 
-      await tester.ensureVisible(find.text('Save changes'));
-      await tester.tap(find.text('Save changes'));
+      final saveButton = find.byKey(const ValueKey('profile-save-button'));
+      await tester.ensureVisible(saveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(saveButton);
       await tester.pump(const Duration(milliseconds: 50));
       // Second tap should be ignored while the first save is in flight.
-      await tester.tap(find.text('Save changes'));
+      await tester.tap(saveButton);
       await tester.pumpAndSettle();
 
       expect(updateCount, 1);
@@ -485,7 +492,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Nickname'), 'Dirty');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Nickname'), 'Dirty');
       await tester.pump();
 
       navKey.currentState!.maybePop();

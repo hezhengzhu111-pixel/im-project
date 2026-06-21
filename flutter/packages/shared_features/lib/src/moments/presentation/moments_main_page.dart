@@ -103,7 +103,8 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
                             SliverToBoxAdapter(
                               child: Builder(
                                 builder: (context) {
-                                  final user = ref.watch(authStateProvider).user;
+                                  final user =
+                                      ref.watch(authStateProvider).user;
                                   return MomentsCover(
                                     nickname: user?.nickname ??
                                         user?.username ??

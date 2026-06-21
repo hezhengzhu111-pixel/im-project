@@ -28,6 +28,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(aiSettingsStateProvider.notifier).loadKeys();
       ref.read(aiSettingsStateProvider.notifier).loadAiSettings();
     });

@@ -114,8 +114,7 @@ class FileEndpoints {
 
 class AiEndpoints {
   static const keys = '/api/ai/keys';
-  static String keyById(String id) =>
-      '/api/ai/keys/${Uri.encodeComponent(id)}';
+  static String keyById(String id) => '/api/ai/keys/${Uri.encodeComponent(id)}';
   static String keyTest(String id) =>
       '/api/ai/keys/${Uri.encodeComponent(id)}/test';
   static const settings = '/api/ai/settings';

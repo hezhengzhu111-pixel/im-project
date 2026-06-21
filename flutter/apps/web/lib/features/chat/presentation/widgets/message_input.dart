@@ -354,7 +354,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         vertical: ImTokens.space2,
       ),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.6),
+        color:
+            Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.6),
         border: Border(
           top: BorderSide(color: Theme.of(context).dividerColor),
         ),

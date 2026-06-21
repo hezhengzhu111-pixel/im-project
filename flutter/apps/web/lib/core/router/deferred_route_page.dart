@@ -95,8 +95,7 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
-            Text(loc.pageLoadFailed,
-                style: const TextStyle(fontSize: 16)),
+            Text(loc.pageLoadFailed, style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 8),
             Text(
               error?.toString() ?? '',

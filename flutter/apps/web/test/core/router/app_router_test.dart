@@ -141,16 +141,14 @@ void main() {
   });
 
   group('Redirect logic simulation', () {
-    test('requiresAuth redirects unauthenticated user with redirect param',
-        () {
+    test('requiresAuth redirects unauthenticated user with redirect param', () {
       const meta = RouteMeta(title: 'Chat');
       const isAuth = false;
       const originalPath = '/chat/session123';
 
       String? result;
       if (meta.requiresAuth && !isAuth) {
-        result =
-            '/login?redirect=${Uri.encodeComponent(originalPath)}';
+        result = '/login?redirect=${Uri.encodeComponent(originalPath)}';
       }
 
       expect(result, contains('/login?redirect='));

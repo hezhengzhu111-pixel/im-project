@@ -56,8 +56,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -75,8 +75,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -114,8 +114,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],
@@ -140,8 +140,8 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            contactsStateProvider.overrideWith(
-                (ref) => ContactsNotifier(ContactsApi(http), ws)),
+            contactsStateProvider
+                .overrideWith((ref) => ContactsNotifier(ContactsApi(http), ws)),
             groupStateProvider
                 .overrideWith((ref) => GroupNotifier(GroupApi(http))),
           ],

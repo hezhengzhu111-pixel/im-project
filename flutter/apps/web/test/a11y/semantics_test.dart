@@ -234,7 +234,5 @@ void main() {
       final voiceButton = find.bySemanticsLabel('Voice input');
       expect(voiceButton, findsOneWidget);
     });
-
-
   });
 }

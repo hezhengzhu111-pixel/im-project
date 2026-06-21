@@ -86,11 +86,11 @@ Future<void> main() async {
           ticketUrl: AuthEndpoints.wsTicket,
           wsBaseUrl: wsEndpoint,
           ticketProvider: () async {
-            final response = await ref.read(httpClientProvider).post<
-                Map<String, dynamic>>(
-              AuthEndpoints.wsTicket,
-              fromJson: (json) => json,
-            );
+            final response =
+                await ref.read(httpClientProvider).post<Map<String, dynamic>>(
+                      AuthEndpoints.wsTicket,
+                      fromJson: (json) => json,
+                    );
             return response.data['ticket'] as String?;
           },
         );

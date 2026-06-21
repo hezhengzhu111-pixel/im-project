@@ -26,8 +26,9 @@ class _GroupMembersDialogState extends ConsumerState<GroupMembersDialog> {
 
   Future<void> _loadMembers() async {
     try {
-      final members =
-          await ref.read(groupStateProvider.notifier).getMembers(widget.groupId);
+      final members = await ref
+          .read(groupStateProvider.notifier)
+          .getMembers(widget.groupId);
       if (!mounted) return;
       setState(() {
         _members = members;

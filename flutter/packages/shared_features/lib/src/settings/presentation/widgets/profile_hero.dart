@@ -22,7 +22,8 @@ class ProfileHero extends StatelessWidget {
       decoration: BoxDecoration(
         color: glass?.cardBackground ?? theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(glass?.pageRadius ?? 16),
-        border: Border.all(color: glass?.cardBorder ?? theme.colorScheme.outlineVariant),
+        border: Border.all(
+            color: glass?.cardBorder ?? theme.colorScheme.outlineVariant),
         boxShadow: glass?.softShadow,
       ),
       child: Row(

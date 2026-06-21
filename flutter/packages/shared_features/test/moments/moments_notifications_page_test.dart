@@ -45,7 +45,8 @@ void main() {
       };
 
       final api = MomentsApi(http);
-      final repository = MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
+      final repository =
+          MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
       final notifier = MomentsNotificationsNotifier(repository);
 
       await tester.pumpWidget(
@@ -82,9 +83,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
@@ -105,9 +106,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
@@ -152,9 +153,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
@@ -195,8 +196,8 @@ void main() {
         return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
       };
 
-      final notifier = MomentsNotificationsNotifier(
-          MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())));
+      final notifier = MomentsNotificationsNotifier(MomentsRepository(
+          MomentsApi(http), FileApi(http, FakeAnalyticsPort())));
 
       await tester.pumpWidget(
         _buildApp(
@@ -230,9 +231,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );

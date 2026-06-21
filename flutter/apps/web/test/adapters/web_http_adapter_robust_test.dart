@@ -6,7 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_web/adapters/web_http_adapter.dart';
 
 class _FakeResponse {
-  _FakeResponse(this.body, this.statusCode, {this.contentType = 'application/json'});
+  _FakeResponse(this.body, this.statusCode,
+      {this.contentType = 'application/json'});
   final String body;
   final int statusCode;
   final String contentType;
@@ -29,13 +30,17 @@ class _FakeAdapter implements HttpClientAdapter {
       return ResponseBody.fromString(
         jsonEncode({'code': 404, 'message': 'not found'}),
         404,
-        headers: {'content-type': ['application/json']},
+        headers: {
+          'content-type': ['application/json']
+        },
       );
     }
     return ResponseBody.fromString(
       response.body,
       response.statusCode,
-      headers: {'content-type': [response.contentType]},
+      headers: {
+        'content-type': [response.contentType]
+      },
     );
   }
 
@@ -115,7 +120,8 @@ void main() {
 
     test('throws a readable error for a non-JSON response', () async {
       final adapter = _FakeAdapter({
-        '/api/user/profile': _FakeResponse('not valid json', 200, contentType: 'text/plain'),
+        '/api/user/profile':
+            _FakeResponse('not valid json', 200, contentType: 'text/plain'),
       });
       final client = WebHttpClient(baseUrl: '', adapter: adapter);
 

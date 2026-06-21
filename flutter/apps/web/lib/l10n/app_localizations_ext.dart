@@ -24,7 +24,8 @@ extension AppLocalizationsExt on AppLocalizations {
       'seoMomentsTitle' => seoMomentsTitle,
       'seoMomentsDescription' => seoMomentsDescription,
       'seoMomentsNotificationsTitle' => seoMomentsNotificationsTitle,
-      'seoMomentsNotificationsDescription' => seoMomentsNotificationsDescription,
+      'seoMomentsNotificationsDescription' =>
+        seoMomentsNotificationsDescription,
       'seoSettingsTitle' => seoSettingsTitle,
       'seoSettingsDescription' => seoSettingsDescription,
       'seoProfileTitle' => seoProfileTitle,

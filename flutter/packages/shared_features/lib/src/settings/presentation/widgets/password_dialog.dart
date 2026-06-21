@@ -120,7 +120,9 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.profilePasswordUpdated)),
+          SnackBar(
+              content:
+                  Text(AppLocalizations.of(context)!.profilePasswordUpdated)),
         );
       }
     } catch (e) {

@@ -114,7 +114,9 @@ void main() {
           return ApiResponse<T>(
             code: 200,
             message: 'ok',
-            data: fromJson({'items': [_postJson('p1')]}),
+            data: fromJson({
+              'items': [_postJson('p1')]
+            }),
           );
         }
         throw UnimplementedError('Unexpected GET $path');
@@ -141,7 +143,8 @@ void main() {
       expect(notifier.state.pendingLikePostIds, contains('p1'));
 
       await Future.wait([future1, future2]);
-      expect(calls.where((p) => p == MomentsEndpoints.like('p1')), hasLength(1));
+      expect(
+          calls.where((p) => p == MomentsEndpoints.like('p1')), hasLength(1));
       expect(notifier.state.pendingLikePostIds, isEmpty);
       expect(notifier.state.posts.first.isLiked, isTrue);
     });
@@ -200,7 +203,9 @@ void main() {
           return ApiResponse<T>(
             code: 200,
             message: 'ok',
-            data: fromJson({'items': [_postJson('p1')]}),
+            data: fromJson({
+              'items': [_postJson('p1')]
+            }),
           );
         }
         if (path == MomentsEndpoints.postById('missing')) {

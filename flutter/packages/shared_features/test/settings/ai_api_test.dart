@@ -308,8 +308,7 @@ void main() {
       };
 
       expect(
-        () => api.createSummary(
-            const AiSummaryRequest(conversationId: 'c1')),
+        () => api.createSummary(const AiSummaryRequest(conversationId: 'c1')),
         throwsA(isA<Exception>()),
       );
     });

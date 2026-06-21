@@ -168,7 +168,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (_, __) => NoTransitionPage(
               child: DeferredRoutePage(
                 loadLibrary: moments_notifications_page.loadLibrary,
-                builder: () => moments_notifications_page.MomentsNotificationsPage(),
+                builder: () =>
+                    moments_notifications_page.MomentsNotificationsPage(),
               ),
             ),
           ),

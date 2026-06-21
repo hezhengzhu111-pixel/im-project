@@ -175,7 +175,8 @@ class FakeSentMessageCachePort implements SentMessageCachePort {
   }) async {}
 
   @override
-  Future<void> updateServerId(String clientMessageId, String serverMessageId) async {}
+  Future<void> updateServerId(
+      String clientMessageId, String serverMessageId) async {}
 }
 
 // ---------------------------------------------------------------------------

@@ -300,9 +300,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
             _SecurityTile(
               title: loc.profilePhoneVerify,
-              trailing: user.phone != null
-                  ? loc.profileBound
-                  : loc.profileUnbound,
+              trailing:
+                  user.phone != null ? loc.profileBound : loc.profileUnbound,
               trailingColor: user.phone != null
                   ? theme.colorScheme.primary
                   : theme.colorScheme.onSurfaceVariant,
@@ -311,9 +310,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
             _SecurityTile(
               title: loc.profileEmailVerify,
-              trailing: user.email != null
-                  ? loc.profileBound
-                  : loc.profileUnbound,
+              trailing:
+                  user.email != null ? loc.profileBound : loc.profileUnbound,
               trailingColor: user.email != null
                   ? theme.colorScheme.primary
                   : theme.colorScheme.onSurfaceVariant,
@@ -407,6 +405,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Widget _buildGradientSaveButton(AppLocalizations loc, bool saving) {
     return GestureDetector(
+      key: const ValueKey('profile-save-button'),
       onTap: saving ? null : _save,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -451,16 +450,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     setState(() => _saving = true);
     final loc = AppLocalizations.of(context)!;
     try {
-      final updatedUser = await ref.read(profileStateProvider.notifier).updateProfile(
-            UpdateProfileRequest(
-              nickname: _nicknameController.text.trim(),
-              email: _emailController.text.trim(),
-              gender: _gender,
-              birthday: _birthday?.toIso8601String(),
-              signature: _signatureController.text.trim(),
-              location: _locationController.text.trim(),
-            ),
-          );
+      final updatedUser =
+          await ref.read(profileStateProvider.notifier).updateProfile(
+                UpdateProfileRequest(
+                  nickname: _nicknameController.text.trim(),
+                  email: _emailController.text.trim(),
+                  gender: _gender,
+                  birthday: _birthday?.toIso8601String(),
+                  signature: _signatureController.text.trim(),
+                  location: _locationController.text.trim(),
+                ),
+              );
       ref.read(authStateProvider.notifier).updateUser(updatedUser);
       if (mounted) {
         setState(() => _dirty = false);

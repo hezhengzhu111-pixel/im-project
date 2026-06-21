@@ -174,7 +174,7 @@ def build_web(profile: str) -> None:
     wasm_pack = _ensure_tool("wasm-pack", ["wasm-pack"])
     python_cmd = _ensure_tool("Python", ["python", "python3"])
 
-    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-e2ee-wasm"
+    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-flutter-bridge"
     wasm_output_dir = paths.FLUTTER_WORK / "apps" / "web" / "pkg"
 
     wasm_args = [
@@ -200,6 +200,12 @@ def build_web(profile: str) -> None:
     if patch_script.exists():
         _run(
             [python_cmd, str(patch_script), str(wasm_output_dir / "im_rust_bridge.js")],
+            cwd=wasm_bridge_dir,
+        )
+        # Guard against deploying an unpatched bridge, which panics at runtime
+        # with "DataCloneError: #<Memory> could not be cloned".
+        _run(
+            [python_cmd, str(patch_script), "--verify", str(wasm_output_dir / "im_rust_bridge.js")],
             cwd=wasm_bridge_dir,
         )
 

@@ -70,7 +70,8 @@ void main() {
       };
 
       final result = await notifier.createKey(
-        const AiApiKeyCreateRequest(provider: 'openai', key: 'sk-new', label: 'new'),
+        const AiApiKeyCreateRequest(
+            provider: 'openai', key: 'sk-new', label: 'new'),
       );
       expect(result, isTrue);
       expect(notifier.state.keys, hasLength(1));

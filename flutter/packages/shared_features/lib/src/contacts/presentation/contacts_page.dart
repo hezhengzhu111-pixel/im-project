@@ -103,7 +103,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final incomingPendingCount = contactsState.friendRequests
         .where(
           (request) =>
-              request.status == 'PENDING' && request.targetUserId == currentUserId,
+              request.status == 'PENDING' &&
+              request.targetUserId == currentUserId,
         )
         .length;
 
@@ -402,7 +403,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   }
 
   Widget _buildRequestList(ContactsState state, AppLocalizations loc) {
-    if (state.isLoading && state.friendRequests.isEmpty && state.error == null) {
+    if (state.isLoading &&
+        state.friendRequests.isEmpty &&
+        state.error == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.error != null) {
@@ -737,21 +740,27 @@ class _ContactDetailPanel extends StatelessWidget {
               icon: Icons.chat_bubble_outline,
               onPressed: onMessage,
             ),
-            _DisabledAction(label: loc.contactsVoiceCall, icon: Icons.call_outlined),
-            _DisabledAction(label: loc.contactsVideoCall, icon: Icons.videocam_outlined),
+            _DisabledAction(
+                label: loc.contactsVoiceCall, icon: Icons.call_outlined),
+            _DisabledAction(
+                label: loc.contactsVideoCall, icon: Icons.videocam_outlined),
           ],
         ),
         const SizedBox(height: 28),
         _DetailGrid(
           items: [
-            _DetailItem(loc.contactsRemarkLabel,
-                current.remark ?? loc.contactsNoValue, onTap: onEditRemark),
+            _DetailItem(
+                loc.contactsRemarkLabel, current.remark ?? loc.contactsNoValue,
+                onTap: onEditRemark),
             _DetailItem(loc.contactsPermission, loc.contactsNoValue),
             _DetailItem(loc.contactsSource, loc.contactsNoValue),
             _DetailItem(loc.contactsAddedTime,
                 current.createdAt ?? current.createTime ?? loc.contactsNoValue),
-            _DetailItem(loc.contactsOnlineStatus,
-                current.lastSeen ?? current.lastActiveTime ?? loc.contactsNoValue),
+            _DetailItem(
+                loc.contactsOnlineStatus,
+                current.lastSeen ??
+                    current.lastActiveTime ??
+                    loc.contactsNoValue),
             _DetailItem(loc.contactsSignature,
                 current.signature ?? loc.contactsNoValue),
           ],

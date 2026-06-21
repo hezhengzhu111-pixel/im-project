@@ -82,7 +82,8 @@ class MomentsFeedNotifier extends StateNotifier<MomentsFeedState> {
           .where((p) => !existingIds.contains(p.post.id))
           .toList(growable: false);
       final merged = refresh ? uniqueNew : [...state.posts, ...uniqueNew];
-      final nextCursor = uniqueNew.isNotEmpty ? uniqueNew.last.post.id : state.cursor;
+      final nextCursor =
+          uniqueNew.isNotEmpty ? uniqueNew.last.post.id : state.cursor;
 
       state = state.copyWith(
         posts: merged,

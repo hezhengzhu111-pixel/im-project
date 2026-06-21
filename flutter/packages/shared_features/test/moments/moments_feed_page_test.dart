@@ -72,7 +72,9 @@ void main() {
           return ApiResponse<T>(
             code: 200,
             message: 'ok',
-            data: fromJson({'items': [_postJson('p1')]}),
+            data: fromJson({
+              'items': [_postJson('p1')]
+            }),
           );
         }
         throw UnimplementedError('Unexpected GET $path');
@@ -134,7 +136,9 @@ void main() {
           return ApiResponse<T>(
             code: 200,
             message: 'ok',
-            data: fromJson({'items': [_postJson('p1')]}),
+            data: fromJson({
+              'items': [_postJson('p1')]
+            }),
           );
         }
         if (path == MomentsEndpoints.postById('p2')) {
@@ -173,7 +177,9 @@ void main() {
           return ApiResponse<T>(
             code: 200,
             message: 'ok',
-            data: fromJson({'items': [_postJson('p1')]}),
+            data: fromJson({
+              'items': [_postJson('p1')]
+            }),
           );
         }
         if (path == MomentsEndpoints.postById('missing')) {

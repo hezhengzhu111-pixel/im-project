@@ -12,7 +12,9 @@ import 'package:im_ui/im_ui.dart';
 import '../helpers/fakes.dart';
 
 class _FakeChatNotifier extends ChatNotifier {
-  _FakeChatNotifier() : super(MessageApi(FakeHttpClientPort(), currentUserId: () => 'u1'), MessagePipeline(), FakeWsClient(), () => 'u1');
+  _FakeChatNotifier()
+      : super(MessageApi(FakeHttpClientPort(), currentUserId: () => 'u1'),
+            MessagePipeline(), FakeWsClient(), () => 'u1');
 
   @override
   Future<void> loadSessions() async {}
@@ -26,7 +28,8 @@ class _FakeChatNotifier extends ChatNotifier {
   Future<void> loadMessages(String targetId, {int? page, int? size}) async {}
 
   @override
-  Future<void> loadGroupMessages(String groupId, {int? page, int? size}) async {}
+  Future<void> loadGroupMessages(String groupId,
+      {int? page, int? size}) async {}
 
   @override
   Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}
@@ -43,7 +46,8 @@ class _FakeChatNotifier extends ChatNotifier {
     String? thumbnailUrl,
     int? duration,
     Map<String, dynamic>? extra,
-  }) async => null;
+  }) async =>
+      null;
 
   @override
   Future<Message?> sendGroupMessage(
@@ -58,7 +62,8 @@ class _FakeChatNotifier extends ChatNotifier {
     String? thumbnailUrl,
     int? duration,
     Map<String, dynamic>? extra,
-  }) async => null;
+  }) async =>
+      null;
 
   @override
   Future<void> retryAllFailed() async {}
@@ -119,7 +124,8 @@ Widget _buildApp({
   );
 }
 
-ChatSession _privateSession({String id = 's1', String targetId = 'u2', String targetName = 'Alice'}) {
+ChatSession _privateSession(
+    {String id = 's1', String targetId = 'u2', String targetName = 'Alice'}) {
   return ChatSession(
     id: id,
     type: 'private',
@@ -130,7 +136,10 @@ ChatSession _privateSession({String id = 's1', String targetId = 'u2', String ta
   );
 }
 
-ChatSession _groupSession({String id = 'g1', String targetId = 'group1', String targetName = 'Team'}) {
+ChatSession _groupSession(
+    {String id = 'g1',
+    String targetId = 'group1',
+    String targetName = 'Team'}) {
   return ChatSession(
     id: id,
     type: 'group',
@@ -141,7 +150,8 @@ ChatSession _groupSession({String id = 'g1', String targetId = 'group1', String 
   );
 }
 
-Message _message({String id = 'm1', String senderId = 'u2', String content = 'hi'}) {
+Message _message(
+    {String id = 'm1', String senderId = 'u2', String content = 'hi'}) {
   return Message(
     id: id,
     senderId: senderId,
@@ -178,7 +188,8 @@ void main() {
       authNotifier = createTestAuthNotifier();
     });
 
-    testWidgets('shows deep-link not found state with retry and back', (tester) async {
+    testWidgets('shows deep-link not found state with retry and back',
+        (tester) async {
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = const ChatState();
 
@@ -190,7 +201,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Conversation not found'), findsOneWidget);
-      expect(find.text('The conversation does not exist or you no longer have access.'), findsOneWidget);
+      expect(
+          find.text(
+              'The conversation does not exist or you no longer have access.'),
+          findsOneWidget);
       expect(find.text('Back to conversations'), findsOneWidget);
       expect(find.byIcon(Icons.refresh), findsOneWidget);
 
@@ -200,10 +214,13 @@ void main() {
       expect(find.text('No conversations yet'), findsOneWidget);
     });
 
-    testWidgets('resolves deep link and shows active conversation', (tester) async {
+    testWidgets('resolves deep link and shows active conversation',
+        (tester) async {
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = ChatState(
-        sessions: [_privateSession(id: 's1', targetId: 'u2', targetName: 'Alice')],
+        sessions: [
+          _privateSession(id: 's1', targetId: 'u2', targetName: 'Alice')
+        ],
       );
 
       await tester.pumpWidget(_buildApp(
@@ -216,7 +233,8 @@ void main() {
       expect(find.text('Alice'), findsWidgets);
     });
 
-    testWidgets('shows loading state when messages are loading', (tester) async {
+    testWidgets('shows loading state when messages are loading',
+        (tester) async {
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = ChatState(
         sessions: [_privateSession()],
@@ -268,7 +286,8 @@ void main() {
       expect(find.byIcon(Icons.refresh), findsOneWidget);
     });
 
-    testWidgets('gates LoadMoreHistoryButton by hasMoreHistoryBySession', (tester) async {
+    testWidgets('gates LoadMoreHistoryButton by hasMoreHistoryBySession',
+        (tester) async {
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = ChatState(
         sessions: [_privateSession()],
@@ -295,7 +314,8 @@ void main() {
       expect(find.text('Load earlier messages'), findsNothing);
     });
 
-    testWidgets('medium breakpoint shows session list and chat side by side', (tester) async {
+    testWidgets('medium breakpoint shows session list and chat side by side',
+        (tester) async {
       tester.setBreakpoint(Breakpoint.medium);
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = ChatState(
@@ -317,7 +337,9 @@ void main() {
       expect(find.text('No messages yet'), findsNothing);
     });
 
-    testWidgets('compact breakpoint hides session list when a session is active', (tester) async {
+    testWidgets(
+        'compact breakpoint hides session list when a session is active',
+        (tester) async {
       tester.setBreakpoint(Breakpoint.compact);
       final chatNotifier = _FakeChatNotifier();
       chatNotifier.state = ChatState(
@@ -338,7 +360,8 @@ void main() {
       expect(find.text('Alice'), findsWidgets);
     });
 
-    testWidgets('group member load failure shows mention unavailable banner', (tester) async {
+    testWidgets('group member load failure shows mention unavailable banner',
+        (tester) async {
       final chatNotifier = _FakeChatNotifier();
       final groupApi = _FakeGroupApi()..exceptionToThrow = Exception('boom');
       chatNotifier.state = ChatState(
@@ -352,7 +375,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.text('Member list unavailable; @ mentions are disabled'), findsOneWidget);
+      expect(find.text('Member list unavailable; @ mentions are disabled'),
+          findsOneWidget);
     });
   });
 }

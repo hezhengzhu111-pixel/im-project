@@ -532,9 +532,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 .read(chatStateProvider.notifier)
                 .loadGroupMessages(session.targetId);
           } else {
-            ref
-                .read(chatStateProvider.notifier)
-                .loadMessages(session.targetId);
+            ref.read(chatStateProvider.notifier).loadMessages(session.targetId);
           }
         },
       );
@@ -921,17 +919,17 @@ class _ChatSessionNotFoundState extends StatelessWidget {
               Text(
                 loc.chatSessionNotFoundTitle,
                 style: theme.textTheme.titleMedium?.copyWith(
-                      color: ImTokens.wechatTextPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: ImTokens.wechatTextPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               SizedBox(height: ImTokens.space2),
               Text(
                 loc.chatSessionNotFoundMessage,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                      color: ImTokens.wechatTextSecondary,
-                    ),
+                  color: ImTokens.wechatTextSecondary,
+                ),
               ),
               SizedBox(height: ImTokens.space4),
               Row(
@@ -988,8 +986,8 @@ class _ChatLoadMessagesFailedState extends StatelessWidget {
                 message,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                      color: ImTokens.wechatTextSecondary,
-                    ),
+                  color: ImTokens.wechatTextSecondary,
+                ),
               ),
               SizedBox(height: ImTokens.space4),
               TextButton.icon(

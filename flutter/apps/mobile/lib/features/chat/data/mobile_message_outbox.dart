@@ -3,7 +3,13 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:im_core/core.dart';
 import 'package:im_shared_features/chat.dart'
-    show OutboxPort, OutboxEvent, OutboxMessage, OutboxMessageStatus, OutboxEventType, RetryableErrorClassifier;
+    show
+        OutboxPort,
+        OutboxEvent,
+        OutboxMessage,
+        OutboxMessageStatus,
+        OutboxEventType,
+        RetryableErrorClassifier;
 
 /// Mobile implementation of [OutboxPort] using SharedPreferences for storage.
 ///
@@ -37,9 +43,11 @@ class MobileMessageOutbox implements OutboxPort {
   @override
   Future<void> enqueue(OutboxMessage message) async {
     // Dedup: skip if already sent, keep existing if pending/failed/retrying.
-    final existing = _messages.where(
-      (m) => m.clientMessageId == message.clientMessageId,
-    ).firstOrNull;
+    final existing = _messages
+        .where(
+          (m) => m.clientMessageId == message.clientMessageId,
+        )
+        .firstOrNull;
     if (existing != null) {
       if (existing.isSent) return; // Already delivered.
       // Already queued; don't duplicate.
@@ -59,9 +67,7 @@ class MobileMessageOutbox implements OutboxPort {
     _eventController
         .add(const OutboxEvent(type: OutboxEventType.retryAllStarted));
 
-    final toRetry = _messages
-        .where((m) => m.isPending || m.isFailed)
-        .toList();
+    final toRetry = _messages.where((m) => m.isPending || m.isFailed).toList();
 
     for (final msg in toRetry) {
       // Pre-flight: encrypted outbox requires envelope and deviceId.
@@ -163,8 +169,7 @@ class MobileMessageOutbox implements OutboxPort {
   }
 
   Future<void> _saveToStorage() async {
-    final list =
-        _messages.map((m) => jsonEncode(m.toMap())).toList();
+    final list = _messages.map((m) => jsonEncode(m.toMap())).toList();
     await _prefs.setString(_storageKey, jsonEncode(list));
   }
 
@@ -175,7 +180,8 @@ class MobileMessageOutbox implements OutboxPort {
       final list = jsonDecode(raw) as List;
       for (final item in list) {
         if (item is String) {
-          _messages.add(OutboxMessage.fromMap(jsonDecode(item) as Map<String, dynamic>));
+          _messages.add(
+              OutboxMessage.fromMap(jsonDecode(item) as Map<String, dynamic>));
         } else if (item is Map<String, dynamic>) {
           _messages.add(OutboxMessage.fromMap(item));
         }

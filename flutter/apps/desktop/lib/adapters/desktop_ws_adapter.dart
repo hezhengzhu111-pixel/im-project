@@ -16,8 +16,8 @@ class DesktopWsAdapter implements WsClientPort {
     required this.ticketUrl,
     required String wsBaseUrl,
     WsTicketProvider? ticketProvider,
-  }) : _wsBaseUrl = wsBaseUrl,
-       _ticketProvider = ticketProvider;
+  })  : _wsBaseUrl = wsBaseUrl,
+        _ticketProvider = ticketProvider;
 
   final String ticketUrl;
   final String _wsBaseUrl;

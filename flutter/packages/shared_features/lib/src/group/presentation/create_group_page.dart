@@ -22,6 +22,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(contactsStateProvider.notifier).loadFriends();
     });
   }

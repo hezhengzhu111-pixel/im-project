@@ -33,6 +33,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final contactsState = ref.read(contactsStateProvider);
       if (!contactsState.isLoading &&
           contactsState.friends.isEmpty &&
@@ -173,8 +174,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text(AppLocalizations.of(context)!.addFriendRequestFailed),
+            content: Text(AppLocalizations.of(context)!.addFriendRequestFailed),
           ),
         );
       }

@@ -74,7 +74,8 @@ void main() {
       expect(find.text('Search by username or nickname'), findsOneWidget);
     });
 
-    testWidgets('shows no match text when search returns empty', (tester) async {
+    testWidgets('shows no match text when search returns empty',
+        (tester) async {
       http.onGet = <T>(
         String path, {
         Map<String, dynamic>? queryParameters,
@@ -394,7 +395,8 @@ void main() {
 
       expect(find.text('Request sent'), findsNothing);
       expect(find.text('Add'), findsOneWidget);
-      expect(find.text('Failed to send request, please try again'), findsOneWidget);
+      expect(find.text('Failed to send request, please try again'),
+          findsOneWidget);
     });
 
     testWidgets('failure allows retry and succeeds on second attempt',

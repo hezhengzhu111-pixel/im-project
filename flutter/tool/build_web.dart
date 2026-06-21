@@ -90,10 +90,9 @@ Future<void> _buildWasmBridge(Directory repoRoot) async {
 }
 
 void _assertWasmBridgeAssets(Directory pkgDir) {
-  final required = [
-    File([pkgDir.path, 'im_rust_bridge.js'].join(Platform.pathSeparator)),
-    File([pkgDir.path, 'im_rust_bridge_bg.wasm'].join(Platform.pathSeparator)),
-  ];
+  final jsFile = File([pkgDir.path, 'im_rust_bridge.js'].join(Platform.pathSeparator));
+  final wasmFile = File([pkgDir.path, 'im_rust_bridge_bg.wasm'].join(Platform.pathSeparator));
+  final required = [jsFile, wasmFile];
   for (final file in required) {
     if (!file.existsSync()) {
       throw StateError(
@@ -101,6 +100,17 @@ void _assertWasmBridgeAssets(Directory pkgDir) {
         'Install wasm-pack and rebuild the web bridge before Flutter web.',
       );
     }
+  }
+
+  // The single-threaded WASM build cannot work without the fake-worker patch.
+  // This guards against deploying an unpatched bridge (which panics with
+  // "DataCloneError: #<Memory> could not be cloned" at runtime).
+  final jsContent = jsFile.readAsStringSync();
+  if (!jsContent.contains('_FakeWorker')) {
+    throw StateError(
+      'Rust bridge web asset is missing the single-threaded WASM worker patch. '
+      'Run: bash rust/crates/im-flutter-bridge/build_wasm.sh',
+    );
   }
 }
 

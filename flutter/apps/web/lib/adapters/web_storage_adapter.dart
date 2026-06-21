@@ -70,7 +70,8 @@ class WebStorageAdapter implements StoragePort {
   Future<String?> getString(String key) => _fallback.read(key);
 
   @override
-  Future<void> setString(String key, String value) => _fallback.write(key, value);
+  Future<void> setString(String key, String value) =>
+      _fallback.write(key, value);
 
   @override
   Future<void> remove(String key) => _fallback.delete(key);

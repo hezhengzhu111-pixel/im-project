@@ -130,7 +130,8 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
     );
   }
 
-  Widget _buildBody(BuildContext context, GroupState groupState, bool isCompact) {
+  Widget _buildBody(
+      BuildContext context, GroupState groupState, bool isCompact) {
     final loc = AppLocalizations.of(context)!;
 
     if (groupState.isLoading && groupState.groups.isEmpty) {
@@ -243,10 +244,7 @@ class _GroupListPanel extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 8),
           child: ColoredBox(
             color: isSelected
-                ? Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.08)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
                 : Colors.transparent,
             child: HoverLiftCard(
               padding: EdgeInsets.zero,

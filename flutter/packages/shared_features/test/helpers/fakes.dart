@@ -9,7 +9,8 @@ class FakeFilePickerPort implements FilePickerPort {
   Future<Result<PickedFile>> Function()? fileResult;
 
   @override
-  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+  Future<Result<PickedFile>> pickImage(
+      {ImageSource source = ImageSource.gallery}) async {
     if (imageResult != null) return imageResult!();
     return const Failure(OperationCancelled());
   }
@@ -118,7 +119,8 @@ class FakeStoragePort implements StoragePort {
   Future<String?> getString(String key) async => _values[key];
 
   @override
-  Future<void> setString(String key, String value) async => _values[key] = value;
+  Future<void> setString(String key, String value) async =>
+      _values[key] = value;
 
   @override
   Future<void> remove(String key) async => _values.remove(key);
@@ -170,8 +172,7 @@ class FakeAuthRepository implements AuthRepository {
   final User? user;
 
   User get _user =>
-      user ??
-      const User(id: 'u1', username: 'testuser', nickname: 'Test');
+      user ?? const User(id: 'u1', username: 'testuser', nickname: 'Test');
 
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {

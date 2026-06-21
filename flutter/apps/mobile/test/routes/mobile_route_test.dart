@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/group.dart';
@@ -80,6 +81,27 @@ class _FakeAnalyticsPort implements AnalyticsPort {
   void setUserProperties(Map<String, dynamic> properties) {}
 }
 
+class _FakeStoragePort implements StoragePort {
+  final Map<String, String> _store = {};
+
+  @override
+  Future<void> clear() async => _store.clear();
+
+  @override
+  Future<bool> containsKey(String key) async => _store.containsKey(key);
+
+  @override
+  Future<String?> getString(String key) async => _store[key];
+
+  @override
+  Future<void> remove(String key) async => _store.remove(key);
+
+  @override
+  Future<void> setString(String key, String value) async {
+    _store[key] = value;
+  }
+}
+
 class _FakeAuthRepository implements AuthRepository {
   @override
   Future<UserAuthResponse> login(LoginRequest request) async =>
@@ -116,9 +138,15 @@ Widget _buildRouteApp(Widget page) {
       httpClientProvider.overrideWithValue(_FakeHttpClientPort()),
       wsClientProvider.overrideWithValue(_FakeWsClient()),
       analyticsProvider.overrideWithValue(_FakeAnalyticsPort()),
+      storageProvider.overrideWithValue(_FakeStoragePort()),
       authStateProvider.overrideWith((ref) => authNotifier),
     ],
-    child: MaterialApp(home: page),
+    child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: page),
+    ),
   );
 }
 
@@ -161,7 +189,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const CreateGroupPage()));
       await tester.pumpAndSettle();
       expect(find.byType(CreateGroupPage), findsOneWidget);
-      expect(find.text('Group Name'), findsOneWidget);
+      expect(find.text('Group name'), findsOneWidget);
       expect(find.text('Placeholder'), findsNothing);
     });
 
@@ -179,7 +207,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const ProfileSettingsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileSettingsPage), findsOneWidget);
-      expect(find.text('Profile Settings'), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-body-wide')), findsOneWidget);
       expect(find.text('Placeholder'), findsNothing);
     });
 
@@ -187,7 +215,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const AiSettingsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(AiSettingsPage), findsOneWidget);
-      expect(find.text('AI Settings'), findsWidgets);
+      expect(find.text('AI Assistant'), findsWidgets);
       expect(find.text('Placeholder'), findsNothing);
     });
   });

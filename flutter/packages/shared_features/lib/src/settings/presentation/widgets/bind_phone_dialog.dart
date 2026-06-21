@@ -53,7 +53,9 @@ class _BindPhoneDialogState extends ConsumerState<BindPhoneDialog> {
               const SizedBox(width: 8),
               TextButton(
                 onPressed: _countdown > 0 ? null : _sendCode,
-                child: Text(_countdown > 0 ? '$_countdown s' : loc.sendVerificationCode),
+                child: Text(_countdown > 0
+                    ? '$_countdown s'
+                    : loc.sendVerificationCode),
               ),
             ],
           ),

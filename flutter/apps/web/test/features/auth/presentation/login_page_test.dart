@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
@@ -143,7 +142,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1000));
 
       // Should not show password strength error
-      expect(find.text('Password must contain both letters and digits'), findsNothing);
+      expect(find.text('Password must contain both letters and digits'),
+          findsNothing);
     });
 
     testWidgets('form error is displayed in error banner', (tester) async {
@@ -165,7 +165,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1000));
 
       // The FormErrorBanner should display the server error message
-      expect(find.text('Server error. Please try again later.'), findsOneWidget);
+      expect(
+          find.text('Server error. Please try again later.'), findsOneWidget);
     });
 
     testWidgets('desktop layout shows brand section', (tester) async {
@@ -178,7 +179,10 @@ void main() {
 
       // Should show brand section
       expect(find.text('Secure · Private · Instant'), findsOneWidget);
-      expect(find.text('End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.'), findsOneWidget);
+      expect(
+          find.text(
+              'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.'),
+          findsOneWidget);
 
       // Should show feature items
       expect(find.text('E2EE Enabled'), findsOneWidget);

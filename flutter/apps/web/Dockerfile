@@ -22,6 +22,8 @@ WORKDIR /workspace
 COPY flutter ./flutter
 COPY --from=wasm-builder /wasm-pkg ./flutter/apps/web/web/pkg
 WORKDIR /workspace/flutter/apps/web
+# Melos-generated overrides may contain Windows-style paths that break Linux builds.
+RUN find /workspace/flutter -name pubspec_overrides.yaml -delete
 RUN flutter pub get
 ARG FRONTEND_BUILD_MODE=sit
 RUN test -f web/pkg/im_rust_bridge.js && test -f web/pkg/im_rust_bridge_bg.wasm

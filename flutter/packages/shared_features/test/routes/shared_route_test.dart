@@ -13,7 +13,8 @@ import '../helpers/fakes.dart';
 
 void main() {
   group('Shared pages are real widgets, not placeholders', () {
-    Widget _buildApp({required List<Override> overrides, required Widget home}) {
+    Widget _buildApp(
+        {required List<Override> overrides, required Widget home}) {
       return ProviderScope(
         overrides: [
           storageProvider.overrideWithValue(FakeStoragePort()),
@@ -68,8 +69,7 @@ void main() {
     testWidgets('MomentsNotificationsPage renders', (tester) async {
       final http = FakeHttpClientPort()..onGet = aiAwareOnGet();
       final api = MomentsApi(http);
-      final repo =
-          MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
+      final repo = MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
       await tester.pumpWidget(
         _buildApp(
           overrides: [

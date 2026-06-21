@@ -46,7 +46,8 @@ class GroupDetailPage extends ConsumerWidget {
     Group group,
   ) async {
     final loc = AppLocalizations.of(context)!;
-    final success = await ref.read(groupStateProvider.notifier).leaveGroup(group.id);
+    final success =
+        await ref.read(groupStateProvider.notifier).leaveGroup(group.id);
     if (!context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     if (success) {
