@@ -270,7 +270,7 @@ def dependency_steps(env: dict[str, str]) -> list:
     results.append(
         run_step(
             "Main Full migrations",
-            [*compose, "run", "--rm", "im-db-migrate"],
+            [PYTHON, str(ROOT / "scripts" / "imctl.py"), "db", "migrate"],
             cwd=ROOT,
             timeout=300,
             env=env,
