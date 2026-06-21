@@ -33,7 +33,6 @@ target/
 # 统一编译产物目录
 # ===========================================
 build/
-rust/vendor/
 tests/build/
 *.dill
 *.dill.track.dill
@@ -46,7 +45,13 @@ tests/build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
+pubspec_overrides.yaml
 *.iml
+
+# Flutter native platform ephemeral/generated files
+**/ephemeral/
+**/GeneratedPluginRegistrant.java
+**/generated_plugin_registrant.*
 
 # ===========================================
 # 编译残留
@@ -118,10 +123,8 @@ ssh/*.key
 .eslintcache
 .stylelintcache
 .claude
-.github
 .idea
 .mimocode
-admin-console
 build
 /ssh/im-server.pem
 /ssh/im-ssh.pem

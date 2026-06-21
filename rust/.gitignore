@@ -1,0 +1,11 @@
+# Rust build artifacts must stay out of source.
+# The workspace target directory is redirected to build/cache/cargo-target
+# via .cargo/config.toml, but ignore any accidental local target/.
+target/
+*.pdb
+*.rlib
+*.lib
+*.exe
+
+# Local cargo config overrides should not be committed.
+.cargo/config.toml.local

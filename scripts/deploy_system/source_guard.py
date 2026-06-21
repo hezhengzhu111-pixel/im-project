@@ -4,72 +4,54 @@ import sys
 from pathlib import Path
 from typing import List, Set
 
+from .sync_config import SOURCE_DIRS, SYNC_EXCLUDED_NAMES, SYNC_EXCLUDED_PATTERNS
+
+
+def _derive_pollution_patterns() -> List[str]:
+    """Derive pollution patterns from the shared sync config.
+
+    Directory names are suffixed with '/' so _matches_pattern treats them as
+    directory patterns; file names and file patterns are kept as-is.
+    """
+    directory_names = {
+        "target",
+        ".dart_tool",
+        "build",
+        "ephemeral",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".pytest_cache",
+        ".cache",
+        "coverage",
+        "logs",
+    }
+    patterns: List[str] = []
+    for name in sorted(SYNC_EXCLUDED_NAMES):
+        patterns.append(f"{name}/" if name in directory_names else name)
+    patterns.extend(SYNC_EXCLUDED_PATTERNS)
+    # Additional general build artifacts not covered by sync_config.
+    patterns.extend([
+        "dist/",
+        "out/",
+        "tests/build/",
+        "*.tar",
+        "*.tar.gz",
+        "*.zip",
+    ])
+    return patterns
+
+
 # Patterns that should NOT appear in source directories
-POLLUTION_PATTERNS = [
-    # Rust build artifacts
-    "target/",
-    "*.pdb",
-    "*.rlib",
-    "*.lib",
-
-    # Flutter/Dart artifacts
-    ".dart_tool/",
-    ".packages",
-    ".flutter-plugins",
-    ".flutter-plugins-dependencies",
-    "pubspec.lock",
-
-    # Python artifacts
-    "__pycache__/",
-    "*.pyc",
-    "*.pyo",
-    "*.pyd",
-    ".venv/",
-    "venv/",
-    ".pytest_cache/",
-    ".cache/",
-    "coverage/",
-
-    # Node.js artifacts
-    "node_modules/",
-
-    # IDE / tool artifacts
-    ".codex/",
-    ".idea/",
-    ".vscode/",
-    "*.iml",
-
-    # Java/Maven build artifacts
-    "*.class",
-    "*.jar",
-
-    # General build artifacts
-    "build/",
-    "dist/",
-    "out/",
-    "vendor/",
-    "tests/build/",
-    "*.log",
-    "*.tar",
-    "*.tar.gz",
-    "*.zip",
-]
-
-# Directories to scan (relative to project root)
-SOURCE_DIRS = [
-    "rust",
-    "flutter",
-    "spring-ai",
-    "sql",
-    "tests",
-]
+POLLUTION_PATTERNS: List[str] = _derive_pollution_patterns()
 
 
 class PollutionDetector:
     """Detects build artifacts and intermediate files in source directories."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
+    def __init__(self, project_root: Path | str):
+        self.project_root = Path(project_root)
         self.findings: List[Path] = []
 
     def scan(self, fix: bool = False) -> List[Path]:
@@ -181,7 +163,7 @@ class PollutionDetector:
             return str(path)
 
 
-def check_source_pollution(project_root: Path, verbose: bool = False) -> bool:
+def check_source_pollution(project_root: Path | str, verbose: bool = False) -> bool:
     """Check for source pollution and report findings.
 
     Args:
@@ -205,7 +187,7 @@ def check_source_pollution(project_root: Path, verbose: bool = False) -> bool:
         return False
 
 
-def clean_source_pollution(project_root: Path) -> None:
+def clean_source_pollution(project_root: Path | str) -> None:
     """Clean source pollution by removing detected artifacts.
 
     Args:

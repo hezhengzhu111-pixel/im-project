@@ -3,16 +3,24 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import sys
+
+# Prevent compiled Python bytecode from being written into the source tree.
+# Bytecode belongs in build artifacts, not in tests/**/__pycache__.
+os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+sys.dont_write_bytecode = True
+
+import argparse
+import json
 from dataclasses import asdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS_DIR / "common"))
+# Make deploy_system available for source-pollution checks.
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from gate_common import ROOT, StepResult, run_step, skip_step, write_gate_reports
 from workspace import ensure_work_workspace, setup_isolated_env
@@ -346,8 +354,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _guard_source(command: str, *, post: bool = False) -> None:
+    """Fail fast if source directories contain build/dependency artifacts."""
+    from deploy_system.source_guard import check_source_pollution
+
+    label = "after" if post else "before"
+    print(f"\n[GUARD] Source pollution check {label} '{command}'...")
+    if check_source_pollution(ROOT, verbose=False):
+        print(
+            f"\n[ERROR] Source pollution detected {label} running tests.\n"
+            "Build/dependency artifacts must not appear in source directories.\n"
+            "Clean with: python scripts/imctl.py clean source-pollution\n"
+            "Then use script-based commands only:",
+            file=sys.stderr,
+        )
+        print("  python tests/test.py <gate>", file=sys.stderr)
+        print("  python scripts/imctl.py build", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"[GUARD] Source directories clean {label} '{command}'.")
+
+
 def main() -> int:
     args = parse_args()
+    _guard_source(args.command, post=False)
     results = dispatch(args)
     exit_code = write_gate_reports(
         f"test-{args.command}",
@@ -357,6 +386,7 @@ def main() -> int:
     )
     if args.json:
         print(json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2))
+    _guard_source(args.command, post=True)
     if args.continue_on_error:
         return exit_code
     return 1 if any(result.status == "FAIL" for result in results) else 0

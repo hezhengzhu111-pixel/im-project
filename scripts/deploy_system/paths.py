@@ -17,8 +17,8 @@ WORK_DIR = BUILD_DIR / "work"
 # Cache subdirectories
 CARGO_HOME = CACHE_DIR / "cargo-home"
 CARGO_TARGET = CACHE_DIR / "cargo-target"
-PUB_CACHE = CACHE_DIR / "pub"
-MAVEN_REPO = CACHE_DIR / "maven"
+PUB_CACHE = CACHE_DIR / "pub-cache"
+MAVEN_REPO = CACHE_DIR / "maven-repo"
 DOCKER_CACHE = CACHE_DIR / "docker"
 
 # Runtime subdirectories
