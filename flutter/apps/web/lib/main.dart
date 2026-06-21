@@ -19,11 +19,14 @@ import 'adapters/services/noop_analytics_adapter.dart';
 import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
+import 'core/di/rust_bridge_init_provider.dart';
+import 'core/di/rust_bridge_warmup.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';
-import 'features/auth/presentation/auth_providers.dart' as web_auth;
+import 'features/chat/presentation/chat_providers.dart' as web_chat;
 import 'features/e2ee/data/e2ee_providers.dart';
+import 'package:im_shared_features/chat.dart' as shared_chat;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +38,9 @@ Future<void> main() async {
   // Build config from compile-time environment variables (same defaults as
   // appConfigProvider) so we can construct web adapters before the
   // ProviderScope is created.
-  // API端点已包含 /api 前缀，baseUrl 设为空字符串避免重复
+  // 使用相对路径，通过 nginx 代理访问 API。
+  // nginx 已将 /api/ 代理到后端，端点本身已以 /api 开头，
+  // 因此 baseUrl 留空，最终请求的完整路径为 /api/...。
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: '',
@@ -54,20 +59,12 @@ Future<void> main() async {
   final share = WebShareAdapter();
   final audioRecorder = WebAudioRecorderAdapter();
   final storage = WebStorageAdapter();
-  final wsClient = WebWsClient(
-    ticketUrl: AuthEndpoints.wsTicket,
-    wsBaseUrl: wsEndpoint,
-    ticketProvider: () async {
-      final response = await httpClient.post<Map<String, dynamic>>(
-        AuthEndpoints.wsTicket,
-        fromJson: (json) => json,
-      );
-      return response.data['ticket'] as String?;
-    },
-  );
   final analytics = NoopAnalyticsAdapter();
   final errorReporter = NoopErrorReporterAdapter();
   final push = NoopPushAdapter();
+
+  final rustBridgeInit =
+      StateController<AsyncValue<void>>(const AsyncValue.loading());
 
   runApp(ProviderScope(
     overrides: [
@@ -81,7 +78,29 @@ Future<void> main() async {
       secureStorageProvider.overrideWithValue(secureStorage),
       storageProvider.overrideWithValue(storage),
       httpClientProvider.overrideWithValue(httpClient),
-      wsClientProvider.overrideWithValue(wsClient),
+      // The WS client is created inside the provider tree so its lifecycle is
+      // tied to ProviderScope disposal. Reading [httpClientProvider] here
+      // returns the overridden [WebHttpClient] instance.
+      wsClientProvider.overrideWith((ref) {
+        final client = WebWsClient(
+          ticketUrl: AuthEndpoints.wsTicket,
+          wsBaseUrl: wsEndpoint,
+          ticketProvider: () async {
+            final response =
+                await ref.read(httpClientProvider).post<Map<String, dynamic>>(
+                      AuthEndpoints.wsTicket,
+                      fromJson: (json) => json,
+                    );
+            return response.data['ticket'] as String?;
+          },
+        );
+        ref.onDispose(client.dispose);
+        return client;
+      }),
+      rustBridgeInitProvider.overrideWith((ref) {
+        ref.onDispose(rustBridgeInit.dispose);
+        return rustBridgeInit;
+      }),
       // E2EE adapter
       e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWith((ref) {
@@ -89,16 +108,6 @@ Future<void> main() async {
       }),
       e2eeSessionStoreProvider.overrideWith((ref) {
         return ref.watch(webE2eeSessionStoreProvider);
-      }),
-      e2eeManagerProvider.overrideWith((ref) {
-        return E2eeManager(
-          adapter: ref.watch(e2eeAdapterProvider),
-          api: ref.watch(e2eeApiProvider),
-          keyStore: ref.watch(e2eeKeyStoreProvider),
-          sessionStore: ref.watch(e2eeSessionStoreProvider),
-          metaStore: ref.watch(e2eeMetaStoreProvider),
-          currentUserId: ref.watch(web_auth.currentUserIdProvider),
-        );
       }),
       // Shared feature packages read the im_core_flutter provider set.
       core_flutter.filePickerPortProvider.overrideWithValue(filePicker),
@@ -109,30 +118,24 @@ Future<void> main() async {
       core_flutter.secureStorageProvider.overrideWithValue(secureStorage),
       core_flutter.storageProvider.overrideWithValue(storage),
       core_flutter.httpClientProvider.overrideWithValue(httpClient),
-      core_flutter.wsClientProvider.overrideWithValue(wsClient),
+      core_flutter.wsClientProvider.overrideWith(
+        (ref) => ref.read(wsClientProvider),
+      ),
       core_flutter.e2eeAdapterProvider.overrideWithValue(rustGateway),
       core_flutter.analyticsProvider.overrideWithValue(analytics),
       core_flutter.errorReporterProvider.overrideWithValue(errorReporter),
       core_flutter.pushProvider.overrideWithValue(push),
+      // The shared [ChatPage] reads from `im_shared_features` providers. The
+      // web app builds its own [ChatNotifier] (with web-specific E2EE/outbox
+      // dependencies), so bridge the two to avoid duplicate chat state and to
+      // make shared widgets observe the same sessions as the web bootstrap.
+      shared_chat.chatStateProvider.overrideWith(
+        (ref) => ref.read(web_chat.chatStateProvider.notifier),
+      ),
     ],
     observers: [AppProviderObserver(env: env)],
     child: const App(),
   ));
 
-  warmUpRustBridge(rustGateway);
-}
-
-void warmUpRustBridge(RustGateway rustGateway) {
-  unawaited(
-    rustGateway.init().catchError((Object error, StackTrace stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'im_web',
-          context: ErrorDescription('while warming up the Rust bridge'),
-        ),
-      );
-    }),
-  );
+  warmUpRustBridge(rustGateway.init, rustBridgeInit);
 }

@@ -343,29 +343,3 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     super.dispose();
   }
 }
-
-/// Pure helpers for filtering friend requests without side effects.
-class FriendRequestFilter {
-  const FriendRequestFilter._();
-
-  /// Returns only requests whose [status] matches [status].
-  static List<FriendRequest> byStatus(
-    List<FriendRequest> requests,
-    String status,
-  ) {
-    return requests.where((r) => r.status == status).toList();
-  }
-
-  /// Returns requests whose applicant username or nickname contains [keyword].
-  static List<FriendRequest> byKeyword(
-    List<FriendRequest> requests,
-    String keyword,
-  ) {
-    final query = keyword.trim().toLowerCase();
-    if (query.isEmpty) return requests;
-    return requests.where((r) {
-      final name = (r.applicantNickname ?? r.applicantUsername).toLowerCase();
-      return name.contains(query);
-    }).toList();
-  }
-}
