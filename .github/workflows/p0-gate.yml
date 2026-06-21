@@ -43,6 +43,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+          cache-directories: |
+            build/cache/cargo-target
 
       - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
@@ -54,6 +56,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Clean accidental source pollution from cache
+        run: python scripts/imctl.py clean source-pollution
 
       - name: Check lifecycle prerequisites
         run: python scripts/imctl.py doctor

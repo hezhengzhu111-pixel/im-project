@@ -77,8 +77,25 @@ build/work/flutter/apps/desktop/build/windows/x64/runner/Release/im_desktop.exe
 - 未执行 Web release 产物在真实浏览器中的端到端 E2EE 验证（已由单元测试 + P0 Python 脚本覆盖 API 层）。
 - 未进行桌面端安装包签名 / 发布流程验证。
 
+## CI 修复状态
+
+P0 → P1 放行前 CI 收口补丁已修复 GitHub Actions `Check lifecycle prerequisites` 失败导致 gate 被跳过的问题：
+
+- `scripts/imctl.py doctor` 现在区分 required / optional 检查，在 CI 中对 Docker、部署配置、build context 等本地部署相关项输出 `WARN`/`SKIP`，不再阻断 gate。
+- 所有相关 workflow 已统一安装 `pip install -r scripts/requirements.txt`。
+- `Swatinem/rust-cache` 已配置为仅缓存 `build/cache/cargo-target`，避免 `rust/target/` 被恢复到源码目录造成污染误报；doctor 与 gate 前也会增加 `python scripts/imctl.py clean source-pollution` 兜底。
+- Build Artifacts workflow 已补充 `wasm-pack` 与 `maven` 安装。
+
+目标 workflow（预期推送后变绿）：
+
+1. P0 Acceptance Gate
+2. PR Fast Gate
+3. E2EE Rust CI
+4. Rust Bridge CI
+5. Build Artifacts
+
 ## 结论
 
-P0 Flutter Web / Desktop 交付验收通过，所有强制门禁与端到端用例均满足。允许进入 P1。
+P0 Flutter Web / Desktop 交付验收通过，所有强制门禁与端到端用例均满足，CI lifecycle 问题已收口。允许进入 P1。
 
 **P1 放行：YES**

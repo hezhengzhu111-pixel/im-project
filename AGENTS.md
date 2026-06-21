@@ -276,6 +276,15 @@ cd admin-console/frontend/ruoyi-vue3 && npm install && npm run dev
 cd admin-console/admin-server && cargo run
 ```
 
+### 8.4 CI / GitHub Actions 说明
+
+GitHub Actions workflow 统一使用脚本入口，不直接调用工具链。
+
+- **Lifecycle prerequisites**：`python scripts/imctl.py doctor` 在 CI 中只执行**必需检查**（Python 版本、PyYAML、runtime 文件生成、项目布局、源码污染）。Docker、部署配置、build context 等仅与本地部署相关的检查会被标记为 `WARN`/`SKIP`，不会阻断 gate。
+- **Python 依赖**：CI 运行前需先执行 `pip install -r scripts/requirements.txt`，确保 `PyYAML` 可用。
+- **Rust cache**：`Swatinem/rust-cache` 必须缓存 `build/cache/cargo-target`，不能缓存 `rust/target`。若缓存误把 `target/` 恢复到源码目录，`python scripts/imctl.py clean source-pollution` 会在 doctor 前清理掉这些误报产物。
+- **Build Artifacts**：该 workflow 需要额外安装 `wasm-pack`（`cargo install wasm-pack --locked`）和 `maven`（`apt-get install maven`），用于构建 Web WASM bridge 和 Spring AI。
+
 ---
 
 ## 9. 代码风格与开发约定
@@ -301,6 +310,7 @@ clippy::as_conversions`、`indexing_slicing`。
 - 源码目录（`rust/`、`flutter/`、`spring-ai/`、`sql/`、`tests/`）禁止生成或保留 `target/`、`.dart_tool/`、`node_modules/`、`build/`、`dist/`、`*.log`、`*.tar`、`pubspec_overrides.yaml`、`ephemeral/` 等产物（`rust/vendor/` 为已提交的 vendored 源码，除外）。
 - `scripts/deploy_system/source_guard.py` 与 `scripts/deploy_system/sync_config.py` 是污染检测与同步排除规则的单一来源。
 - `python scripts/imctl.py build` 与 `python tests/test.py <gate>` 会在执行前后自动调用 `check_source_pollution()`；若检测到新增污染，门控直接失败。
+- CI 中 Rust cache 只能缓存 `build/cache/cargo-target`；若 `rust/target/` 被缓存恢复到源码目录，会在 doctor 与 gate 运行前被 `python scripts/imctl.py clean source-pollution` 清理。
 - 手动清理：
   ```bash
   python scripts/imctl.py clean source-pollution
