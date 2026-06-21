@@ -65,7 +65,7 @@ jobs:
         run: python scripts/imctl.py doctor
 
       - name: Build all artifacts
-        run: python scripts/build.py all
+        run: python scripts/build.py
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

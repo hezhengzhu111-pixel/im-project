@@ -25,6 +25,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from gate_common import ROOT, StepResult, run_step, skip_step, write_gate_reports
 from workspace import ensure_work_workspace, setup_isolated_env
 
+# Generate .freezed.dart / .g.dart in build/work without polluting source.
+from deploy_system.flutter_codegen import generate_flutter_core_code
+
+
+def _ensure_flutter_core_generated(env: dict[str, str]) -> None:
+    """Run build_runner for im_core in the isolated work copy."""
+    generate_flutter_core_code(FLUTTER_WORK_DIR / "packages" / "core", env=env)
+
 
 PYTHON = sys.executable
 TEST_REPORT_DIR = ROOT / "build" / "reports" / "test"
@@ -152,6 +160,9 @@ def rust_bridge_steps(*, continue_on_error: bool = False) -> list[StepResult]:
     ensure_work_workspace()
     env = setup_isolated_env()
 
+    # rust_bridge depends on im_core, which requires generated .freezed.dart/.g.dart.
+    _ensure_flutter_core_generated(env)
+
     # Rust side
     results.append(run_step("Bridge fmt", ["cargo", "fmt", "--check", "-p", "im-flutter-bridge"], cwd=RUST_WORK_DIR, timeout=300, env=env))
     if results[-1].status == "FAIL" and not continue_on_error:
@@ -205,6 +216,9 @@ def flutter_steps(*, coverage: bool = False, continue_on_error: bool = False) ->
 
     # Set environment for isolated builds
     env = setup_isolated_env()
+
+    # All Flutter targets depend on im_core, which requires generated code.
+    _ensure_flutter_core_generated(env)
 
     for target, rel_path in FLUTTER_TARGETS:
         target_dir = FLUTTER_WORK_DIR / rel_path

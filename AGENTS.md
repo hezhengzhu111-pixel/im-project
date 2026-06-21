@@ -284,6 +284,7 @@ GitHub Actions workflow 统一使用脚本入口，不直接调用工具链。
 - **Python 依赖**：CI 运行前需先执行 `pip install -r scripts/requirements.txt`，确保 `PyYAML` 可用。
 - **Rust cache**：`Swatinem/rust-cache` 必须缓存 `build/cache/cargo-target`，不能缓存 `rust/target`。若缓存误把 `target/` 恢复到源码目录，`python scripts/imctl.py clean source-pollution` 会在 doctor 前清理掉这些误报产物。
 - **Build Artifacts**：该 workflow 需要额外安装 `wasm-pack`（`cargo install wasm-pack --locked`）和 `maven`（`apt-get install maven`），用于构建 Web WASM bridge 和 Spring AI。
+- **Flutter 代码生成**：`flutter/.gitignore` 会忽略 `.freezed.dart` / `.g.dart` 等 generated files，因此 CI 不依赖源码目录中已提交这些文件。所有需要代码生成的 Flutter package（当前为 `packages/core`）必须在隔离的 `build/work` 环境中通过 `deploy_system/flutter_codegen.py` 运行 `build_runner`，确保 `flutter analyze`、`flutter test`、`flutter build` 在 CI 上能正常执行，同时保持源码目录不变。
 
 ---
 

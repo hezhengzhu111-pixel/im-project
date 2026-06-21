@@ -14,6 +14,7 @@ from typing import Sequence
 
 from deploy_utils import compose_base_command, DeploymentConfig, fatal, run_command
 from . import paths
+from .flutter_codegen import generate_flutter_core_code
 from .sync import sync_rust_source, sync_flutter_source, sync_spring_ai_source
 from .source_guard import check_source_pollution
 
@@ -170,6 +171,9 @@ def build_spring_ai() -> None:
 
 
 def build_web(profile: str) -> None:
+    # Ensure im_core generated code exists before any Flutter web build/analysis.
+    generate_flutter_core_code(paths.FLUTTER_WORK / "packages" / "core", env=_flutter_env())
+
     # Build WASM bridge
     wasm_pack = _ensure_tool("wasm-pack", ["wasm-pack"])
     python_cmd = _ensure_tool("Python", ["python", "python3"])

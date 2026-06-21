@@ -11,9 +11,11 @@ from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TESTS_DIR / "common"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from gate_common import ROOT, REPORT_DIR, run_step, skip_step, write_gate_reports
 from workspace import ensure_work_workspace, setup_isolated_env
+from deploy_system.flutter_codegen import generate_flutter_core_code
 
 
 PYTHON = sys.executable
@@ -115,6 +117,10 @@ def flutter_fast(env: dict[str, str] | None = None) -> list:
     if env is None:
         env = setup_isolated_env()
     results = []
+
+    # All Flutter targets depend on im_core, which requires generated code.
+    generate_flutter_core_code(FLUTTER_WORK_DIR / "packages" / "core", env=env)
+
     for name, rel in FLUTTER_TARGETS:
         target = FLUTTER_WORK_DIR / rel
         if not target.exists():
