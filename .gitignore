@@ -109,3 +109,5 @@ init.md
 .mimocode
 admin-console
 build
+/ssh/im-server.pem
+/ssh/im-ssh.pem
