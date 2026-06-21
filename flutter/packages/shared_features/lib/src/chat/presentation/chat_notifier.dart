@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:meta/meta.dart';
 import 'package:im_core/core.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
@@ -63,6 +64,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final Set<String> _inFlightSendFingerprints = <String>{};
 
   bool get _e2eeAvailable => _e2eeManager != null && _e2eeMetaStore != null;
+
+  /// Whether E2EE is wired for this notifier. Exposed only for tests.
+  @visibleForTesting
+  bool get isE2eeEnabledForTesting => _e2eeAvailable;
 
   Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
       Map.unmodifiable(state.pendingNegotiations);
@@ -267,10 +272,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   /// Exposed for testing the network recovery → outbox retry glue.
   Future<void> retryPendingOutboxIfNeeded() async {
     if (_outbox == null) return;
-    final pendingCount = await _outbox!.getPendingCount();
-    final failedCount = await _outbox!.getFailedCount();
-    if (pendingCount > 0 || failedCount > 0) {
-      await _outbox!.retryAllFailed(_sendOutboxMessage);
+    try {
+      final pendingCount = await _outbox!.getPendingCount();
+      final failedCount = await _outbox!.getFailedCount();
+      if (pendingCount + failedCount > 0) {
+        await _outbox!.retryAllFailed(_sendOutboxMessage);
+      }
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to retry pending outbox messages', e, st);
     }
   }
 

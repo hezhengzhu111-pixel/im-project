@@ -217,7 +217,12 @@ abstract class OutboxPort {
   /// Enqueue a message for later delivery.
   Future<void> enqueue(OutboxMessage message);
 
-  /// Retry all failed messages using [sender].
+  /// Retry all retryable outbox messages using [sender].
+  ///
+  /// Retryable messages include [OutboxMessageStatus.pending] and
+  /// [OutboxMessageStatus.failed]. Implementations must NOT retry
+  /// [OutboxMessageStatus.sent] messages and should guard against concurrent
+  /// retry invocations.
   ///
   /// [sender] is a callback that sends a single [OutboxMessage] and returns
   /// the server-acknowledged [Message] on success, or throws on failure.

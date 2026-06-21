@@ -30,9 +30,38 @@ FRONTEND_TARGETS = [
 ]
 
 
+def _default_desktop_platform() -> str:
+    """Infer the desktop build target from the current platform."""
+    if sys.platform.startswith("win32"):
+        return "windows"
+    if sys.platform.startswith("darwin"):
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return ""
+
+
+def _desktop_build_cmd(platform: str) -> list[str] | None:
+    """Return the flutter build command for the requested desktop platform."""
+    if platform in ("windows", "macos", "linux"):
+        return ["flutter", "build", platform]
+    return None
+
+
+def _use_shell_for_command(cmd: list[str]) -> bool:
+    """Windows needs shell=True to execute flutter.bat via CreateProcess."""
+    if not sys.platform.startswith("win32"):
+        return False
+    executable = shutil.which(cmd[0])
+    if executable is None:
+        return False
+    return executable.lower().endswith((".bat", ".cmd"))
+
+
 def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> dict:
     """Run a Flutter step and return result."""
     started = time.time()
+    use_shell = _use_shell_for_command(cmd)
     try:
         proc = subprocess.run(
             cmd,
@@ -43,6 +72,7 @@ def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600, env: d
             encoding="utf-8",
             errors="replace",
             env=env,
+            shell=use_shell,
         )
         duration = time.time() - started
         status = "PASS" if proc.returncode == 0 else "FAIL"
@@ -82,6 +112,8 @@ def check_target(
     api_base: str,
     ws_base: str,
     skip_web_build: bool = False,
+    desktop_build: bool = False,
+    desktop_platform: str = "",
 ) -> dict:
     """Check a single frontend target."""
     target_dir = FLUTTER_WORK_DIR / rel_path
@@ -160,10 +192,48 @@ def check_target(
             "reason": "skip_web_build=true (diagnostic mode)",
         })
 
+    # Step 5: desktop build (only when explicitly requested)
+    if name == "desktop":
+        if desktop_build:
+            platform = desktop_platform or _default_desktop_platform()
+            build_cmd = _desktop_build_cmd(platform)
+            if build_cmd is None:
+                steps.append({
+                    "name": f"{name} build desktop",
+                    "status": "NOT RUN",
+                    "reason": f"unsupported_desktop_platform: {platform}",
+                })
+            else:
+                steps.append(run_flutter_step(
+                    f"{name} build {platform}",
+                    build_cmd,
+                    target_dir,
+                    timeout=1800,
+                    env=isolated_env,
+                ))
+                if steps[-1]["status"] == "FAIL":
+                    return {"status": "FAIL", "steps": steps}
+        else:
+            steps.append({
+                "name": f"{name} build desktop",
+                "status": "NOT RUN",
+                "reason": "desktop_build_not_requested",
+            })
+
     # All steps passed
-    all_passed = all(s["status"] in ("PASS", "SKIP") for s in steps)
+    all_passed = all(s["status"] in ("PASS", "SKIP", "NOT RUN") for s in steps)
+    any_failed = any(s["status"] == "FAIL" for s in steps)
+    any_not_run = any(s["status"] == "NOT RUN" for s in steps)
+    if any_failed:
+        status = "FAIL"
+    elif all_passed and any_not_run:
+        status = "PASS_WITH_NOT_RUN"
+    elif all_passed:
+        status = "PASS"
+    else:
+        status = "FAIL"
     return {
-        "status": "PASS" if all_passed else "FAIL",
+        "status": status,
         "steps": steps,
     }
 
@@ -173,6 +243,8 @@ def run_frontend_check(
     api_base: str,
     ws_base: str,
     skip_web_build: bool = False,
+    desktop_build: bool = False,
+    desktop_platform: str = "",
 ) -> dict:
     """Run frontend build and test verification for all targets."""
     ensure_work_workspace()
@@ -182,6 +254,9 @@ def run_frontend_check(
     print(f"API Base: {api_base}")
     print(f"WS Base: {ws_base}")
     print(f"Skip Web Build: {skip_web_build}")
+    print(f"Desktop Build: {desktop_build}")
+    if desktop_build:
+        print(f"Desktop Platform: {desktop_platform or _default_desktop_platform()}")
     print(f"{'='*60}")
 
     started = time.time()
@@ -197,6 +272,8 @@ def run_frontend_check(
             api_base=api_base,
             ws_base=ws_base,
             skip_web_build=skip_web_build,
+            desktop_build=desktop_build,
+            desktop_platform=desktop_platform,
         )
         targets[name] = result
         print(f"  {name}: {result['status']}")
@@ -211,6 +288,8 @@ def run_frontend_check(
         overall_status = "NOT RUN"
     elif "WARN" in statuses:
         overall_status = "WARN"
+    elif "PASS_WITH_NOT_RUN" in statuses:
+        overall_status = "PASS_WITH_NOT_RUN"
     else:
         overall_status = "PASS"
 
@@ -273,6 +352,9 @@ def write_reports(results: dict, output_json: Path, output_md: Path) -> None:
                 status = step["status"]
                 duration = step.get("duration_seconds", 0)
                 error = step.get("error", "")
+                reason = step.get("reason", "")
+                if not error and reason:
+                    error = reason
                 if not error and step.get("exit_code") and step["exit_code"] != 0:
                     error = f"exit code {step['exit_code']}"
                 lines.append(f"| {step['name']} | {status} | {duration:.2f}s | {error} |")
@@ -304,6 +386,16 @@ def main() -> int:
         help="Skip web build (diagnostic mode only)",
     )
     parser.add_argument(
+        "--desktop-build",
+        action="store_true",
+        help="Run the desktop build for the current platform (or --desktop-platform)",
+    )
+    parser.add_argument(
+        "--desktop-platform",
+        default="",
+        help="Desktop build target: windows, macos, or linux (default: infer from sys.platform)",
+    )
+    parser.add_argument(
         "--output-json",
         default=str(REPORT_DIR / "gray-frontend-build.json"),
         help="Output JSON path",
@@ -321,6 +413,8 @@ def main() -> int:
         api_base=args.api_base,
         ws_base=args.ws_base,
         skip_web_build=args.skip_web_build,
+        desktop_build=args.desktop_build,
+        desktop_platform=args.desktop_platform,
     )
 
     write_reports(results, Path(args.output_json), Path(args.output_md))
@@ -329,7 +423,7 @@ def main() -> int:
     print(f"Overall Status: {results['status']}")
     print(f"Reports written to:\n  JSON: {args.output_json}\n  MD: {args.output_md}")
 
-    return 0 if results["status"] == "PASS" else 1
+    return 0 if results["status"] in ("PASS", "PASS_WITH_NOT_RUN") else 1
 
 
 if __name__ == "__main__":
