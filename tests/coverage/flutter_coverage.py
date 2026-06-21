@@ -9,7 +9,9 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_TESTS_DIR / "common"))
+sys.path.insert(0, str(_TESTS_DIR))
 from coverage.check_lcov_thresholds import parse_lcov  # noqa: E402
 from coverage.merge_lcov import merge  # noqa: E402
 from gate_common import ROOT, run_step, skip_step, write_gate_reports  # noqa: E402

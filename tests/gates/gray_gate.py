@@ -63,7 +63,11 @@ def _ensure_runtime_compose() -> list:
         ]
     result = run_step(
         "Generate runtime compose",
-        [PYTHON, str(ROOT / "scripts" / "init.py"), "--runtime-only"],
+        [
+            PYTHON,
+            "-c",
+            "from deploy_utils import prepare_runtime_files; prepare_runtime_files()",
+        ],
         cwd=ROOT,
         timeout=120,
     )

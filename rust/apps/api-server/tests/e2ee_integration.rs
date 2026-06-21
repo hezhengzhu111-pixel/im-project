@@ -210,7 +210,8 @@ async fn test_e2ee_upload_bundle_then_get_devices() {
             "signingIdentityKey": x25519_key(),
             "signedPreKey": x25519_key(),
             "signedPreKeySignature": ed25519_sig(),
-            "oneTimePreKeys": make_otp_keys(&["otp1", "otp2"])
+            "oneTimePreKeys": make_otp_keys(&["otp1", "otp2"]),
+            "oneTimePreKeySignatures": make_otp_signatures(&["otp1", "otp2"])
         }),
     )
     .await;
@@ -267,7 +268,8 @@ async fn test_e2ee_get_bundle_requires_conversation_id() {
             "signingIdentityKey": x25519_key(),
             "signedPreKey": x25519_key(),
             "signedPreKeySignature": ed25519_sig(),
-            "oneTimePreKeys": make_otp_keys(&["first_otp_key"])
+            "oneTimePreKeys": make_otp_keys(&["first_otp_key"]),
+            "oneTimePreKeySignatures": make_otp_signatures(&["first_otp_key"])
         }),
     )
     .await;
@@ -328,7 +330,8 @@ async fn test_e2ee_cannot_delete_other_user_device() {
             "signingIdentityKey": x25519_key(),
             "signedPreKey": x25519_key(),
             "signedPreKeySignature": ed25519_sig(),
-            "oneTimePreKeys": []
+            "oneTimePreKeys": [],
+            "oneTimePreKeySignatures": []
         }),
     )
     .await;
@@ -367,7 +370,8 @@ async fn test_e2ee_unauthenticated_returns_401() {
             "signingIdentityKey": "test",
             "signedPreKey": "test",
             "signedPreKeySignature": "test",
-            "oneTimePreKeys": []
+            "oneTimePreKeys": [],
+            "oneTimePreKeySignatures": []
         }),
     )
     .await;
@@ -571,6 +575,14 @@ fn make_otp_keys(keys: &[&str]) -> Value {
         .into()
 }
 
+fn make_otp_signatures(keys: &[&str]) -> Value {
+    keys.iter()
+        .enumerate()
+        .map(|(i, _k)| json!({"id": (i + 1) as i32, "signature": ed25519_sig()}))
+        .collect::<Vec<_>>()
+        .into()
+}
+
 /// Generate a valid 32-byte base64 key for X25519
 fn x25519_key() -> String {
     let bytes: Vec<u8> = (0..32).map(|i| (i % 26) as u8 + b'a').collect();
@@ -597,7 +609,8 @@ async fn upload_test_device(app: &axum::Router, token: &str) -> (String, Value) 
             "signingIdentityKey": x25519_key(),
             "signedPreKey": x25519_key(),
             "signedPreKeySignature": ed25519_sig(),
-            "oneTimePreKeys": make_otp_keys(&["otp_key_1"])
+            "oneTimePreKeys": make_otp_keys(&["otp_key_1"]),
+            "oneTimePreKeySignatures": make_otp_signatures(&["otp_key_1"])
         }),
     )
     .await;
@@ -1217,7 +1230,7 @@ async fn test_e2ee_pending_same_requester_idempotent() {
         &json!({
             "sessionId": &session_id,
             "identityKey": "second_key",
-            "requestPayloadJson": "{\"updated\":true}"
+            "requestPayloadJson": "{\"version\":1,\"ephemeralPublicKey\":\"base64-ephemeral-key\",\"ciphertext\":\"base64-ciphertext\"}"
         }),
     )
     .await;
