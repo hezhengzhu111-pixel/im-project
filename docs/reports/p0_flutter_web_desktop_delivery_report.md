@@ -12,7 +12,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 代码分支 | master @ `ad83b2de` |
+| 代码分支 | master @ `97c82436` |
 | 后端 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
 | Flutter | 3.44.0 / Dart 3.12.0 |
