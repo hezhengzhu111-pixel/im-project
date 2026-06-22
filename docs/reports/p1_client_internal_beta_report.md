@@ -9,7 +9,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 当前完整 commit SHA | `4faec3d9b2b6ed9bd2842d83a0122643662b112c` |
+| 当前完整 commit SHA | `832602826e0cabb478a07012b93b159108ffa704` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 后端基线 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
@@ -289,7 +289,7 @@ tests/p1/p1_group_chat_smoke.py
 ## 附录：P1 阶段 2 收口补丁 commit / PR 信息
 
 ```text
-完整 commit SHA: 4faec3d9b2b6ed9bd2842d83a0122643662b112c
+完整 commit SHA: 832602826e0cabb478a07012b93b159108ffa704
 PR / commit URL: ________________________________________
 修改文件数量: 6
 后端修改: 是
