@@ -9,10 +9,12 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 当前完整 commit SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
+| 阶段 4 功能实现 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
+| 阶段 4 报告提交 SHA | `6920909cdfb626336705e8b2c86e1f2b8994a929` |
+| 最终验证 HEAD | `6920909cdfb626336705e8b2c86e1f2b8994a929` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 阶段 2 基线 SHA | `2dd8a78c5c7a7bd50a84ea84b83390cb6cc2e4a0` |
-| 阶段 3 基线 SHA | `7b18cd69b9fab76f7db7e0a14428764df1f4063d` |
+| 阶段 3 基线 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
 | 后端基线 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
 | Flutter | 3.44.0 / Dart 3.12.0 |
@@ -84,19 +86,24 @@ tests/p1/p1_message_status_smoke.py
 
 ### 3.2 撤回结果
 
-| 场景 | 结果 |
-| --- | --- |
-| 私聊文字撤回 | PASS |
-| 群聊文字撤回 | PASS |
-| 图片消息撤回 | PASS |
-| 文件消息撤回 | PASS |
-| WebSocket 推送撤回事件 | PASS |
-| 历史记录显示"消息已撤回" | PASS |
-| 被撤回消息不显示原文 | PASS |
-| 被撤回消息不显示图片缩略图 | PASS |
-| 被撤回消息不显示文件下载入口 | PASS |
-| 无权限撤回时返回 403 | PASS（后端已有） |
-| 超时不可撤回时返回错误 | PASS（后端 2 分钟窗口） |
+| 场景 | 验证方式 | 结果 |
+| --- | --- | --- |
+| 私聊文字撤回 | Smoke: history status == RECALLED | PASS |
+| 群聊文字撤回 | Smoke: history status == RECALLED | PASS |
+| 图片消息撤回 | Smoke: history status == RECALLED | PASS |
+| 文件消息撤回 | Smoke: history status == RECALLED | PASS |
+| WebSocket 推送撤回事件 | 后端已有 | PASS |
+| 历史记录显示"消息已撤回" | Flutter widget test: `chatRecalled` placeholder | PASS |
+| 被撤回消息不显示原文 | Flutter widget test: 原文不可见 | PASS |
+| 被撤回消息不显示图片缩略图 | Flutter widget test: Image 不可见 | PASS |
+| 被撤回消息不显示文件下载入口 | Flutter widget test: 文件名不可见 | PASS |
+| 无权限撤回时返回 403 | 后端已有 | PASS |
+| 超时不可撤回时返回错误 | 后端 2 分钟窗口 | PASS |
+
+说明：
+- **Smoke 验证**：`p1_message_status_smoke.py` 验证历史消息中 `status == "RECALLED"`。
+- **UI 遮蔽**：`message_status_bubble_test.dart` 验证 Flutter 端 recalled 消息不显示原文、图片、文件。
+- 后端返回的 recalled 消息仍包含原始 content/mediaUrl（数据库保留），UI 端根据 status 遮蔽显示。
 
 ### 3.3 重发结果
 
@@ -194,15 +201,15 @@ python tests/p1/p1_media_message_smoke.py --base-url http://localhost:8082
 | P0 E2EE 私聊 | CI | PASS |
 | P0 跨客户端矩阵 | CI | PASS |
 
-### 5.3 GitHub Actions
+### 5.3 GitHub Actions（基于最终验证 HEAD）
 
-| Workflow | 结果 |
-| --- | --- |
-| PR Fast Gate | success |
-| P0 Acceptance Gate | success |
-| E2EE Rust CI | success |
-| Rust Bridge CI | success |
-| Build Artifacts | success |
+| Workflow | Run ID | 结果 |
+| --- | --- | --- |
+| PR Fast Gate | [27966619240](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27966619240) | success |
+| P0 Acceptance Gate | [27966619197](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27966619197) | success |
+| E2EE Rust CI | [27966619246](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27966619246) | success |
+| Rust Bridge CI | [27966619255](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27966619255) | success |
+| Build Artifacts | [27966619049](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27966619049) | success |
 
 ---
 
@@ -258,8 +265,10 @@ python tests/p1/p1_media_message_smoke.py --base-url http://localhost:8082
 ## 附录：P1 阶段 4 commit / PR 信息
 
 ```text
-完整 commit SHA: 5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56
-修改文件数量: 14
+阶段 4 功能实现 SHA: 5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56
+阶段 4 报告提交 SHA: 6920909cdfb626336705e8b2c86e1f2b8994a929
+最终验证 HEAD: 6920909cdfb626336705e8b2c86e1f2b8994a929
+修改文件数量: 15
 后端修改: 否
 SQL 修改: 否
 E2EE 算法修改: 否
