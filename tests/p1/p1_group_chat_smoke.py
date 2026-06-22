@@ -71,13 +71,9 @@ def run(base_url: str) -> dict[str, Any]:
     results: dict[str, str] = {}
 
     # Register three users.
-    owner = register_and_login(ImApiClient(base_url), unique_username("p1g_owner_"))
-    member_b = register_and_login(
-        ImApiClient(base_url), unique_username("p1g_member_b_")
-    )
-    member_c = register_and_login(
-        ImApiClient(base_url), unique_username("p1g_member_c_")
-    )
+    owner = register_and_login(ImApiClient(base_url), unique_username("o_"))
+    member_b = register_and_login(ImApiClient(base_url), unique_username("b_"))
+    member_c = register_and_login(ImApiClient(base_url), unique_username("c_"))
 
     # Establish friendships so members can be added.
     make_friends(base_url, owner, member_b)
@@ -88,7 +84,7 @@ def run(base_url: str) -> dict[str, Any]:
         base_url,
         owner,
         [member_b.user_id, member_c.user_id],
-        unique_username("p1g_group_"),
+        unique_username("g_"),
     )
 
     # B and C should see the group in their list.

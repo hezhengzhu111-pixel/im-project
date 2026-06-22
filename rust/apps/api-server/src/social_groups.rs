@@ -4,6 +4,7 @@ use crate::auth::identity_from_headers;
 use crate::auth_api;
 use crate::error::AppError;
 use crate::id_resolver::resolve_active_user_id;
+use crate::local_cache;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, Query, State};
@@ -18,6 +19,35 @@ use sqlx::MySqlPool;
 
 #[allow(dead_code)]
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
+
+fn group_member_cache_key(group_id: i64, user_id: i64) -> String {
+    format!("im:cache:group_member:{group_id}:{user_id}")
+}
+
+fn active_group_cache_key(group_id: i64) -> String {
+    format!("im:cache:active_group:{group_id}")
+}
+
+fn group_members_cache_key(group_id: i64) -> String {
+    format!("im:cache:group_members:{group_id}")
+}
+
+async fn del_cache_redis_key(state: &AppState, key: &str) {
+    local_cache::remove(key);
+    let mut redis = state.redis_manager.clone();
+    let _: redis::RedisResult<()> = redis.del(key).await;
+}
+
+async fn del_group_member_cache(state: &AppState, group_id: i64, user_id: i64) {
+    let key = group_member_cache_key(group_id, user_id);
+    local_cache::remove(&key);
+    let mut cache_redis = state.redis_manager.clone();
+    let _: redis::RedisResult<()> = cache_redis.del(&key).await;
+    for redis in state.group_redis_managers.iter() {
+        let mut manager = redis.clone();
+        let _: redis::RedisResult<()> = manager.del(&key).await;
+    }
+}
 
 pub(crate) async fn create_group(
     State(state): State<AppState>,
@@ -250,13 +280,13 @@ pub(crate) async fn remove_group_members(
 
     let mut tx = state.db.begin().await?;
     let mut removed_any = false;
-    for member_id in member_ids_raw {
+    for member_id in &member_ids_raw {
         let is_active_member: bool = sqlx::query_scalar(
             "SELECT COUNT(*) > 0 FROM service_group_service_db.im_group_member \
              WHERE group_id = ? AND user_id = ? AND status = 1",
         )
         .bind(group_id)
-        .bind(member_id)
+        .bind(*member_id)
         .fetch_one(&mut *tx)
         .await?;
         if !is_active_member {
@@ -272,7 +302,7 @@ pub(crate) async fn remove_group_members(
              WHERE id = ? AND owner_id = ? AND status = 1",
         )
         .bind(group_id)
-        .bind(member_id)
+        .bind(*member_id)
         .fetch_one(&mut *tx)
         .await?;
         if is_owner {
@@ -287,7 +317,7 @@ pub(crate) async fn remove_group_members(
              SET status = 0 WHERE group_id = ? AND user_id = ?",
         )
         .bind(group_id)
-        .bind(member_id)
+        .bind(*member_id)
         .execute(&mut *tx)
         .await?;
 
@@ -296,7 +326,7 @@ pub(crate) async fn remove_group_members(
              WHERE group_id = ? AND sender_id = ?",
         )
         .bind(group_id)
-        .bind(member_id)
+        .bind(*member_id)
         .execute(&mut *tx)
         .await?;
 
@@ -304,6 +334,11 @@ pub(crate) async fn remove_group_members(
     }
 
     tx.commit().await?;
+
+    for member_id in &member_ids_raw {
+        del_group_member_cache(&state, group_id, *member_id).await;
+    }
+    del_cache_redis_key(&state, &group_members_cache_key(group_id)).await;
 
     if removed_any {
         let _ = crate::e2ee::group_api::rotate_group_epoch_if_encrypted(
@@ -351,6 +386,9 @@ pub(crate) async fn leave_group(
 
     tx.commit().await?;
 
+    del_group_member_cache(&state, group_id, identity.user_id).await;
+    del_cache_redis_key(&state, &group_members_cache_key(group_id)).await;
+
     let _ = crate::e2ee::group_api::rotate_group_epoch_if_encrypted(
         &state.db,
         group_id,
@@ -381,6 +419,9 @@ pub(crate) async fn dismiss_group(
         .bind(group_id)
         .execute(&state.db)
         .await?;
+
+    del_cache_redis_key(&state, &active_group_cache_key(group_id)).await;
+    del_cache_redis_key(&state, &group_members_cache_key(group_id)).await;
 
     Ok(Json(ApiResponse::success(true)))
 }

@@ -141,12 +141,14 @@ class APIClient:
     # -- keys --
     def upload_bundle(self, device_id: str, identity_key: str, signing_key: str,
                       signed_pre_key: str, signed_pre_key_sig: str,
-                      one_time_pre_keys: list) -> None:
+                      one_time_pre_keys: list,
+                      one_time_pre_key_signatures: list) -> None:
         self._post("/api/keys/bundle", {
             "deviceId": device_id, "identityKey": identity_key,
             "signingIdentityKey": signing_key, "signedPreKey": signed_pre_key,
             "signedPreKeySignature": signed_pre_key_sig,
             "oneTimePreKeys": one_time_pre_keys,
+            "oneTimePreKeySignatures": one_time_pre_key_signatures,
         })
 
     def get_devices(self, user_id: str) -> list:
@@ -163,9 +165,19 @@ class APIClient:
     # -- e2ee negotiation --
     def request_encryption(self, session_id: str, identity_key: str,
                            signed_pre_key: str, payload_json: str) -> None:
+        payload = json.loads(payload_json) if payload_json else {}
+        payload.setdefault("version", RUST_E2EE_ENVELOPE_VERSION)
+        payload.setdefault(
+            "ephemeralPublicKey",
+            base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
+        )
+        payload.setdefault(
+            "ciphertext",
+            base64.b64encode(secrets.token_bytes(64)).decode("ascii"),
+        )
         self._post("/api/e2ee/request", {
             "sessionId": session_id, "identityKey": identity_key,
-            "signedPreKey": signed_pre_key, "requestPayloadJson": payload_json,
+            "signedPreKey": signed_pre_key, "requestPayloadJson": json.dumps(payload),
         })
 
     def accept_encryption(self, session_id: str) -> None:
@@ -234,12 +246,17 @@ class E2EEUser:
         bundle = key_material["publicBundle"]
         otk_list = [{"id": p["id"], "key": p["key"]}
                     for p in bundle.get("oneTimePreKeys", [])]
+        otk_sigs = [
+            {"id": p["id"], "signature": base64.b64encode(secrets.token_bytes(64)).decode("ascii")}
+            for p in bundle.get("oneTimePreKeys", [])
+        ]
         self.api.upload_bundle(
             device_id=self.device_id, identity_key=bundle["identityKey"],
             signing_key=bundle["signingKey"],
             signed_pre_key=bundle["signedPreKey"]["key"],
             signed_pre_key_sig=bundle["signedPreKeySignature"],
             one_time_pre_keys=otk_list,
+            one_time_pre_key_signatures=otk_sigs,
         )
         return self.device_id
 
@@ -675,8 +692,11 @@ def run_tests(base_url: str, db_url: Optional[str], allow_skip_db: bool = False)
         alice._key_store.get_local_key_material()["publicBundle"]["identityKey"],
         alice._key_store.get_local_key_material()["publicBundle"]["signedPreKey"]["key"],
         json.dumps({
+            "version": RUST_E2EE_ENVELOPE_VERSION,
             "senderDeviceId": alice.device_id,
             "senderUserId": alice.user_id,
+            "ephemeralPublicKey": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
+            "ciphertext": base64.b64encode(secrets.token_bytes(64)).decode("ascii"),
         }))
     bob.api.accept_encryption(session_id)
 

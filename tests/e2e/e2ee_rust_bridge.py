@@ -28,6 +28,8 @@ def _find_lib_path() -> str:
         return os.path.normpath(env_path)
 
     candidates = [
+        os.path.join(repo_root, "build", "cache", "cargo-target", "release", lib_name),
+        os.path.join(repo_root, "build", "cache", "cargo-target", "debug", lib_name),
         os.path.join(repo_root, "build", "cache", "rust-target", "release", lib_name),
         os.path.join(repo_root, "build", "cache", "rust-target", "debug", lib_name),
         os.path.join(repo_root, "rust", "target", "release", lib_name),

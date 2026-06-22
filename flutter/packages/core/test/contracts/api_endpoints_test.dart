@@ -119,6 +119,13 @@ void main() {
       expect(GroupEndpoints.addMembers('g1'), '/api/group/g1/add-members');
     });
 
+    test('removeMembers returns parameterized path', () {
+      expect(
+        GroupEndpoints.removeMembers('g1'),
+        '/api/group/g1/remove-members',
+      );
+    });
+
     test('leave returns parameterized path', () {
       expect(GroupEndpoints.leave('g1'), '/api/group/g1/leave');
     });
@@ -309,6 +316,13 @@ void main() {
 
     test('GroupEndpoints.addMembers encodes slash', () {
       expect(GroupEndpoints.addMembers('group/1'), contains('group%2F1'));
+    });
+
+    test('GroupEndpoints.removeMembers encodes special chars', () {
+      expect(
+        GroupEndpoints.removeMembers('g/1 #x'),
+        contains('g%2F1%20%23x'),
+      );
     });
 
     test('MomentsEndpoints.postById encodes space', () {

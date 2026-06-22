@@ -77,6 +77,14 @@ pub fn set_i64_vec(key: &str, value: Vec<i64>) {
     set_value(key, CacheValue::I64Vec(value), POSITIVE_TTL);
 }
 
+pub fn remove(key: &str) {
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut guard) = cache.lock() else {
+        return;
+    };
+    guard.remove(key);
+}
+
 fn get_value(key: &str) -> Option<CacheValue> {
     let now = Instant::now();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
