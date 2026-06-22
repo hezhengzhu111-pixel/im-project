@@ -300,6 +300,7 @@
   "chatMessagesPending": "{count} 条消息等待发送",
   "chatRetrying": "正在重试发送消息...",
   "chatRetry": "重试",
+  "chatRecalled": "消息已撤回",
   "errorE2eeNotReady": "端到端加密协商尚未完成，请等待对方确认。",
   "errorAlreadyRecording": "已在录音中",
   "errorNotRecording": "未在录音中",

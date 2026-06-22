@@ -1146,6 +1146,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRetry => 'Retry';
 
   @override
+  String get chatRecalled => 'Message recalled';
+
+  @override
   String get errorE2eeNotReady =>
       'E2EE negotiation not complete, waiting for peer confirmation';
 

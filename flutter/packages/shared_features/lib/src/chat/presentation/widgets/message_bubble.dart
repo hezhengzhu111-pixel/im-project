@@ -92,6 +92,7 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildMessageContent(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
+    final recalled = message.status.toUpperCase() == 'RECALLED';
     final decryptFailed =
         (message.decryptStatus ?? '').toLowerCase() == 'failed';
     final hasE2eeMetadata = message.encrypted == true ||
@@ -108,7 +109,27 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (decryptFailed)
+          if (recalled)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: ImTokens.wechatTextSecondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  loc.chatRecalled,
+                  style: TextStyle(
+                    color: ImTokens.wechatTextSecondary,
+                    fontSize: 15,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            )
+          else if (decryptFailed)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -145,7 +166,7 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ),
             },
-          if (isMedia) ...[
+          if (!recalled && isMedia) ...[
             const SizedBox(height: 6),
             if (message.encrypted == true && hasE2eeMetadata)
               MessageBubbleE2eeBadge(isMe: isMe)
@@ -163,11 +184,11 @@ class MessageBubble extends StatelessWidget {
                   fontSize: 11,
                 ),
               ),
-              if (!isMedia && hasE2eeMetadata) ...[
+              if (!recalled && !isMedia && hasE2eeMetadata) ...[
                 const SizedBox(width: 6),
                 MessageBubbleE2eeBadge(isMe: isMe),
               ],
-              if (isMe) ...[
+              if (isMe && !recalled) ...[
                 const SizedBox(width: 4),
                 if (failed && onRetry != null)
                   _RetryStatusButton(onRetry: onRetry!)
@@ -193,8 +214,12 @@ class MessageBubble extends StatelessWidget {
   }
 
   Color _bubbleColor(BuildContext context) {
+    final recalled = message.status.toUpperCase() == 'RECALLED';
     final decryptFailed =
         (message.decryptStatus ?? '').toLowerCase() == 'failed';
+    if (recalled) {
+      return ImTokens.wechatTextSecondary.withValues(alpha: 0.08);
+    }
     if (decryptFailed) {
       return const Color(0xFFFFE8EC);
     }

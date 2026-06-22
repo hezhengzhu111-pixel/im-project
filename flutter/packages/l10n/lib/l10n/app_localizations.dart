@@ -2234,6 +2234,12 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get chatRetry;
 
+  /// No description provided for @chatRecalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Message recalled'**
+  String get chatRecalled;
+
   /// No description provided for @errorE2eeNotReady.
   ///
   /// In en, this message translates to:

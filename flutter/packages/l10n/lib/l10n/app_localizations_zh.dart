@@ -1119,6 +1119,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatRetry => '重试';
 
   @override
+  String get chatRecalled => '消息已撤回';
+
+  @override
   String get errorE2eeNotReady => '端到端加密协商尚未完成，请等待对方确认。';
 
   @override

@@ -371,4 +371,110 @@ void main() {
       expect(restored, equals(receipt));
     });
   });
+
+  group('Message status normalization', () {
+    test('fromJson normalizes lowercase status from backend', () {
+      final message = Message.fromJson({
+        'id': 'msg1',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'Hello',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'sent',
+      });
+      expect(message.status, 'sent');
+    });
+
+    test('fromJson normalizes uppercase status from backend', () {
+      final message = Message.fromJson({
+        'id': 'msg2',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'Hello',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'SENT',
+      });
+      expect(message.status, 'SENT');
+    });
+
+    test('fromJson handles RECALLED status', () {
+      final message = Message.fromJson({
+        'id': 'msg3',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'recalled',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'RECALLED',
+      });
+      expect(message.status, 'RECALLED');
+    });
+
+    test('fromJson handles READ status', () {
+      final message = Message.fromJson({
+        'id': 'msg4',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'read',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'READ',
+      });
+      expect(message.status, 'READ');
+    });
+
+    test('fromJson handles DELIVERED status', () {
+      final message = Message.fromJson({
+        'id': 'msg5',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'delivered',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'DELIVERED',
+      });
+      expect(message.status, 'DELIVERED');
+    });
+
+    test('fromJson handles FAILED status', () {
+      final message = Message.fromJson({
+        'id': 'msg6',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'failed',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'FAILED',
+      });
+      expect(message.status, 'FAILED');
+    });
+
+    test('fromJson handles PENDING status', () {
+      final message = Message.fromJson({
+        'id': 'msg7',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'pending',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'PENDING',
+      });
+      expect(message.status, 'PENDING');
+    });
+
+    test('fromJson handles SENDING status', () {
+      final message = Message.fromJson({
+        'id': 'msg8',
+        'senderId': 'u1',
+        'isGroupChat': false,
+        'messageType': 'TEXT',
+        'content': 'sending',
+        'sendTime': '2024-01-01T00:00:00Z',
+        'status': 'SENDING',
+      });
+      expect(message.status, 'SENDING');
+    });
+  });
 }

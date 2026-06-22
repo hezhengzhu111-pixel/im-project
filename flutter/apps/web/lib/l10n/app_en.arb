@@ -300,6 +300,7 @@
   "chatMessagesPending": "{count} messages waiting to send",
   "chatRetrying": "Retrying to send messages...",
   "chatRetry": "Retry",
+  "chatRecalled": "Message recalled",
   "errorE2eeNotReady": "E2EE negotiation not complete, waiting for peer confirmation",
   "errorAlreadyRecording": "Already recording",
   "errorNotRecording": "Not recording",
