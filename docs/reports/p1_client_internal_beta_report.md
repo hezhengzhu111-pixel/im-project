@@ -9,7 +9,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 当前完整 commit SHA | `4ea8fcc9716fdcf7312cd95320290dd9a4835f0a` |
+| 当前完整 commit SHA | `82f90df23c5dd138f7b0bd9175254cdfe8f1dfe2` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 后端基线 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
@@ -25,6 +25,7 @@
 
 ```text
 flutter/packages/core/test/contracts/api_endpoints_test.dart
+rust/apps/api-server/src/ai/crypto.rs
 rust/apps/api-server/src/local_cache.rs
 rust/apps/api-server/src/social_groups.rs
 tests/e2e/e2ee_rust_bridge.py
@@ -36,12 +37,14 @@ tests/p1/p1_group_chat_smoke.py
 
 - [x] 是
 
-本次补丁主要修复前端 endpoint 测试覆盖问题，但工作区中已包含 P1 阶段 2 群聊主链路必要的后端改动：
+本次补丁包含 P1 阶段 2 群聊主链路必要的后端改动，以及 PR Fast Gate 失败的修复：
 
 - `rust/apps/api-server/src/local_cache.rs`
 - `rust/apps/api-server/src/social_groups.rs`
+- `rust/apps/api-server/src/ai/crypto.rs`
 
 影响 API：群列表、群创建、群成员管理、移除成员、退群、解散群等 `/api/group/**` 接口。
+`ai/crypto.rs` 仅修改 `tampered_ciphertext_fails` 单元测试，将不确定的 base64 字符替换改为对 decoded ciphertext/tag 字节进行确定性位翻转，不改 AI 加解密逻辑。
 回滚方式：回退上述两个文件的改动并重启 `im-api-server`。
 对 P0 影响：经 P0 回归脚本验证，未影响 P0 E2EE 私聊与跨客户端矩阵。
 
@@ -286,7 +289,7 @@ tests/p1/p1_group_chat_smoke.py
 ## 附录：P1 阶段 2 收口补丁 commit / PR 信息
 
 ```text
-完整 commit SHA: 4ea8fcc9716fdcf7312cd95320290dd9a4835f0a
+完整 commit SHA: 82f90df23c5dd138f7b0bd9175254cdfe8f1dfe2
 PR / commit URL: ________________________________________
 修改文件数量: 6
 后端修改: 是
