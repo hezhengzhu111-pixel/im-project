@@ -78,13 +78,29 @@ mod tests {
         Ok(())
     }
 
+    const NONCE_LEN: usize = 12;
+
     #[test]
     fn tampered_ciphertext_fails() -> Result<(), AppError> {
         let key: [u8; 32] = [0xCC; 32];
         let encoded = encrypt("secret", &key)?;
-        let mut tampered = encoded.clone();
-        tampered.replace_range(14..15, "X");
+
+        let mut bytes = B64
+            .decode(encoded.trim())
+            .map_err(|_| AppError::BadRequest("invalid ciphertext encoding".into()))?;
+
+        assert!(
+            bytes.len() > NONCE_LEN + 16,
+            "encrypted payload should contain nonce + ciphertext + tag"
+        );
+
+        // Flip a bit in the ciphertext/tag area, not just the base64 text.
+        let idx = NONCE_LEN;
+        bytes[idx] ^= 0x01;
+
+        let tampered = B64.encode(bytes);
         let result = decrypt(&tampered, &key);
+
         assert!(result.is_err());
         Ok(())
     }
