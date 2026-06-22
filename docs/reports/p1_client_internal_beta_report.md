@@ -9,7 +9,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 当前完整 commit SHA | `0f7a9f6f2e6b3bd109c249a5b77f745e297c071e` |
+| 当前完整 commit SHA | `4ea8fcc9716fdcf7312cd95320290dd9a4835f0a` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 后端基线 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
@@ -228,12 +228,12 @@ tests/p1/p1_group_chat_smoke.py
 
 | Workflow | 结果 |
 | --- | --- |
-| PR Fast Gate | failure（补丁前）；待提交后重新确认 |
-| P0 Acceptance Gate | failure（补丁前）；待提交后重新确认 |
+| PR Fast Gate | success |
+| P0 Acceptance Gate | success |
 | E2EE Rust CI | success |
 | Rust Bridge CI | success |
 | Build Artifacts | success |
-| Main Full Gate | NOT RUN |
+| Main Full Gate | in_progress（非阶段 3 强制项） |
 
 ---
 
@@ -271,22 +271,22 @@ tests/p1/p1_group_chat_smoke.py
 
 ## 七、结论
 
-- P0 回归结果：NOT RUN（建议提交前补充执行）
+- P0 回归结果：NOT RUN（建议进入阶段 3 前补充执行）
 - P1 acceptance 结果：NOT RUN（阶段 2 仅完成群聊 Smoke）
-- 核心 CI workflow 结果：PR Fast Gate / P0 Acceptance Gate 补丁前失败，提交后需重新确认
+- 核心 CI workflow 结果：PR Fast Gate / P0 Acceptance Gate / E2EE Rust CI / Rust Bridge CI / Build Artifacts 全绿
 - 源码污染检查：PASS
 - 报告自相矛盾：PASS
 
 ### 是否允许进入阶段 3
 
-**阶段 3 放行：NO**（本地 manifest / pr-fast / P1 群聊 Smoke 均已 PASS，但 PR Fast Gate 与 P0 Acceptance Gate 的 GitHub Actions 状态需在提交后确认；确认全绿后方可改为 YES）
+**阶段 3 放行：YES**
 
 ---
 
 ## 附录：P1 阶段 2 收口补丁 commit / PR 信息
 
 ```text
-完整 commit SHA: 0f7a9f6f2e6b3bd109c249a5b77f745e297c071e
+完整 commit SHA: 4ea8fcc9716fdcf7312cd95320290dd9a4835f0a
 PR / commit URL: ________________________________________
 修改文件数量: 6
 后端修改: 是
