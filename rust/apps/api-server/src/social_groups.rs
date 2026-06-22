@@ -224,6 +224,101 @@ pub(crate) async fn add_group_members(
     Ok(Json(ApiResponse::success(true)))
 }
 
+pub(crate) async fn remove_group_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<i64>,
+    Json(payload): Json<Value>,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
+    access_control::ensure_group_admin(&state.db, group_id, identity.user_id).await?;
+
+    let member_ids_raw: Vec<i64> = payload
+        .get("memberIds")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(value_to_i64).collect())
+        .unwrap_or_default();
+    if member_ids_raw.is_empty() {
+        return Err(AppError::BadRequest("memberIds is required".to_string()));
+    }
+    if member_ids_raw.contains(&identity.user_id) {
+        return Err(AppError::BadRequest(
+            "admin cannot remove themselves".to_string(),
+        ));
+    }
+
+    let mut tx = state.db.begin().await?;
+    let mut removed_any = false;
+    for member_id in member_ids_raw {
+        let is_active_member: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM service_group_service_db.im_group_member \
+             WHERE group_id = ? AND user_id = ? AND status = 1",
+        )
+        .bind(group_id)
+        .bind(member_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !is_active_member {
+            tx.rollback().await?;
+            return Err(AppError::BadRequest(format!(
+                "user {} is not an active member",
+                member_id
+            )));
+        }
+
+        let is_owner: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM service_group_service_db.im_group \
+             WHERE id = ? AND owner_id = ? AND status = 1",
+        )
+        .bind(group_id)
+        .bind(member_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if is_owner {
+            tx.rollback().await?;
+            return Err(AppError::BadRequest(
+                "cannot remove group owner".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            "UPDATE service_group_service_db.im_group_member \
+             SET status = 0 WHERE group_id = ? AND user_id = ?",
+        )
+        .bind(group_id)
+        .bind(member_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "DELETE FROM service_user_service_db.e2ee_sender_keys \
+             WHERE group_id = ? AND sender_id = ?",
+        )
+        .bind(group_id)
+        .bind(member_id)
+        .execute(&mut *tx)
+        .await?;
+
+        removed_any = true;
+    }
+
+    tx.commit().await?;
+
+    if removed_any {
+        let _ = crate::e2ee::group_api::rotate_group_epoch_if_encrypted(
+            &state.db,
+            group_id,
+            identity.user_id,
+            "member_remove",
+        )
+        .await?;
+        refresh_group_member_count(&state.db, group_id).await?;
+    }
+
+    Ok(Json(ApiResponse::success(true)))
+}
+
 pub(crate) async fn leave_group(
     State(state): State<AppState>,
     headers: HeaderMap,

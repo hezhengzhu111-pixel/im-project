@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_l10n/im_l10n.dart';
+import 'package:im_shared_features/chat.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_ui/im_ui.dart';
 import 'group_providers.dart';
@@ -36,8 +40,20 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
   }
 
   Future<void> _createGroup() async {
+    final loc = AppLocalizations.of(context)!;
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(loc.validationRequired)),
+      );
+      return;
+    }
+    if (_selectedMemberIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(loc.groupCreateNeedMembers)),
+      );
+      return;
+    }
 
     final group = await ref.read(groupStateProvider.notifier).createGroup(
           name: name,
@@ -50,8 +66,22 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
           memberIds: _selectedMemberIds.toList(),
         );
 
-    if (group != null && mounted) {
-      Navigator.of(context).pop();
+    if (!mounted) return;
+    if (group != null) {
+      final notifier = ref.read(groupStateProvider.notifier);
+      notifier.clearError();
+      final sessionKey =
+          ref.read(chatStateProvider.notifier).getGroupSessionKey(group.id);
+      ref.read(chatStateProvider.notifier).setActiveSession(sessionKey);
+      unawaited(ref.read(chatStateProvider.notifier).loadGroupMessages(group.id));
+      context.go('/chat');
+    } else {
+      final error = ref.read(groupStateProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? loc.groupCreateFailed),
+        ),
+      );
     }
   }
 

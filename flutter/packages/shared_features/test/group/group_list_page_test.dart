@@ -4,16 +4,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
+import 'package:im_shared_features/chat.dart';
 import 'package:im_shared_features/group.dart';
 import 'package:im_ui/im_ui.dart';
 
 import '../helpers/fakes.dart';
 
 Widget _buildApp({
+  required FakeHttpClientPort http,
   required List<Override> overrides,
 }) {
   return ProviderScope(
-    overrides: overrides,
+    overrides: [
+      httpClientProvider.overrideWith((ref) => http),
+      wsClientProvider.overrideWith((ref) => FakeWsClient()),
+      analyticsProvider.overrideWith((ref) => FakeAnalyticsPort()),
+      chatStateProvider.overrideWith((ref) => FakeChatNotifier()),
+      ...overrides,
+    ],
     child: BreakpointScope(
       child: MaterialApp(
         locale: const Locale('en'),
@@ -60,6 +69,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
+          http: http,
           overrides: [
             authStateProvider.overrideWith((ref) => authNotifier),
             groupStateProvider
@@ -105,6 +115,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
+          http: http,
           overrides: [
             authStateProvider.overrideWith((ref) => authNotifier),
             groupStateProvider
@@ -149,6 +160,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
+          http: http,
           overrides: [
             authStateProvider.overrideWith((ref) => authNotifier),
             groupStateProvider
@@ -188,6 +200,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
+          http: http,
           overrides: [
             authStateProvider.overrideWith((ref) => authNotifier),
             groupStateProvider
@@ -222,6 +235,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
+          http: http,
           overrides: [
             authStateProvider.overrideWith((ref) => authNotifier),
             groupStateProvider

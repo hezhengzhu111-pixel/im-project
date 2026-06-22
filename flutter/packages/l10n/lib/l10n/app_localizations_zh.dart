@@ -865,6 +865,61 @@ class AppLocalizationsZh extends AppLocalizations {
   String get groupLoadMembersFailed => '加载成员失败';
 
   @override
+  String get groupDismiss => '解散群聊';
+
+  @override
+  String groupDismissConfirm(Object name) {
+    return '确定解散 $name？';
+  }
+
+  @override
+  String get groupDismissSuccess => '群聊已解散';
+
+  @override
+  String get groupDismissFailed => '解散群聊失败';
+
+  @override
+  String get groupRemoveMember => '移除成员';
+
+  @override
+  String groupRemoveMemberConfirm(Object name) {
+    return '确定将 $name 移出群聊？';
+  }
+
+  @override
+  String get groupRemoveMemberSuccess => '成员已移除';
+
+  @override
+  String get groupRemoveMemberFailed => '移除成员失败';
+
+  @override
+  String get groupInviteMember => '邀请成员';
+
+  @override
+  String get groupInviteSuccess => '成员已邀请';
+
+  @override
+  String get groupInviteFailed => '邀请成员失败';
+
+  @override
+  String get groupCreateNeedMembers => '请至少选择一名成员';
+
+  @override
+  String get groupCreateFailed => '创建群聊失败';
+
+  @override
+  String get groupOwner => '群主';
+
+  @override
+  String get groupAdmin => '管理员';
+
+  @override
+  String get groupMember => '成员';
+
+  @override
+  String get groupLastMessageEmpty => '暂无消息';
+
+  @override
   String get groupSelectGroupHint => '选择一个群组查看详情';
 
   @override

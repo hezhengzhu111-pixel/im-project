@@ -65,6 +65,8 @@ class GroupEndpoints {
       '/api/group/${Uri.encodeComponent(groupId)}/join';
   static String addMembers(String groupId) =>
       '/api/group/${Uri.encodeComponent(groupId)}/add-members';
+  static String removeMembers(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}/remove-members';
   static const search = '/api/group/search';
   static String leave(String groupId) =>
       '/api/group/${Uri.encodeComponent(groupId)}/leave';

@@ -1,5 +1,6 @@
 import 'package:im_core/core.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/chat.dart';
 
 /// Fake FilePickerPort for tests.
 class FakeFilePickerPort implements FilePickerPort {
@@ -221,6 +222,17 @@ AuthNotifier createTestAuthNotifier({
     status: AuthStatus.authenticated,
   );
   return notifier;
+}
+
+/// A lightweight [ChatNotifier] for tests that only need an empty chat state.
+class FakeChatNotifier extends ChatNotifier {
+  FakeChatNotifier()
+      : super(
+          MessageApi(FakeHttpClientPort()),
+          MessagePipeline(),
+          FakeWsClient(),
+          () => 'u1',
+        );
 }
 
 /// Returns a default onGet handler for AiSettings-aware tests.

@@ -6,3 +6,4 @@ export 'presentation/group_provider.dart';
 export 'presentation/group_providers.dart';
 export 'presentation/group_list_page.dart';
 export 'presentation/create_group_page.dart';
+export 'presentation/widgets/group_detail_view.dart';

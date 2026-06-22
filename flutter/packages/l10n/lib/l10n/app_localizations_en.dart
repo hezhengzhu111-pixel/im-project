@@ -884,6 +884,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupLoadMembersFailed => 'Failed to load members';
 
   @override
+  String get groupDismiss => 'Dismiss group';
+
+  @override
+  String groupDismissConfirm(Object name) {
+    return 'Dismiss $name?';
+  }
+
+  @override
+  String get groupDismissSuccess => 'Group dismissed';
+
+  @override
+  String get groupDismissFailed => 'Failed to dismiss group';
+
+  @override
+  String get groupRemoveMember => 'Remove member';
+
+  @override
+  String groupRemoveMemberConfirm(Object name) {
+    return 'Remove $name from group?';
+  }
+
+  @override
+  String get groupRemoveMemberSuccess => 'Member removed';
+
+  @override
+  String get groupRemoveMemberFailed => 'Failed to remove member';
+
+  @override
+  String get groupInviteMember => 'Invite member';
+
+  @override
+  String get groupInviteSuccess => 'Member invited';
+
+  @override
+  String get groupInviteFailed => 'Failed to invite member';
+
+  @override
+  String get groupCreateNeedMembers => 'Select at least one member';
+
+  @override
+  String get groupCreateFailed => 'Failed to create group';
+
+  @override
+  String get groupOwner => 'Owner';
+
+  @override
+  String get groupAdmin => 'Admin';
+
+  @override
+  String get groupMember => 'Member';
+
+  @override
+  String get groupLastMessageEmpty => 'No messages yet';
+
+  @override
   String get groupSelectGroupHint => 'Select a group to view details';
 
   @override

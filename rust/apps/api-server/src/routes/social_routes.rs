@@ -19,6 +19,10 @@ pub fn routes() -> Router<AppState> {
             "/api/group/:group_id/add-members",
             post(social::add_group_members),
         )
+        .route(
+            "/api/group/:group_id/remove-members",
+            post(social::remove_group_members),
+        )
         .route("/api/group/search", get(social::search_groups))
         .route("/api/group/:group_id/join", post(social::join_group))
         .route("/api/group/:group_id/leave", post(social::leave_group))

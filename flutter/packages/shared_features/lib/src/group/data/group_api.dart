@@ -79,6 +79,14 @@ class GroupApi {
     );
   }
 
+  Future<void> removeMembers(String groupId, List<String> memberIds) async {
+    await _httpClient.post<void>(
+      GroupEndpoints.removeMembers(groupId),
+      body: {'groupId': groupId, 'memberIds': memberIds},
+      fromJson: (_) {},
+    );
+  }
+
   Future<Group> updateGroup(String groupId,
       {String? name, String? avatar, String? description}) async {
     final response = await _httpClient.put<Map<String, dynamic>>(

@@ -71,5 +71,94 @@ void main() {
       expect(notifier.state.selectedGroupId, isNull);
       expect(notifier.state.selectedGroup, isNull);
     });
+
+    test('dismissGroup removes group from state', () async {
+      http.onDelete = <T>(
+        String path, {
+        dynamic body,
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        expect(path, '/api/group/g1');
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({}),
+        );
+      };
+
+      notifier.state = notifier.state.copyWith(
+        groups: [const Group(id: 'g1', name: 'A')],
+      );
+
+      final success = await notifier.dismissGroup('g1');
+      expect(success, isTrue);
+      expect(notifier.state.groups, isEmpty);
+      expect(notifier.state.error, isNull);
+    });
+
+    test('inviteMembers refreshes member list', () async {
+      var postCount = 0;
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        postCount++;
+        if (postCount == 1) {
+          expect(path, '/api/group/g1/add-members');
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({}),
+          );
+        }
+        expect(path, GroupEndpoints.membersList);
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({
+            'members': [
+              {'id': 'm1', 'userId': 'u2', 'groupId': 'g1', 'role': 1},
+            ],
+          }),
+        );
+      };
+
+      final success = await notifier.inviteMembers('g1', ['u2']);
+      expect(success, isTrue);
+      expect(notifier.state.membersByGroupId['g1'], hasLength(1));
+      expect(notifier.state.error, isNull);
+    });
+
+    test('removeMembers updates local member list', () async {
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        expect(path, '/api/group/g1/remove-members');
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({}),
+        );
+      };
+
+      notifier.state = notifier.state.copyWith(
+        membersByGroupId: {
+          'g1': [
+            const GroupMember(id: 'm1', userId: 'u1', groupId: 'g1', role: '3'),
+            const GroupMember(id: 'm2', userId: 'u2', groupId: 'g1', role: '1'),
+          ],
+        },
+      );
+
+      final success = await notifier.removeMembers('g1', ['u2']);
+      expect(success, isTrue);
+      expect(notifier.state.membersByGroupId['g1'], hasLength(1));
+      expect(notifier.state.membersByGroupId['g1']!.first.userId, 'u1');
+      expect(notifier.state.error, isNull);
+    });
   });
 }

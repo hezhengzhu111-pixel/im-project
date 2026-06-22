@@ -291,6 +291,33 @@
   "groupNoDescription": "暂无描述",
   "groupNoMembers": "暂无成员",
   "groupLoadMembersFailed": "加载成员失败",
+  "groupDismiss": "解散群聊",
+  "groupDismissConfirm": "确定解散 {name}？",
+  "@groupDismissConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "groupDismissSuccess": "群聊已解散",
+  "groupDismissFailed": "解散群聊失败",
+  "groupRemoveMember": "移除成员",
+  "groupRemoveMemberConfirm": "确定将 {name} 移出群聊？",
+  "@groupRemoveMemberConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "groupRemoveMemberSuccess": "成员已移除",
+  "groupRemoveMemberFailed": "移除成员失败",
+  "groupInviteMember": "邀请成员",
+  "groupInviteSuccess": "成员已邀请",
+  "groupInviteFailed": "邀请成员失败",
+  "groupCreateNeedMembers": "请至少选择一名成员",
+  "groupCreateFailed": "创建群聊失败",
+  "groupOwner": "群主",
+  "groupAdmin": "管理员",
+  "groupMember": "成员",
+  "groupLastMessageEmpty": "暂无消息",
   "groupSelectGroupHint": "选择一个群组查看详情",
   "groupTotalGroups": "{count} 个群组",
   "@groupTotalGroups": {

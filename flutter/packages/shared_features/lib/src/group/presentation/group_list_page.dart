@@ -12,7 +12,7 @@ import 'widgets/join_group_dialog.dart';
 import 'widgets/group_detail_view.dart';
 
 // Group model comes from core and is not re-exported transitively by providers.
-import 'package:im_core/core.dart' show Group;
+import 'package:im_core/core.dart' show ChatSession, Group;
 
 class GroupListPage extends ConsumerStatefulWidget {
   const GroupListPage({super.key});
@@ -58,7 +58,12 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
+    final chatState = ref.watch(chatStateProvider);
     final isCompact = context.isCompact;
+    final groupSessions = {
+      for (final s in chatState.sessions)
+        if (s.type == 'group' || s.conversationType == 'group') s.targetId: s
+    };
 
     return ColoredBox(
       color: ImTokens.wechatPageBg,
@@ -75,6 +80,7 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
                     isLoading: groupState.isLoading,
                     selectedGroupId: groupState.selectedGroupId,
                     onGroupTap: _selectGroup,
+                    sessions: groupSessions,
                   ),
                 ),
               ),
@@ -118,7 +124,12 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
                     ),
                     const SizedBox(height: 18),
                     Expanded(
-                      child: _buildBody(context, groupState, isCompact),
+                      child: _buildBody(
+                        context,
+                        groupState,
+                        isCompact,
+                        groupSessions,
+                      ),
                     ),
                   ],
                 ),
@@ -131,7 +142,11 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
   }
 
   Widget _buildBody(
-      BuildContext context, GroupState groupState, bool isCompact) {
+    BuildContext context,
+    GroupState groupState,
+    bool isCompact,
+    Map<String, ChatSession> groupSessions,
+  ) {
     final loc = AppLocalizations.of(context)!;
 
     if (groupState.isLoading && groupState.groups.isEmpty) {
@@ -155,6 +170,7 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
         isLoading: groupState.isLoading,
         selectedGroupId: groupState.selectedGroupId,
         onGroupTap: (group) => _openGroupDetail(context, group),
+        sessions: groupSessions,
       );
     }
 
@@ -220,12 +236,14 @@ class _GroupListPanel extends StatelessWidget {
     required this.isLoading,
     this.selectedGroupId,
     required this.onGroupTap,
+    this.sessions = const {},
   });
 
   final List<Group> groups;
   final bool isLoading;
   final String? selectedGroupId;
   final ValueChanged<Group> onGroupTap;
+  final Map<String, ChatSession> sessions;
 
   @override
   Widget build(BuildContext context) {
@@ -240,6 +258,7 @@ class _GroupListPanel extends StatelessWidget {
       itemBuilder: (context, index) {
         final group = groups[index];
         final isSelected = selectedGroupId == group.id;
+        final session = sessions[group.id];
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: ColoredBox(
@@ -249,7 +268,7 @@ class _GroupListPanel extends StatelessWidget {
             child: HoverLiftCard(
               padding: EdgeInsets.zero,
               onTap: () => onGroupTap(group),
-              child: GroupTile(group: group),
+              child: GroupTile(group: group, session: session),
             ),
           ),
         );

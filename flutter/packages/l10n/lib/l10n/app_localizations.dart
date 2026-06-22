@@ -63,7 +63,7 @@ import 'app_localizations_zh.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('en'),
-    Locale('zh')
+    Locale('zh'),
   ];
 
   /// No description provided for @appTitle.
@@ -1754,6 +1754,108 @@ abstract class AppLocalizations {
   /// **'Failed to load members'**
   String get groupLoadMembersFailed;
 
+  /// No description provided for @groupDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss group'**
+  String get groupDismiss;
+
+  /// No description provided for @groupDismissConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss {name}?'**
+  String groupDismissConfirm(Object name);
+
+  /// No description provided for @groupDismissSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Group dismissed'**
+  String get groupDismissSuccess;
+
+  /// No description provided for @groupDismissFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to dismiss group'**
+  String get groupDismissFailed;
+
+  /// No description provided for @groupRemoveMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove member'**
+  String get groupRemoveMember;
+
+  /// No description provided for @groupRemoveMemberConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name} from group?'**
+  String groupRemoveMemberConfirm(Object name);
+
+  /// No description provided for @groupRemoveMemberSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Member removed'**
+  String get groupRemoveMemberSuccess;
+
+  /// No description provided for @groupRemoveMemberFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to remove member'**
+  String get groupRemoveMemberFailed;
+
+  /// No description provided for @groupInviteMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite member'**
+  String get groupInviteMember;
+
+  /// No description provided for @groupInviteSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Member invited'**
+  String get groupInviteSuccess;
+
+  /// No description provided for @groupInviteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to invite member'**
+  String get groupInviteFailed;
+
+  /// No description provided for @groupCreateNeedMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Select at least one member'**
+  String get groupCreateNeedMembers;
+
+  /// No description provided for @groupCreateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create group'**
+  String get groupCreateFailed;
+
+  /// No description provided for @groupOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get groupOwner;
+
+  /// No description provided for @groupAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin'**
+  String get groupAdmin;
+
+  /// No description provided for @groupMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Member'**
+  String get groupMember;
+
+  /// No description provided for @groupLastMessageEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages yet'**
+  String get groupLastMessageEmpty;
+
   /// No description provided for @groupSelectGroupHint.
   ///
   /// In en, this message translates to:
@@ -3072,8 +3174,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

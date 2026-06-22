@@ -93,6 +93,53 @@ class GroupNotifier extends StateNotifier<GroupState> {
       await _groupApi.leaveGroup(groupId);
       state = state.copyWith(
         groups: state.groups.where((g) => g.id != groupId).toList(),
+        membersByGroupId: {...state.membersByGroupId}..remove(groupId),
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> dismissGroup(String groupId) async {
+    try {
+      await _groupApi.dismissGroup(groupId);
+      state = state.copyWith(
+        groups: state.groups.where((g) => g.id != groupId).toList(),
+        membersByGroupId: {...state.membersByGroupId}..remove(groupId),
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> inviteMembers(String groupId, List<String> memberIds) async {
+    try {
+      await _groupApi.addMembers(groupId, memberIds);
+      await getMembers(groupId);
+      state = state.copyWith(error: null);
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> removeMembers(String groupId, List<String> memberIds) async {
+    try {
+      await _groupApi.removeMembers(groupId, memberIds);
+      final currentMembers = state.membersByGroupId[groupId] ?? [];
+      state = state.copyWith(
+        membersByGroupId: {
+          ...state.membersByGroupId,
+          groupId: currentMembers
+              .where((m) => !memberIds.contains(m.userId))
+              .toList(),
+        },
+        error: null,
       );
       return true;
     } catch (e) {
@@ -129,6 +176,10 @@ class GroupNotifier extends StateNotifier<GroupState> {
 
   void clearSelectedGroup() {
     state = state.copyWith(selectedGroupId: null);
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
   }
 
   Future<bool> joinGroup(String groupId, {String? userId}) async {

@@ -291,6 +291,33 @@
   "groupNoDescription": "No description",
   "groupNoMembers": "No members yet",
   "groupLoadMembersFailed": "Failed to load members",
+  "groupDismiss": "Dismiss group",
+  "groupDismissConfirm": "Dismiss {name}?",
+  "@groupDismissConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "groupDismissSuccess": "Group dismissed",
+  "groupDismissFailed": "Failed to dismiss group",
+  "groupRemoveMember": "Remove member",
+  "groupRemoveMemberConfirm": "Remove {name} from group?",
+  "@groupRemoveMemberConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "groupRemoveMemberSuccess": "Member removed",
+  "groupRemoveMemberFailed": "Failed to remove member",
+  "groupInviteMember": "Invite member",
+  "groupInviteSuccess": "Member invited",
+  "groupInviteFailed": "Failed to invite member",
+  "groupCreateNeedMembers": "Select at least one member",
+  "groupCreateFailed": "Failed to create group",
+  "groupOwner": "Owner",
+  "groupAdmin": "Admin",
+  "groupMember": "Member",
+  "groupLastMessageEmpty": "No messages yet",
   "groupSelectGroupHint": "Select a group to view details",
   "groupTotalGroups": "{count} groups",
   "@groupTotalGroups": {
