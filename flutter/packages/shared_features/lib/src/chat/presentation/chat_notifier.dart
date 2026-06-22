@@ -1350,7 +1350,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (index == -1) return;
     final msg = messages[index];
 
-    if (msg.encrypted == true) {
+    // Encrypted messages can only be retried when the local envelope is still
+    // available (media E2EE messages store it in the message state).
+    if (msg.encrypted == true && msg.e2eeEnvelope == null) {
       _updateMessageStatus(normalizedKey, msg.id, 'FAILED');
       state = state.copyWith(error: 'e2ee_not_ready');
       return;
@@ -1375,6 +1377,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
         duration: msg.duration,
         isGroupChat: msg.isGroupChat,
         groupId: msg.groupId,
+        isEncrypted: msg.encrypted == true,
+        e2eeEnvelope: msg.e2eeEnvelope?.toJson(),
+        e2eeDeviceId: msg.e2eeDeviceId,
       ));
       _updateMessageStatus(normalizedKey, msg.id, 'PENDING');
       return;

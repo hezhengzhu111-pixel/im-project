@@ -687,6 +687,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatVoice => '语音';
 
   @override
+  String get chatMediaNotE2ee => '媒体消息未端到端加密';
+
+  @override
+  String chatImageSizeExceeded(Object max) => '图片过大（最大 $max）';
+
+  @override
+  String chatFileSizeExceeded(Object max) => '文件过大（最大 $max）';
+
+  @override
+  String get chatUnsupportedImageType => '不支持的图片格式';
+
+  @override
+  String get chatFileOpenFailed => '打开文件失败';
+
+  @override
+  String get chatFileDownloadFailed => '下载失败';
+
+  @override
+  String get chatReSelectFile => '请重新选择文件';
+
+  @override
+  String get chatFileOpenUnsupported => '请下载到本地后打开';
+
+  @override
   String get validatorUsernameRequired => '请输入用户名';
 
   @override

@@ -8,14 +8,13 @@ import 'package:im_l10n/im_l10n.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
 import 'package:im_shared_features/core.dart';
+import '../utils/file_size_formatter.dart';
 import 'network_status_banner.dart';
 
-/// P0 止血：语音/文件发送入口已禁用。
-/// - 语音按钮（mic）已移除，录音功能未实现。
-/// - 文件发送选项已从附件菜单移除，下载链路未完成。
-/// - 图片发送保留（已有完整上传链路）。
-/// - 文本发送、emoji、@mention、outbox 不受影响。
-/// 后续 P1/P2 实现完整媒体能力后恢复入口。
+/// Stage 3：图片/文件发送入口已启用。
+/// - 语音按钮仍禁用（本阶段不涉及语音）。
+/// - 图片/文件选择带大小与类型校验，失败时显示明确错误。
+/// - 上传中显示 loading，上传失败不创建消息。
 class MessageInput extends ConsumerStatefulWidget {
   const MessageInput({
     super.key,
@@ -159,13 +158,76 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     super.dispose();
   }
 
+  static const _maxImageSize = 20 * 1024 * 1024;
+  static const _maxFileSize = 512 * 1024 * 1024;
+  static final _allowedImageExtensions = {
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+  };
+
   Future<void> _pickAndSendImage() async {
     final filePicker = ref.read(filePickerPortProvider);
     final result = await filePicker.pickImage();
 
-    if (result case Success(:final data)) {
-      await _uploadAndSend(data, widget.onSendImage);
+    switch (result) {
+      case Success(:final data):
+        if (!_validateImage(data)) return;
+        await _uploadAndSend(data, widget.onSendImage);
+      case Failure(:final error):
+        if (error is OperationCancelled) return;
+        _showFileError('file_read_failed');
     }
+  }
+
+  Future<void> _pickAndSendFile() async {
+    final filePicker = ref.read(filePickerPortProvider);
+    final result = await filePicker.pickFile();
+
+    switch (result) {
+      case Success(:final data):
+        if (!_validateFile(data)) return;
+        await _uploadAndSend(data, widget.onSendFile);
+      case Failure(:final error):
+        if (error is OperationCancelled) return;
+        _showFileError('file_read_failed');
+    }
+  }
+
+  bool _validateImage(PickedFile file) {
+    final loc = AppLocalizations.of(context)!;
+    final ext = file.name.split('.').last.toLowerCase();
+    if (!_allowedImageExtensions.contains(ext)) {
+      _showFileError(loc.chatUnsupportedImageType);
+      return false;
+    }
+    if (file.size > _maxImageSize) {
+      _showFileError(
+        loc.chatImageSizeExceeded(FileSizeFormatter.format(_maxImageSize)),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  bool _validateFile(PickedFile file) {
+    final loc = AppLocalizations.of(context)!;
+    if (file.size > _maxFileSize) {
+      _showFileError(
+        loc.chatFileSizeExceeded(FileSizeFormatter.format(_maxFileSize)),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  void _showFileError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _uploadAndSend(
@@ -200,7 +262,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
-  // P0 止血：附件菜单仅保留图片选项，文件发送已禁用。
   void _showAttachmentMenu() {
     final loc = AppLocalizations.of(context)!;
 
@@ -215,6 +276,14 @@ class _MessageInputState extends ConsumerState<MessageInput> {
               onTap: () {
                 Navigator.pop(context);
                 _pickAndSendImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file),
+              title: Text(loc.chatFile),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndSendFile();
               },
             ),
           ],

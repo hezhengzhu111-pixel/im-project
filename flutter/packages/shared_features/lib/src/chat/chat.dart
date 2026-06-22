@@ -29,3 +29,7 @@ export 'presentation/chat_page.dart';
 export 'presentation/widgets/message_bubble.dart';
 export 'presentation/widgets/message_input.dart';
 export 'presentation/widgets/session_tile.dart';
+export 'presentation/widgets/image_bubble.dart';
+export 'presentation/widgets/file_bubble.dart';
+export 'presentation/utils/file_size_formatter.dart';
+export 'presentation/utils/file_type_icon.dart';

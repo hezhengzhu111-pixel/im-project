@@ -12,7 +12,7 @@ class ImageBubble extends StatelessWidget {
     final imageUrl = message.thumbnailUrl ?? message.mediaUrl ?? '';
     return GestureDetector(
       onTap: () {
-        if (message.mediaUrl != null) {
+        if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) {
           showDialog(
             context: context,
             builder: (_) => ImageViewer(imageUrl: message.mediaUrl!),
@@ -27,21 +27,38 @@ class ImageBubble extends StatelessWidget {
               ? Image.network(
                   imageUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 120,
-                    height: 120,
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.broken_image, color: Colors.grey),
-                  ),
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      width: 120,
+                      height: 120,
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => _Placeholder(),
                 )
-              : Container(
-                  width: 120,
-                  height: 120,
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.image, color: Colors.grey),
-                ),
+              : _Placeholder(),
         ),
       ),
+    );
+  }
+}
+
+class _Placeholder extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 120,
+      height: 120,
+      color: Colors.grey[300],
+      child: const Icon(Icons.broken_image, color: Colors.grey),
     );
   }
 }

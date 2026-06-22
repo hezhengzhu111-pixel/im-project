@@ -1406,6 +1406,54 @@ abstract class AppLocalizations {
   /// **'Voice'**
   String get chatVoice;
 
+  /// No description provided for @chatMediaNotE2ee.
+  ///
+  /// In en, this message translates to:
+  /// **'Media messages are not end-to-end encrypted'**
+  String get chatMediaNotE2ee;
+
+  /// No description provided for @chatImageSizeExceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Image too large (max {max})'**
+  String chatImageSizeExceeded(Object max);
+
+  /// No description provided for @chatFileSizeExceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'File too large (max {max})'**
+  String chatFileSizeExceeded(Object max);
+
+  /// No description provided for @chatUnsupportedImageType.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported image format'**
+  String get chatUnsupportedImageType;
+
+  /// No description provided for @chatFileOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to open file'**
+  String get chatFileOpenFailed;
+
+  /// No description provided for @chatFileDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed'**
+  String get chatFileDownloadFailed;
+
+  /// No description provided for @chatReSelectFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Please reselect the file'**
+  String get chatReSelectFile;
+
+  /// No description provided for @chatFileOpenUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Please download and open locally'**
+  String get chatFileOpenUnsupported;
+
   /// No description provided for @validatorUsernameRequired.
   ///
   /// In en, this message translates to:

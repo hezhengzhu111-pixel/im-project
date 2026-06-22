@@ -701,6 +701,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatVoice => 'Voice';
 
   @override
+  String get chatMediaNotE2ee => 'Media messages are not end-to-end encrypted';
+
+  @override
+  String chatImageSizeExceeded(Object max) => 'Image too large (max $max)';
+
+  @override
+  String chatFileSizeExceeded(Object max) => 'File too large (max $max)';
+
+  @override
+  String get chatUnsupportedImageType => 'Unsupported image format';
+
+  @override
+  String get chatFileOpenFailed => 'Failed to open file';
+
+  @override
+  String get chatFileDownloadFailed => 'Download failed';
+
+  @override
+  String get chatReSelectFile => 'Please reselect the file';
+
+  @override
+  String get chatFileOpenUnsupported => 'Please download and open locally';
+
+  @override
   String get validatorUsernameRequired => 'Please enter a username';
 
   @override

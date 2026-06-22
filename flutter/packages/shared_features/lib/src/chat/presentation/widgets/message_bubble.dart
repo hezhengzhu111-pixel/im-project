@@ -147,7 +147,10 @@ class MessageBubble extends StatelessWidget {
             },
           if (isMedia) ...[
             const SizedBox(height: 6),
-            const _MediaProtectionLabel(),
+            if (message.encrypted == true && hasE2eeMetadata)
+              MessageBubbleE2eeBadge(isMe: isMe)
+            else
+              const _MediaProtectionLabel(),
           ],
           const SizedBox(height: 4),
           Row(
@@ -246,6 +249,7 @@ class _MediaProtectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: ImTokens.wechatTextSecondary.withValues(alpha: 0.08),
@@ -262,12 +266,15 @@ class _MediaProtectionLabel extends StatelessWidget {
               color: ImTokens.wechatTextSecondary,
             ),
             const SizedBox(width: 4),
-            Text(
-              'Media not E2EE',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: ImTokens.wechatTextSecondary,
-                fontWeight: FontWeight.w500,
-                fontSize: 11,
+            Flexible(
+              child: Text(
+                loc.chatMediaNotE2ee,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: ImTokens.wechatTextSecondary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
