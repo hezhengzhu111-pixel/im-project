@@ -11,7 +11,7 @@
 | 当前分支 | master |
 | 阶段 6 功能实现 SHA | `bdcea15504b3422de6dcf522703f720f7cab8705` |
 | 阶段 6 报告提交 SHA | 见最终验证 HEAD |
-| 最终验证 HEAD | `<本次补丁提交后的最终 HEAD>` |
+| 最终验证 HEAD | `4a5a7a1b81730d416522ae0ae201f190d6703d33` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 阶段 2 基线 SHA | `2dd8a78c5c7a7bd50a84ea84b83390cb6cc2e4a0` |
 | 阶段 3 基线 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
@@ -303,7 +303,7 @@ python tests/p1/p1_notification_smoke.py --base-url http://localhost:8082
 ```text
 阶段 6 功能实现 SHA: bdcea15504b3422de6dcf522703f720f7cab8705
 阶段 6 报告提交 SHA: 见最终验证 HEAD
-最终验证 HEAD: <本次补丁提交后的最终 HEAD>
+最终验证 HEAD: 4a5a7a1b81730d416522ae0ae201f190d6703d33
 修改文件数量: 3
 后端修改: 否
 SQL 修改: 否
