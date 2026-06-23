@@ -11,7 +11,7 @@
 | 当前分支 | master |
 | 阶段 7 功能实现 SHA | `f0d3445e8426d0de698becd0ac9467bff6a4b1f4` |
 | 阶段 7 报告提交 SHA | 见最终验证 HEAD |
-| 最终验证 HEAD | `<待 CI 验证>` |
+| 最终验证 HEAD | `660513ea5bb97df02e2c820b4d153747edecb85c` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 阶段 2 基线 SHA | `2dd8a78c5c7a7bd50a84ea84b83390cb6cc2e4a0` |
 | 阶段 3 基线 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
@@ -148,15 +148,15 @@ python tests/p1/p1_client_internal_beta_acceptance.py --base-url http://localhos
 | Flutter | `python tests/test.py flutter` | PASS |
 | Manifest | `python tests/test.py manifest` | PASS |
 
-### 5.2 GitHub Actions
+### 5.2 GitHub Actions（基于最终验证 HEAD `660513ea`）
 
-| Workflow | 结果 |
-| --- | --- |
-| PR Fast Gate | `<待 CI 验证>` |
-| P0 Acceptance Gate | `<待 CI 验证>` |
-| E2EE Rust CI | `<待 CI 验证>` |
-| Rust Bridge CI | `<待 CI 验证>` |
-| Build Artifacts | `<待 CI 验证>` |
+| Workflow | Run ID | 结果 |
+| --- | --- | --- |
+| PR Fast Gate | [28006935086](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28006935086) | success |
+| P0 Acceptance Gate | [28006935172](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28006935172) | success |
+| E2EE Rust CI | [28006935087](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28006935087) | success |
+| Rust Bridge CI | [28006935093](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28006935093) | success |
+| Build Artifacts | [28006935098](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28006935098) | success |
 
 ---
 
@@ -200,17 +200,17 @@ python tests/p1/p1_client_internal_beta_acceptance.py --base-url http://localhos
 - P1 通知 Smoke：**PASS**（19/19）
 - P1 设置/资料/错误 Smoke：**PASS**（12/16，4 NOT_SUPPORTED）
 - P1 总验收：**PASS**
-- 核心 CI workflow 结果：`<待 CI 验证>`
+- 核心 CI workflow 结果：PR Fast Gate / P0 Acceptance Gate / E2EE Rust CI / Rust Bridge CI / Build Artifacts **全绿**
 - 源码污染检查：**PASS**
 - 报告自相矛盾：**PASS**
 
 ### P1 完整完成
 
-**P1 完整完成：YES**（待 CI 全绿确认）
+**P1 完整完成：YES**
 
 ### 是否允许进入 P2 / 后台管理系统
 
-**阶段 7 放行：YES**（待 CI 全绿确认）
+**阶段 7 放行：YES**
 
 ---
 
@@ -219,7 +219,7 @@ python tests/p1/p1_client_internal_beta_acceptance.py --base-url http://localhos
 ```text
 阶段 7 功能实现 SHA: f0d3445e8426d0de698becd0ac9467bff6a4b1f4
 阶段 7 报告提交 SHA: 见最终验证 HEAD
-最终验证 HEAD: <待 CI 验证>
+最终验证 HEAD: 660513ea5bb97df02e2c820b4d153747edecb85c
 修改文件数量: 4
 后端修改: 否
 SQL 修改: 否
