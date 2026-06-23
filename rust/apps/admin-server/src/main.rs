@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{middleware, routing::get, Router};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -6,6 +6,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod config;
 mod error;
 mod handlers;
+mod middleware as admin_middleware;
 mod routes;
 
 use config::AppConfig;
@@ -72,6 +73,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(handlers::health::health_check))
         .route("/ready", get(handlers::health::ready_check))
         .merge(routes::admin::admin_routes())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            admin_middleware::auth_middleware,
+        ))
         .with_state(state)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .layer(
