@@ -1,6 +1,30 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 
+String _notificationSummary({
+  required String messageType,
+  required String status,
+  required bool encrypted,
+  required String content,
+}) {
+  final normalizedStatus = status.toUpperCase();
+  final normalizedType = messageType.toUpperCase();
+
+  if (normalizedStatus == 'RECALLED') {
+    return '对方撤回了一条消息';
+  }
+  if (normalizedType == 'IMAGE') {
+    return '收到一张图片';
+  }
+  if (normalizedType == 'FILE') {
+    return '收到一个文件';
+  }
+  if (encrypted) {
+    return '收到一条加密消息';
+  }
+  return content.length > 50 ? '${content.substring(0, 50)}...' : content;
+}
+
 void main() {
   group('Notification payload parse', () {
     test('PushMessage fromJson with all fields', () {
@@ -84,83 +108,64 @@ void main() {
 
   group('Notification summary formatter', () {
     test('TEXT non-E2EE shows short content', () {
-      const content = 'Hello World';
-      const encrypted = false;
-      const msgType = 'TEXT';
-      const status = 'SENT';
-      String summary;
-      if (status == 'RECALLED') {
-        summary = '对方撤回了一条消息';
-      } else if (msgType == 'IMAGE') {
-        summary = '收到一张图片';
-      } else if (msgType == 'FILE') {
-        summary = '收到一个文件';
-      } else if (encrypted) {
-        summary = '收到一条加密消息';
-      } else {
-        summary = content.length > 50 ? '${content.substring(0, 50)}...' : content;
-      }
+      final summary = _notificationSummary(
+        messageType: 'TEXT',
+        status: 'SENT',
+        encrypted: false,
+        content: 'Hello World',
+      );
       expect(summary, 'Hello World');
     });
 
     test('TEXT E2EE shows generic message', () {
-      const content = 'Secret plaintext';
-      const encrypted = true;
-      const msgType = 'TEXT';
-      const status = 'SENT';
-      String summary;
-      if (status == 'RECALLED') {
-        summary = '对方撤回了一条消息';
-      } else if (msgType == 'IMAGE') {
-        summary = '收到一张图片';
-      } else if (msgType == 'FILE') {
-        summary = '收到一个文件';
-      } else if (encrypted) {
-        summary = '收到一条加密消息';
-      } else {
-        summary = content;
-      }
+      final summary = _notificationSummary(
+        messageType: 'TEXT',
+        status: 'SENT',
+        encrypted: true,
+        content: 'Secret plaintext',
+      );
       expect(summary, '收到一条加密消息');
       expect(summary.contains('Secret'), isFalse);
     });
 
     test('IMAGE shows image summary', () {
-      const msgType = 'IMAGE';
-      String summary;
-      if (msgType == 'IMAGE') {
-        summary = '收到一张图片';
-      } else {
-        summary = '';
-      }
+      final summary = _notificationSummary(
+        messageType: 'IMAGE',
+        status: 'SENT',
+        encrypted: false,
+        content: 'ignored',
+      );
       expect(summary, '收到一张图片');
     });
 
     test('FILE shows file summary', () {
-      const msgType = 'FILE';
-      String summary;
-      if (msgType == 'FILE') {
-        summary = '收到一个文件';
-      } else {
-        summary = '';
-      }
+      final summary = _notificationSummary(
+        messageType: 'FILE',
+        status: 'SENT',
+        encrypted: false,
+        content: 'ignored',
+      );
       expect(summary, '收到一个文件');
     });
 
     test('RECALLED shows recalled summary', () {
-      const status = 'RECALLED';
-      String summary;
-      if (status == 'RECALLED') {
-        summary = '对方撤回了一条消息';
-      } else {
-        summary = '';
-      }
+      final summary = _notificationSummary(
+        messageType: 'TEXT',
+        status: 'RECALLED',
+        encrypted: false,
+        content: 'original message',
+      );
       expect(summary, '对方撤回了一条消息');
     });
 
     test('long text is truncated', () {
-      const content =
-          'This is a very long message that should be truncated because it exceeds the maximum length allowed for notification body';
-      final summary = content.length > 50 ? '${content.substring(0, 50)}...' : content;
+      final summary = _notificationSummary(
+        messageType: 'TEXT',
+        status: 'SENT',
+        encrypted: false,
+        content:
+            'This is a very long message that should be truncated because it exceeds the maximum length allowed for notification body',
+      );
       expect(summary.length, lessThanOrEqualTo(53));
       expect(summary.endsWith('...'), isTrue);
     });
