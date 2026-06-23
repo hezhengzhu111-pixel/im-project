@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/chat.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/group.dart';
 import 'package:im_shared_features/moments.dart';
@@ -66,6 +68,9 @@ class _FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+
+  @override
+  void dispose() {}
 }
 
 class _FakeAnalyticsPort implements AnalyticsPort {
@@ -75,6 +80,22 @@ class _FakeAnalyticsPort implements AnalyticsPort {
   void setUserId(String? userId) {}
   @override
   void setUserProperties(Map<String, dynamic> properties) {}
+}
+
+class _FakeStoragePort implements StoragePort {
+  final _values = <String, String>{};
+
+  @override
+  Future<String?> getString(String key) async => _values[key];
+  @override
+  Future<void> setString(String key, String value) async =>
+      _values[key] = value;
+  @override
+  Future<void> remove(String key) async => _values.remove(key);
+  @override
+  Future<void> clear() async => _values.clear();
+  @override
+  Future<bool> containsKey(String key) async => _values.containsKey(key);
 }
 
 class _FakeAuthRepository implements AuthRepository {
@@ -98,24 +119,45 @@ class _FakeAuthRepository implements AuthRepository {
 }
 
 Widget _buildRouteApp(Widget page) {
+  final http = _FakeHttpClientPort();
   final authNotifier = AuthNotifier(
     _FakeAuthRepository(),
     _FakeWsClient(),
-    _FakeHttpClientPort(),
+    http,
     _FakeAnalyticsPort(),
   );
   authNotifier.state = const AuthState(
     user: User(id: 'u1', username: 'testuser', nickname: 'Test User'),
     status: AuthStatus.authenticated,
   );
+  final settingsApi = SettingsApi(http);
+  final aiApi = AiApi(http);
+  final fileApi = FileApi(http, _FakeAnalyticsPort());
+  final momentsRepo = MomentsRepository(MomentsApi(http), fileApi);
   return ProviderScope(
     overrides: [
-      httpClientProvider.overrideWithValue(_FakeHttpClientPort()),
+      httpClientProvider.overrideWithValue(http),
       wsClientProvider.overrideWithValue(_FakeWsClient()),
       analyticsProvider.overrideWithValue(_FakeAnalyticsPort()),
+      storageProvider.overrideWithValue(_FakeStoragePort()),
       authStateProvider.overrideWith((ref) => authNotifier),
+      currentUserIdProvider.overrideWithValue('u1'),
+      contactsStateProvider.overrideWith(
+          (ref) => ContactsNotifier(ContactsApi(http), _FakeWsClient())),
+      groupStateProvider.overrideWith((ref) => GroupNotifier(GroupApi(http))),
+      notificationsProvider
+          .overrideWith((ref) => MomentsNotificationsNotifier(momentsRepo)),
+      profileStateProvider.overrideWith((ref) => ProfileNotifier(settingsApi)),
+      settingsApiProvider.overrideWithValue(settingsApi),
+      aiSettingsStateProvider.overrideWith((ref) => AiSettingsNotifier(aiApi)),
+      aiApiProvider.overrideWithValue(aiApi),
     ],
-    child: MaterialApp(home: page),
+    child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: page),
+    ),
   );
 }
 
@@ -158,7 +200,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const CreateGroupPage()));
       await tester.pumpAndSettle();
       expect(find.byType(CreateGroupPage), findsOneWidget);
-      expect(find.text('Group Name'), findsOneWidget);
+      expect(find.text('Group name'), findsOneWidget);
       expect(find.text('Placeholder'), findsNothing);
     });
 
@@ -176,7 +218,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const ProfileSettingsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileSettingsPage), findsOneWidget);
-      expect(find.text('Profile Settings'), findsOneWidget);
+      expect(find.text('Basic info'), findsOneWidget);
       expect(find.text('Placeholder'), findsNothing);
     });
 
@@ -184,7 +226,7 @@ void main() {
       await tester.pumpWidget(_buildRouteApp(const AiSettingsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(AiSettingsPage), findsOneWidget);
-      expect(find.text('AI Settings'), findsWidgets);
+      expect(find.text('AI Assistant'), findsWidgets);
       expect(find.text('Placeholder'), findsNothing);
     });
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/moments.dart';
 import 'package:im_shared_features/chat.dart';
 import '../helpers/fakes.dart';
@@ -12,6 +13,9 @@ Widget _buildApp({
   return ProviderScope(
     overrides: overrides,
     child: const MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: Locale('en'),
       home: MomentsNotificationsPage(),
     ),
   );
@@ -41,7 +45,8 @@ void main() {
       };
 
       final api = MomentsApi(http);
-      final repository = MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
+      final repository =
+          MomentsRepository(api, FileApi(http, FakeAnalyticsPort()));
       final notifier = MomentsNotificationsNotifier(repository);
 
       await tester.pumpWidget(
@@ -78,15 +83,15 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('No notifications yet'), findsOneWidget);
+      expect(find.text('No notifications'), findsOneWidget);
     });
 
     testWidgets('shows error state', (tester) async {
@@ -101,9 +106,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
@@ -148,16 +153,16 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Test liked your post'), findsOneWidget);
-      expect(find.text('Other commented on your post'), findsOneWidget);
+      expect(find.text('Test liked your moment'), findsOneWidget);
+      expect(find.text('Other commented on your moment'), findsOneWidget);
     });
 
     testWidgets('markAllRead button visible with unread', (tester) async {
@@ -191,8 +196,8 @@ void main() {
         return ApiResponse<T>(code: 200, message: 'ok', data: fromJson({}));
       };
 
-      final notifier = MomentsNotificationsNotifier(
-          MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())));
+      final notifier = MomentsNotificationsNotifier(MomentsRepository(
+          MomentsApi(http), FileApi(http, FakeAnalyticsPort())));
 
       await tester.pumpWidget(
         _buildApp(
@@ -203,11 +208,52 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Mark all read'), findsOneWidget);
-      await tester.tap(find.text('Mark all read'));
+      expect(find.text('Mark all as read'), findsOneWidget);
+      await tester.tap(find.text('Mark all as read'));
       await tester.pumpAndSettle();
 
       expect(notifier.state.unreadCount, 0);
+    });
+
+    testWidgets('renders notifications with invalid createdAt without crashing',
+        (tester) async {
+      http.onGet = <T>(
+        String path, {
+        Map<String, dynamic>? queryParameters,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({
+            'items': [
+              {
+                'id': 'n-invalid-time',
+                'type': 'like',
+                'createdAt': 'not-a-date',
+                'isRead': false,
+                'userName': 'BadTimeUser',
+                'userNickname': 'BadTime',
+              },
+            ],
+          }),
+        );
+      };
+
+      await tester.pumpWidget(
+        _buildApp(
+          overrides: [
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('BadTime liked your moment'), findsOneWidget);
+      // The raw invalid timestamp should be shown as a fallback.
+      expect(find.text('not-a-date'), findsOneWidget);
     });
 
     testWidgets('no Placeholder text', (tester) async {
@@ -226,9 +272,9 @@ void main() {
       await tester.pumpWidget(
         _buildApp(
           overrides: [
-            notificationsProvider.overrideWith(
-                (ref) => MomentsNotificationsNotifier(
-                    MomentsRepository(MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
+            notificationsProvider.overrideWith((ref) =>
+                MomentsNotificationsNotifier(MomentsRepository(
+                    MomentsApi(http), FileApi(http, FakeAnalyticsPort())))),
           ],
         ),
       );

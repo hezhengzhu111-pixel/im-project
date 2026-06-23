@@ -12,6 +12,9 @@ class ContactsState {
     this.sentRequestUserIds = const {},
     this.isLoading = false,
     this.error,
+    this.processingIds = const {},
+    this.lastIncomingRequest,
+    this.requestEventVersion = 0,
   });
 
   final List<Friendship> friends;
@@ -21,6 +24,15 @@ class ContactsState {
   final bool isLoading;
   final String? error;
 
+  /// Tracks in-flight operations to prevent duplicate taps.
+  final Set<String> processingIds;
+
+  /// The most recent incoming friend request delivered over WebSocket.
+  final FriendRequest? lastIncomingRequest;
+
+  /// Bumps on each new incoming request so the UI can show a toast.
+  final int requestEventVersion;
+
   ContactsState copyWith({
     List<Friendship>? friends,
     List<FriendRequest>? friendRequests,
@@ -28,6 +40,9 @@ class ContactsState {
     Set<String>? sentRequestUserIds,
     bool? isLoading,
     String? error,
+    Set<String>? processingIds,
+    FriendRequest? lastIncomingRequest,
+    int? requestEventVersion,
   }) {
     return ContactsState(
       friends: friends ?? this.friends,
@@ -36,6 +51,9 @@ class ContactsState {
       sentRequestUserIds: sentRequestUserIds ?? this.sentRequestUserIds,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      processingIds: processingIds ?? this.processingIds,
+      lastIncomingRequest: lastIncomingRequest ?? this.lastIncomingRequest,
+      requestEventVersion: requestEventVersion ?? this.requestEventVersion,
     );
   }
 }
@@ -53,8 +71,9 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     _wsSubscription = _wsClient.events.listen((event) {
       if (event.type == WsMessageType.onlineStatus) {
         _handleOnlineStatus(event.data);
-      } else if (event.type == WsMessageType.friendRequest ||
-          event.type == WsMessageType.friendAccepted) {
+      } else if (event.type == WsMessageType.friendRequest) {
+        _handleFriendRequestEvent(event.data);
+      } else if (event.type == WsMessageType.friendAccepted) {
         loadFriends();
       } else if (event.type == WsMessageType.message ||
           event.type == WsMessageType.system) {
@@ -74,19 +93,37 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       final online = data['online'] as bool? ??
           data['isOnline'] as bool? ??
           (data['status']?.toString().toUpperCase() == 'ONLINE');
+      final showOnlineStatus = data['showOnlineStatus'] as bool? ?? true;
 
       if (userIds.isEmpty) return;
 
       final updatedFriends = state.friends.map((f) {
-        if (userIds.contains(f.friendId)) {
-          return f.copyWith(isOnline: online);
-        }
-        return f;
+        if (!userIds.contains(f.friendId)) return f;
+        if (!showOnlineStatus) return f.copyWith(isOnline: null);
+        return f.copyWith(isOnline: online);
       }).toList();
 
       state = state.copyWith(friends: updatedFriends);
     } catch (e, st) {
       AppLogger.instance.error('Failed to handle online status', e, st);
+    }
+  }
+
+  void _handleFriendRequestEvent(Map<String, dynamic> data) {
+    try {
+      final request = FriendRequest.fromJson(data);
+      final updatedRequests = [
+        request,
+        ...state.friendRequests.where((r) => r.id != request.id),
+      ];
+      state = state.copyWith(
+        friendRequests: updatedRequests,
+        lastIncomingRequest: request,
+        requestEventVersion: state.requestEventVersion + 1,
+      );
+      unawaited(_refreshFriendRequests());
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to handle friend request event', e, st);
     }
   }
 
@@ -156,7 +193,26 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         .toList();
   }
 
+  String _requestKey(String requestId) => 'request:$requestId';
+  String _deleteKey(String friendId) => 'delete:$friendId';
+  String _remarkKey(String friendId) => 'remark:$friendId';
+
+  bool _isProcessing(String key) => state.processingIds.contains(key);
+
+  void _startProcessing(String key) {
+    state = state.copyWith(processingIds: {...state.processingIds, key});
+  }
+
+  void _endProcessing(String key) {
+    state = state.copyWith(
+      processingIds: {...state.processingIds}..remove(key),
+    );
+  }
+
   Future<bool> acceptRequest(String requestId) async {
+    final key = _requestKey(requestId);
+    if (_isProcessing(key)) return false;
+    _startProcessing(key);
     try {
       await _api.acceptFriendRequest(requestId);
       await loadFriends();
@@ -164,10 +220,15 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      _endProcessing(key);
     }
   }
 
   Future<bool> rejectRequest(String requestId) async {
+    final key = _requestKey(requestId);
+    if (_isProcessing(key)) return false;
+    _startProcessing(key);
     try {
       await _api.rejectFriendRequest(requestId);
       await loadFriends();
@@ -175,6 +236,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      _endProcessing(key);
     }
   }
 
@@ -220,6 +283,10 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     state = state.copyWith(userSearchResults: const [], error: null);
   }
 
+  void clearLastIncomingRequest() {
+    state = state.copyWith(lastIncomingRequest: null);
+  }
+
   Future<void> _refreshFriendRequests() async {
     try {
       final requests = await _api.getFriendRequests();
@@ -230,6 +297,9 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   }
 
   Future<bool> deleteFriend(String friendId) async {
+    final key = _deleteKey(friendId);
+    if (_isProcessing(key)) return false;
+    _startProcessing(key);
     try {
       await _api.deleteFriend(friendId);
       state = state.copyWith(
@@ -240,10 +310,15 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      _endProcessing(key);
     }
   }
 
   Future<bool> updateFriendRemark(String friendId, String remark) async {
+    final key = _remarkKey(friendId);
+    if (_isProcessing(key)) return false;
+    _startProcessing(key);
     try {
       await _api.updateFriendRemark(friendId, remark);
       state = state.copyWith(
@@ -257,6 +332,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      _endProcessing(key);
     }
   }
 
@@ -264,31 +341,5 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   void dispose() {
     _wsSubscription?.cancel();
     super.dispose();
-  }
-}
-
-/// Pure helpers for filtering friend requests without side effects.
-class FriendRequestFilter {
-  const FriendRequestFilter._();
-
-  /// Returns only requests whose [status] matches [status].
-  static List<FriendRequest> byStatus(
-    List<FriendRequest> requests,
-    String status,
-  ) {
-    return requests.where((r) => r.status == status).toList();
-  }
-
-  /// Returns requests whose applicant username or nickname contains [keyword].
-  static List<FriendRequest> byKeyword(
-    List<FriendRequest> requests,
-    String keyword,
-  ) {
-    final query = keyword.trim().toLowerCase();
-    if (query.isEmpty) return requests;
-    return requests.where((r) {
-      final name = (r.applicantNickname ?? r.applicantUsername).toLowerCase();
-      return name.contains(query);
-    }).toList();
   }
 }

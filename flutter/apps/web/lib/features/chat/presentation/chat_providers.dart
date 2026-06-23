@@ -24,6 +24,9 @@ final chatStateProvider =
     e2eeMetaStore: ref.watch(e2eeMetaStoreProvider),
     sentMessageCache: sentCache,
     outbox: ref.watch(webOutboxPortProvider),
+    onE2eeStatusChanged: (sessionId) {
+      ref.invalidate(e2eeSessionStatusProvider(sessionId));
+    },
   );
 
   ref.listen(networkStatusProvider, (prev, next) {

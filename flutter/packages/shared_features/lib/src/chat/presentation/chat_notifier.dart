@@ -2,10 +2,10 @@
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:meta/meta.dart';
 import 'package:im_core/core.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
-import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import 'chat_state.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
@@ -15,7 +15,9 @@ import '../data/outbox_port.dart';
 import '../data/e2ee_history_recovery.dart';
 import '../data/session_key_codec.dart';
 import '../data/retryable_error_classifier.dart';
+import '../data/outbox_message_id.dart';
 import '../data/sent_message_cache_port.dart';
+import '../data/message_merge_utils.dart';
 
 /// Simplified chat notifier for desktop (no IndexedDB outbox).
 class ChatNotifier extends StateNotifier<ChatState> {
@@ -28,6 +30,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     E2eeMetaStore? e2eeMetaStore,
     SentMessageCachePort? sentMessageCache,
     OutboxPort? outbox,
+    this.onE2eeStatusChanged,
   })  : _e2eeManager = e2eeManager,
         _e2eeMetaStore = e2eeMetaStore,
         _sentMessageCache = sentMessageCache,
@@ -35,8 +38,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
         super(const ChatState()) {
     _subscribeToWs();
     _subscribeToOutbox();
-    unawaited(_warmUpE2eeDeviceRegistration());
-    _startE2eePendingPolling();
   }
 
   final MessageApi _messageApi;
@@ -52,44 +53,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
   /// Optional outbox for offline retry.
   final OutboxPort? _outbox;
 
+  /// Optional callback invoked when an E2EE negotiation event changes the
+  /// session status. Consumers can use it to invalidate status providers.
+  final void Function(String sessionId)? onE2eeStatusChanged;
+
   MessageConfig? _messageConfig;
   StreamSubscription? _wsSubscription;
   StreamSubscription? _wsStateSubscription;
   StreamSubscription? _outboxSubscription;
-  Timer? _e2eePendingPollTimer;
-  bool _e2eePendingPollInFlight = false;
   final Set<String> _inFlightSendFingerprints = <String>{};
 
   bool get _e2eeAvailable => _e2eeManager != null && _e2eeMetaStore != null;
 
+  /// Whether E2EE is wired for this notifier. Exposed only for tests.
+  @visibleForTesting
+  bool get isE2eeEnabledForTesting => _e2eeAvailable;
+
   Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
       Map.unmodifiable(state.pendingNegotiations);
-
-  Future<void> _warmUpE2eeDeviceRegistration() async {
-    if (!_e2eeAvailable) return;
-    try {
-      await _e2eeManager!.ensureDeviceRegistered();
-    } catch (e, st) {
-      AppLogger.instance.warn('E2EE device registration warm-up failed', e, st);
-    }
-  }
-
-  void _startE2eePendingPolling() {
-    if (!_e2eeAvailable) return;
-    _e2eePendingPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      unawaited(_pollPendingNegotiations());
-    });
-  }
-
-  Future<void> _pollPendingNegotiations() async {
-    if (_e2eePendingPollInFlight) return;
-    _e2eePendingPollInFlight = true;
-    try {
-      await loadPendingNegotiations();
-    } finally {
-      _e2eePendingPollInFlight = false;
-    }
-  }
 
   E2eeNegotiationEvent? get pendingNegotiation =>
       activePendingNegotiation ??
@@ -214,23 +195,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   String _sendFingerprint({
     required String sessionKey,
     required String messageType,
-    required String content,
-    String? mediaUrl,
-    String? mediaName,
-    int? mediaSize,
-    String? thumbnailUrl,
-    int? duration,
+    required String clientMessageId,
   }) {
-    return jsonEncode([
-      _normalizeIncomingSessionKey(sessionKey),
-      messageType.toUpperCase(),
-      content,
-      mediaUrl ?? '',
-      mediaName ?? '',
-      mediaSize,
-      thumbnailUrl ?? '',
-      duration,
-    ]);
+    return '${_normalizeIncomingSessionKey(sessionKey)}|${messageType.toUpperCase()}|$clientMessageId';
   }
 
   bool _beginInFlightSend(String fingerprint) {
@@ -246,6 +213,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<Message?> _sendOutboxMessage(OutboxMessage outboxMsg) async {
+    if (outboxMsg.isGroupChat) {
+      return _messageApi.sendGroupMessage(
+        SendGroupMessageRequest(
+          groupId: outboxMsg.groupId ?? outboxMsg.receiverId,
+          content: outboxMsg.content,
+          messageType: outboxMsg.messageType,
+          clientMessageId: outboxMsg.clientMessageId,
+          mediaUrl: outboxMsg.mediaUrl,
+          mediaName: outboxMsg.mediaName,
+          mediaSize: outboxMsg.mediaSize,
+          thumbnailUrl: outboxMsg.thumbnailUrl,
+          duration: outboxMsg.duration,
+        ),
+      );
+    }
+
     if (outboxMsg.isEncrypted) {
       final envelope = _tryGetEnvelopeForOutbox(outboxMsg);
       if (envelope == null) {
@@ -259,6 +242,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         clientMessageId: outboxMsg.clientMessageId,
         messageType: outboxMsg.messageType,
         e2eeEnvelope: E2eeHistoryRecovery.envelopeToApiJson(envelope),
+        e2eeEnvelopes: outboxMsg.e2eeEnvelopes,
         e2eeDeviceId: outboxMsg.e2eeDeviceId!,
         mediaUrl: outboxMsg.mediaUrl,
         mediaName: outboxMsg.mediaName,
@@ -288,9 +272,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   /// Exposed for testing the network recovery → outbox retry glue.
   Future<void> retryPendingOutboxIfNeeded() async {
     if (_outbox == null) return;
-    final pendingCount = await _outbox!.getPendingCount();
-    if (pendingCount > 0) {
-      await _outbox!.retryAllFailed(_sendOutboxMessage);
+    try {
+      final pendingCount = await _outbox!.getPendingCount();
+      final failedCount = await _outbox!.getFailedCount();
+      if (pendingCount + failedCount > 0) {
+        await _outbox!.retryAllFailed(_sendOutboxMessage);
+      }
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to retry pending outbox messages', e, st);
     }
   }
 
@@ -483,9 +472,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
-      final existingMessages = state.messages[sessionKey] ?? <Message>[];
-      final sortedHistory =
-          _mergeMessagesChronologically(existingMessages, history);
+      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
       final messages = _e2eeAvailable
           ? await _decryptLoadedMessages(sortedHistory)
           : sortedHistory;
@@ -514,9 +501,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
-      final existingMessages = state.messages[sessionKey] ?? <Message>[];
-      final sortedHistory =
-          _mergeMessagesChronologically(existingMessages, history);
+      final sortedHistory = _mergeMessagesChronologically(<Message>[], history);
       final messages = _e2eeAvailable
           ? await _decryptLoadedMessages(sortedHistory)
           : sortedHistory;
@@ -697,8 +682,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       String? thumbnailUrl,
       int? duration,
       Map<String, dynamic>? extra}) async {
-    final cid =
-        clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final cid = clientMessageId ?? OutboxMessageId.generate();
     final currentUid = _currentUserId();
     if (currentUid == null || currentUid.isEmpty) {
       state = state.copyWith(error: 'user_not_authenticated');
@@ -709,12 +693,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final sendFingerprint = _sendFingerprint(
       sessionKey: sessionKey,
       messageType: messageType,
-      content: content,
-      mediaUrl: mediaUrl,
-      mediaName: mediaName,
-      mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl,
-      duration: duration,
+      clientMessageId: cid,
     );
     if (!_beginInFlightSend(sendFingerprint)) return null;
 
@@ -731,6 +710,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
           (e2eeStatus == 'negotiating' || e2eeStatus == 'encrypted')) {
         final syncedStatus =
             await _e2eeManager!.syncSessionStatus(e2eeSessionId);
+        if (syncedStatus != e2eeStatus) {
+          onE2eeStatusChanged?.call(e2eeSessionId);
+        }
         if (e2eeStatus == 'encrypted' && syncedStatus == 'plaintext') {
           state = state.copyWith(error: 'e2ee_session_disabled');
           _removePendingNegotiation(e2eeSessionId);
@@ -772,6 +754,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       addMessage(sessionKey, pendingMessage);
 
       Map<String, dynamic>? encryptedEnvelope;
+      List<Map<String, dynamic>>? encryptedDeviceEnvelopes;
       String? encryptedDeviceId;
 
       try {
@@ -779,18 +762,17 @@ class ChatNotifier extends StateNotifier<ChatState> {
         if (_e2eeAvailable && e2eeStatus == 'encrypted') {
           final e2eeManager = _e2eeManager!;
           final senderDeviceId = await _e2eeMetaStore!.getOrCreateDeviceId();
-          final recipientDeviceId =
-              await _e2eeMetaStore!.getRemoteDeviceId(e2eeSessionId);
-          if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
-            throw Exception('remote device ID not found for session');
-          }
 
           encryptedDeviceId = senderDeviceId;
-          encryptedEnvelope = await e2eeManager.encryptToEnvelope(
+          encryptedDeviceEnvelopes = await e2eeManager.encryptToDeviceEnvelopes(
             sessionId: e2eeSessionId,
             senderDeviceId: senderDeviceId,
-            recipientDeviceId: recipientDeviceId,
+            peerUserId: receiverId,
             plaintext: content,
+          );
+          final primaryEnvelope = encryptedDeviceEnvelopes.first['envelope'];
+          encryptedEnvelope = Map<String, dynamic>.from(
+            primaryEnvelope as Map,
           );
           _updateMessageE2eeMetadata(
             sessionKey: sessionKey,
@@ -807,6 +789,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
               encryptedEnvelope,
             ),
             e2eeDeviceId: senderDeviceId,
+            e2eeEnvelopes: encryptedDeviceEnvelopes.length > 1
+                ? encryptedDeviceEnvelopes
+                : null,
             mediaUrl: mediaUrl,
             mediaName: mediaName,
             mediaSize: mediaSize,
@@ -873,6 +858,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             extra: extra,
             isEncrypted: _e2eeAvailable && e2eeStatus == 'encrypted',
             e2eeEnvelope: encryptedEnvelope,
+            e2eeEnvelopes: encryptedDeviceEnvelopes,
             e2eeDeviceId: encryptedDeviceId,
           ));
           _updateMessageStatus(sessionKey, cid, 'PENDING');
@@ -948,8 +934,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       int? duration,
       List<String>? mentionedUserIds,
       Map<String, dynamic>? extra}) async {
-    final cid =
-        clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final cid = clientMessageId ?? OutboxMessageId.generate();
     final currentUserId = _currentUserId();
     if (currentUserId == null || currentUserId.isEmpty) {
       state = state.copyWith(error: 'user_not_authenticated');
@@ -959,12 +944,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final sendFingerprint = _sendFingerprint(
       sessionKey: sessionKey,
       messageType: messageType,
-      content: content,
-      mediaUrl: mediaUrl,
-      mediaName: mediaName,
-      mediaSize: mediaSize,
-      thumbnailUrl: thumbnailUrl,
-      duration: duration,
+      clientMessageId: cid,
     );
     if (!_beginInFlightSend(sendFingerprint)) return null;
 
@@ -1007,8 +987,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
         return serverMessage;
       } catch (e, st) {
         AppLogger.instance.error('Send group message failed', e, st);
-        _updateMessageStatus(sessionKey, cid, 'FAILED');
-        state = state.copyWith(error: e.toString());
+
+        final decision = RetryableErrorClassifier.classifySendError(e);
+        if (decision.retryable && _outbox != null) {
+          await _outbox!.enqueue(OutboxMessage(
+            id: cid,
+            sessionKey: sessionKey,
+            receiverId: groupId,
+            content: content,
+            messageType: messageType,
+            clientMessageId: cid,
+            mediaUrl: mediaUrl,
+            mediaName: mediaName,
+            mediaSize: mediaSize,
+            thumbnailUrl: thumbnailUrl,
+            duration: duration,
+            extra: extra,
+            isGroupChat: true,
+            groupId: groupId,
+          ));
+          _updateMessageStatus(sessionKey, cid, 'PENDING');
+        } else {
+          final errorMsg = decision.safeMessage ?? e.toString();
+          state = state.copyWith(error: errorMsg);
+          _updateMessageStatus(sessionKey, cid, 'FAILED');
+        }
         return null;
       }
     } finally {
@@ -1273,7 +1276,18 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
   }
 
-  Future<void> markRead(String conversationId) async {
+  Future<void> markRead(String sessionId) async {
+    final normalizedKey = _normalizeIncomingSessionKey(sessionId);
+    final session = state.sessions
+        .where((s) => s.id == normalizedKey)
+        .firstOrNull;
+    final conversationId = session?.conversationId;
+    if (conversationId == null || conversationId.isEmpty) {
+      AppLogger.instance.warn(
+        'markRead skipped: no conversationId for session $normalizedKey',
+      );
+      return;
+    }
     try {
       await _messageApi.markRead(conversationId);
     } catch (e, st) {
@@ -1336,19 +1350,49 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (index == -1) return;
     final msg = messages[index];
 
-    if (msg.encrypted == true) {
+    // Encrypted messages can only be retried when the local envelope is still
+    // available (media E2EE messages store it in the message state).
+    if (msg.encrypted == true && msg.e2eeEnvelope == null) {
       _updateMessageStatus(normalizedKey, msg.id, 'FAILED');
       state = state.copyWith(error: 'e2ee_not_ready');
       return;
     }
 
+    final targetId = msg.isGroupChat
+        ? (msg.groupId ?? _groupIdFromSessionKey(normalizedKey))
+        : (msg.receiverId ?? _privateTargetFromSessionKey(normalizedKey));
+
+    if (_outbox != null) {
+      await _outbox!.enqueue(OutboxMessage(
+        id: msg.clientMessageId ?? msg.id,
+        sessionKey: normalizedKey,
+        receiverId: targetId,
+        content: msg.content,
+        messageType: msg.messageType,
+        clientMessageId: msg.clientMessageId ?? msg.id,
+        mediaUrl: msg.mediaUrl,
+        mediaName: msg.mediaName,
+        mediaSize: msg.mediaSize,
+        thumbnailUrl: msg.thumbnailUrl,
+        duration: msg.duration,
+        isGroupChat: msg.isGroupChat,
+        groupId: msg.groupId,
+        isEncrypted: msg.encrypted == true,
+        e2eeEnvelope: msg.e2eeEnvelope?.toJson(),
+        e2eeDeviceId: msg.e2eeDeviceId,
+      ));
+      _updateMessageStatus(normalizedKey, msg.id, 'PENDING');
+      return;
+    }
+
+    // Fallback when no outbox is configured: attempt a single direct retry.
     _updateMessageStatus(normalizedKey, msg.id, 'SENDING');
     try {
       final Message serverMessage;
       if (msg.isGroupChat) {
         serverMessage = await _messageApi.sendGroupMessage(
           SendGroupMessageRequest(
-            groupId: msg.groupId ?? _groupIdFromSessionKey(normalizedKey),
+            groupId: targetId,
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
@@ -1362,8 +1406,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       } else {
         serverMessage = await _messageApi.sendPrivateMessage(
           SendPrivateMessageRequest(
-            receiverId:
-                msg.receiverId ?? _privateTargetFromSessionKey(normalizedKey),
+            receiverId: targetId,
             content: msg.content,
             messageType: msg.messageType,
             clientMessageId: msg.clientMessageId,
@@ -1705,16 +1748,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
         case E2eeNegotiationAction.request:
           _addPendingNegotiation(event);
           await _e2eeMetaStore!.setSessionStatus(sessionId, 'negotiating');
+          onE2eeStatusChanged?.call(sessionId);
         case E2eeNegotiationAction.accepted:
           await _e2eeMetaStore!.setSessionStatus(sessionId, 'encrypted');
           await _e2eeMetaStore!.clearPendingHandshake(sessionId);
           _removePendingNegotiation(sessionId);
+          onE2eeStatusChanged?.call(sessionId);
           await _retryDecryptMessagesForE2eeSession(sessionId);
         case E2eeNegotiationAction.rejected:
         case E2eeNegotiationAction.disabled:
           await _e2eeMetaStore!.setSessionStatus(sessionId, 'plaintext');
           await _e2eeMetaStore!.clearPendingHandshake(sessionId);
           _removePendingNegotiation(sessionId);
+          onE2eeStatusChanged?.call(sessionId);
       }
     } catch (e, st) {
       AppLogger.instance
@@ -1811,31 +1857,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
         e2eeSessionId,
         initiated ? 'negotiating' : 'failed',
       );
+      onE2eeStatusChanged?.call(e2eeSessionId);
       return initiated;
     } catch (e, st) {
       AppLogger.instance
           .error('Failed to initiate E2EE negotiation', e, st, 'e2ee');
       await _e2eeMetaStore!.setSessionStatus(e2eeSessionId, 'failed');
+      onE2eeStatusChanged?.call(e2eeSessionId);
       return false;
-    }
-  }
-
-  Future<String?> syncEncryptionStatus(String e2eeSessionId) async {
-    if (!_e2eeAvailable || e2eeSessionId.isEmpty) return null;
-
-    try {
-      final synced = await _e2eeManager!.syncSessionStatus(e2eeSessionId);
-      if (synced == 'plaintext') {
-        _removePendingNegotiation(e2eeSessionId);
-      } else if (synced == 'encrypted') {
-        _removePendingNegotiation(e2eeSessionId);
-        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
-      }
-      return synced;
-    } catch (e, st) {
-      AppLogger.instance
-          .error('Failed to sync E2EE session status', e, st, 'e2ee');
-      return null;
     }
   }
 
@@ -1856,6 +1885,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (!accepted) return false;
 
       await _e2eeMetaStore!.setSessionStatus(event.sessionId, 'encrypted');
+      onE2eeStatusChanged?.call(event.sessionId);
       _removePendingNegotiation(event.sessionId);
       return true;
     } catch (e, st) {
@@ -1876,6 +1906,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           .error('Failed to reject E2EE negotiation', e, st, 'e2ee');
     } finally {
       await _e2eeMetaStore!.setSessionStatus(targetSessionId, 'plaintext');
+      onE2eeStatusChanged?.call(targetSessionId);
       _removePendingNegotiation(targetSessionId);
     }
   }
@@ -1894,6 +1925,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     } finally {
       await _e2eeMetaStore!.setSessionStatus(e2eeSessionId, 'plaintext');
+      onE2eeStatusChanged?.call(e2eeSessionId);
       _removePendingNegotiation(e2eeSessionId);
     }
   }
@@ -1915,6 +1947,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           event.sessionId,
           'negotiating',
         );
+        onE2eeStatusChanged?.call(event.sessionId);
       }
 
       state = state.copyWith(pendingNegotiations: updated);
@@ -1937,7 +1970,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final localStatus = await _e2eeMetaStore!.getSessionStatus(e2eeSessionId);
       if (localStatus == 'plaintext') continue;
 
-      await syncEncryptionStatus(e2eeSessionId);
+      final synced = await _e2eeManager!.syncSessionStatus(e2eeSessionId);
+      if (synced != localStatus) {
+        onE2eeStatusChanged?.call(e2eeSessionId);
+      }
+      if (synced == 'plaintext') {
+        _removePendingNegotiation(e2eeSessionId);
+      } else if (synced == 'encrypted') {
+        _removePendingNegotiation(e2eeSessionId);
+        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
+      }
     }
   }
 
@@ -1946,7 +1988,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _wsSubscription?.cancel();
     _wsStateSubscription?.cancel();
     _outboxSubscription?.cancel();
-    _e2eePendingPollTimer?.cancel();
     super.dispose();
   }
 }

@@ -12,7 +12,6 @@ RUN cargo install wasm-pack --locked
 COPY rust ./rust
 WORKDIR /workspace/rust/crates/im-flutter-bridge
 RUN RUSTFLAGS="-C target-feature=-atomics,-bulk-memory,-mutable-globals" \
-      WASM_OPT=0 \
       wasm-pack build --target no-modules --out-dir /wasm-pkg --no-default-features \
     && python3 patch_wasm_js.py /wasm-pkg/im_rust_bridge.js \
     && test -f /wasm-pkg/im_rust_bridge.js \
@@ -23,7 +22,14 @@ WORKDIR /workspace
 COPY flutter ./flutter
 COPY --from=wasm-builder /wasm-pkg ./flutter/apps/web/web/pkg
 WORKDIR /workspace/flutter/apps/web
+# Melos-generated overrides may contain Windows-style paths that break Linux builds.
+RUN find /workspace/flutter -name pubspec_overrides.yaml -delete
 RUN flutter pub get
+# im_core contains generated .freezed.dart / .g.dart files ignored by git.
+# Generate them inside the build container so the web app compiles.
+WORKDIR /workspace/flutter/packages/core
+RUN flutter pub get && flutter pub run build_runner build --delete-conflicting-outputs
+WORKDIR /workspace/flutter/apps/web
 ARG FRONTEND_BUILD_MODE=sit
 RUN test -f web/pkg/im_rust_bridge.js && test -f web/pkg/im_rust_bridge_bg.wasm
 RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then \
@@ -31,7 +37,7 @@ RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then \
     elif [ "${FRONTEND_BUILD_MODE}" = "sit" ]; then \
       flutter build web --release --pwa-strategy=none; \
     else \
-      flutter build web --release --pwa-strategy=none --obfuscate --split-debug-info=/debug-info; \
+      flutter build web --release --pwa-strategy=none; \
     fi
 
 FROM docker.m.daocloud.io/library/nginx:1.27-alpine

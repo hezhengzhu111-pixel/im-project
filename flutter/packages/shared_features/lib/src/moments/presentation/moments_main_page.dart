@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_l10n/im_l10n.dart';
+import 'package:im_shared_features/auth.dart';
+import 'package:im_ui/im_ui.dart';
+import 'composer/moments_composer_page.dart';
+import 'feed/moments_feed_page.dart';
 import 'moments_providers.dart';
-import 'widgets/post_card.dart';
+import 'widgets/moments_cover.dart';
+import 'widgets/moments_sidebar.dart';
+import 'widgets/moments_topbar.dart';
 
 class MomentsMainPage extends ConsumerStatefulWidget {
-  const MomentsMainPage({super.key});
+  const MomentsMainPage({this.postId, super.key});
+
+  final String? postId;
 
   @override
   ConsumerState<MomentsMainPage> createState() => _MomentsMainPageState();
@@ -12,15 +21,12 @@ class MomentsMainPage extends ConsumerStatefulWidget {
 
 class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
   final _scrollController = ScrollController();
+  double _scrollProgress = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(momentsFeedProvider.notifier).loadFeed();
-    });
-
-    _scrollController.addListener(_onScroll);
+    _scrollController.addListener(_updateScrollProgress);
   }
 
   @override
@@ -29,67 +35,108 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      ref.read(momentsFeedProvider.notifier).loadFeed();
+  void _updateScrollProgress() {
+    const threshold = 192.0;
+    final progress = (_scrollController.offset / threshold).clamp(0.0, 1.0);
+    if (progress != _scrollProgress) {
+      setState(() => _scrollProgress = progress);
     }
+  }
+
+  void _openComposer() {
+    if (!context.isCompact) {
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: GlassPanel(
+            borderRadius: 20,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: const MomentsComposerPage(),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const MomentsComposerPage(),
+      ),
+    );
+  }
+
+  Future<void> _refreshFeed() async {
+    await ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final feedState = ref.watch(momentsFeedProvider);
+    final showSidebar = context.isLarge;
 
-    return Column(
-      children: [
-        // Header
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '朋友圈',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+    return ColoredBox(
+      color: ImTokens.wechatPageBg,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: GlassPanel(
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                child: Column(
+                  children: [
+                    MomentsTopbar(
+                      scrollProgress: _scrollProgress,
+                      onComposeTap: _openComposer,
+                    ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _refreshFeed,
+                        child: CustomScrollView(
+                          controller: _scrollController,
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Builder(
+                                builder: (context) {
+                                  final user =
+                                      ref.watch(authStateProvider).user;
+                                  return MomentsCover(
+                                    nickname: user?.nickname ??
+                                        user?.username ??
+                                        AppLocalizations.of(context)!
+                                            .momentsUserFallback,
+                                    avatar: user?.avatar,
+                                  );
+                                },
+                              ),
+                            ),
+                            MomentsFeedPage(
+                              postId: widget.postId,
+                              scrollController: _scrollController,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.add_box_outlined),
-                onPressed: () {
-                  // TODO: 打开发布页面
-                },
+            ),
+            if (showSidebar) ...[
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 304,
+                child: MomentsSidebar(onComposeTap: _openComposer),
               ),
             ],
-          ),
+          ],
         ),
-        const Divider(height: 1),
-
-        // Feed list
-        Expanded(
-          child: feedState.isLoading && feedState.posts.isEmpty
-              ? const Center(child: CircularProgressIndicator())
-              : feedState.posts.isEmpty
-                  ? const Center(child: Text('暂无动态'))
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
-                      itemCount:
-                          feedState.posts.length + (feedState.hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == feedState.posts.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
-                        final post = feedState.posts[index];
-                        return PostCard(post: post);
-                      },
-                    ),
-        ),
-      ],
+      ),
     );
   }
 }

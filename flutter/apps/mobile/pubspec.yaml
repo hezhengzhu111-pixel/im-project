@@ -20,6 +20,8 @@ dependencies:
     path: ../../packages/ui
   im_core_flutter:
     path: ../../packages/core_flutter
+  im_l10n:
+    path: ../../packages/l10n
   im_shared_features:
     path: ../../packages/shared_features
   im_rust_bridge:

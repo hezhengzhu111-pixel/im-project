@@ -179,6 +179,28 @@ class TestableE2eeManager extends E2eeManager {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> encryptToDeviceEnvelopes({
+    required String sessionId,
+    required String senderDeviceId,
+    required String peerUserId,
+    required String plaintext,
+  }) async {
+    final envelope = await encryptToEnvelope(
+      sessionId: sessionId,
+      senderDeviceId: senderDeviceId,
+      recipientDeviceId: 'device-remote-1',
+      plaintext: plaintext,
+    );
+    return [
+      {
+        'recipientUserId': peerUserId,
+        'recipientDeviceId': 'device-remote-1',
+        'envelope': envelope,
+      },
+    ];
+  }
+
+  @override
   Future<String> decryptEnvelope({
     required String sessionId,
     required Map<String, dynamic> envelope,
@@ -244,6 +266,7 @@ class SpyMessageOutbox extends MessageOutbox {
     String? groupId,
     bool isEncrypted = false,
     Map<String, dynamic>? e2eeEnvelope,
+    List<Map<String, dynamic>>? e2eeEnvelopes,
     String? e2eeDeviceId,
     String? mediaUrl,
     String? mediaName,

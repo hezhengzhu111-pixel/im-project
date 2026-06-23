@@ -4,58 +4,54 @@ import sys
 from pathlib import Path
 from typing import List, Set
 
+from .sync_config import SOURCE_DIRS, SYNC_EXCLUDED_NAMES, SYNC_EXCLUDED_PATTERNS
+
+
+def _derive_pollution_patterns() -> List[str]:
+    """Derive pollution patterns from the shared sync config.
+
+    Directory names are suffixed with '/' so _matches_pattern treats them as
+    directory patterns; file names and file patterns are kept as-is.
+    """
+    directory_names = {
+        "target",
+        ".dart_tool",
+        "build",
+        "ephemeral",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".pytest_cache",
+        ".cache",
+        "coverage",
+        "logs",
+    }
+    patterns: List[str] = []
+    for name in sorted(SYNC_EXCLUDED_NAMES):
+        patterns.append(f"{name}/" if name in directory_names else name)
+    patterns.extend(SYNC_EXCLUDED_PATTERNS)
+    # Additional general build artifacts not covered by sync_config.
+    patterns.extend([
+        "dist/",
+        "out/",
+        "tests/build/",
+        "*.tar",
+        "*.tar.gz",
+        "*.zip",
+    ])
+    return patterns
+
+
 # Patterns that should NOT appear in source directories
-POLLUTION_PATTERNS = [
-    # Rust build artifacts
-    "target/",
-    "*.pdb",
-    "*.rlib",
-    "*.lib",
-
-    # Flutter/Dart artifacts
-    ".dart_tool/",
-    ".packages",
-    ".flutter-plugins",
-    ".flutter-plugins-dependencies",
-    "pubspec.lock",
-
-    # Node.js artifacts
-    "node_modules/",
-
-    # Java/Maven artifacts
-    "*.class",
-    "*.jar",
-    ".mvn/",
-
-    # General build artifacts
-    "build/",
-    "dist/",
-    "out/",
-    "*.log",
-    "*.tar",
-    "*.tar.gz",
-    "*.zip",
-
-    # IDE artifacts
-    "*.iml",
-    ".idea/",
-    ".vscode/",
-]
-
-# Directories to scan (relative to project root)
-SOURCE_DIRS = [
-    "rust",
-    "flutter",
-    "spring-ai",
-    "sql",
-]
+POLLUTION_PATTERNS: List[str] = _derive_pollution_patterns()
 
 
 class PollutionDetector:
     """Detects build artifacts and intermediate files in source directories."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
+    def __init__(self, project_root: Path | str):
+        self.project_root = Path(project_root)
         self.findings: List[Path] = []
 
     def scan(self, fix: bool = False) -> List[Path]:
@@ -83,8 +79,8 @@ class PollutionDetector:
         """Recursively scan a directory for pollution."""
         try:
             for item in directory.iterdir():
-                if item.name.startswith('.'):
-                    # Skip hidden files (like .git)
+                # Only skip VCS directories; hidden dirs like .dart_tool may be pollution.
+                if item.name == '.git':
                     continue
 
                 relative_path = item.relative_to(self.project_root)
@@ -96,9 +92,18 @@ class PollutionDetector:
         except PermissionError:
             pass
 
+    # Paths that match a pattern but are legitimate source, not pollution.
+    EXEMPTIONS: Set[str] = {
+        "tests/coverage",
+        "tests/coverage/",
+    }
+
     def _is_pollution(self, path: Path, relative_path: Path) -> bool:
         """Check if a path matches pollution patterns."""
         path_str = str(relative_path).replace('\\', '/')
+
+        if path_str in self.EXEMPTIONS or f"{path_str}/" in self.EXEMPTIONS:
+            return False
 
         for pattern in POLLUTION_PATTERNS:
             if self._matches_pattern(path, path_str, pattern):
@@ -125,8 +130,8 @@ class PollutionDetector:
 
     def _should_skip_dir(self, path: Path) -> bool:
         """Determine if a directory should be skipped during scanning."""
-        # Skip .git and other hidden directories
-        if path.name.startswith('.'):
+        # Skip VCS directories
+        if path.name == '.git':
             return True
 
         # Skip node_modules at any level (already detected as pollution)
@@ -158,7 +163,7 @@ class PollutionDetector:
             return str(path)
 
 
-def check_source_pollution(project_root: Path, verbose: bool = False) -> bool:
+def check_source_pollution(project_root: Path | str, verbose: bool = False) -> bool:
     """Check for source pollution and report findings.
 
     Args:
@@ -182,7 +187,7 @@ def check_source_pollution(project_root: Path, verbose: bool = False) -> bool:
         return False
 
 
-def clean_source_pollution(project_root: Path) -> None:
+def clean_source_pollution(project_root: Path | str) -> None:
     """Clean source pollution by removing detected artifacts.
 
     Args:

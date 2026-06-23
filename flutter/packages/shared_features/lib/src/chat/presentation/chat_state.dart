@@ -17,6 +17,8 @@ class ChatState {
     this.pendingNegotiations = const {},
   });
 
+  static const Object? _sentinel = Object();
+
   final List<ChatSession> sessions;
   final Map<String, List<Message>> messages;
   final bool isLoading;
@@ -50,7 +52,7 @@ class ChatState {
     List<ChatSession>? sessions,
     Map<String, List<Message>>? messages,
     bool? isLoading,
-    String? activeSessionId,
+    Object? activeSessionId = _sentinel,
     String? error,
     Map<String, bool>? loadingHistoryBySession,
     Map<String, bool>? hasMoreHistoryBySession,
@@ -65,7 +67,9 @@ class ChatState {
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
-      activeSessionId: activeSessionId ?? this.activeSessionId,
+      activeSessionId: activeSessionId == _sentinel
+          ? this.activeSessionId
+          : activeSessionId as String?,
       error: error,
       loadingHistoryBySession:
           loadingHistoryBySession ?? this.loadingHistoryBySession,

@@ -28,6 +28,17 @@
 
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+
+  <!-- Preconnect to CanvasKit CDN to speed up renderer download. -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="dns-prefetch" href="https://unpkg.com">
+
+  <!-- Preload the Flutter bootstrap so it can start fetching main.dart.js ASAP. -->
+  <link rel="preload" href="flutter_bootstrap.js" as="script">
+  <!-- Preload the main Dart bundle so the browser starts downloading it in parallel. -->
+  <link rel="preload" href="main.dart.js" as="script">
+
   <title>IM</title>
   <style>
     body {

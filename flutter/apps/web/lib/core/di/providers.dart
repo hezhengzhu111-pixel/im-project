@@ -3,6 +3,8 @@
 
 // Core
 export 'platform_providers.dart';
+export 'rust_bridge_init_provider.dart';
+export 'rust_bridge_warmup.dart';
 export '../config/app_config_provider.dart';
 export '../network/network_providers.dart';
 export '../network/network_status_provider.dart';

@@ -33,6 +33,7 @@ target/
 # 统一编译产物目录
 # ===========================================
 build/
+tests/build/
 *.dill
 *.dill.track.dill
 *.cache.dill*
@@ -44,7 +45,13 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
+pubspec_overrides.yaml
 *.iml
+
+# Flutter native platform ephemeral/generated files
+**/ephemeral/
+**/GeneratedPluginRegistrant.java
+**/generated_plugin_registrant.*
 
 # ===========================================
 # 编译残留
@@ -96,6 +103,18 @@ init.md
 .superpowers/
 .git.backup/
 
+# 嵌套 Git 仓库（不作为子模块管理）
+# ===========================================
+admin-console/backend/ruoyi-vue/
+admin-console/frontend/ruoyi-vue3/
+
+# 本地工作区 / 管理控制台 / SSH 密钥
+# ===========================================
+.mimocode/
+admin-console/
+ssh/*.pem
+ssh/*.key
+
 # ===========================================
 # 编译和缓存（IDE 和前端工具生成）
 # ===========================================
@@ -104,8 +123,10 @@ init.md
 .eslintcache
 .stylelintcache
 .claude
-.github
 .idea
 .mimocode
-admin-console
 build
+/ssh/im-server.pem
+/ssh/im-ssh.pem
+ssh
+

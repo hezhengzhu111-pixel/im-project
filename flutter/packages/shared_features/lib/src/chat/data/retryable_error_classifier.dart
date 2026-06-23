@@ -198,4 +198,13 @@ class RetryableErrorClassifier {
     }
     return null;
   }
+
+  /// Returns a safe, non-sensitive error code/type for persisting in the outbox.
+  ///
+  /// This must never include raw exception text, response bodies, tokens, or the
+  /// original message content. Use [classifySendError] to obtain a structured
+  /// decision and return its [RetryDecision.reason].
+  static String safeErrorCode(Object error) {
+    return classifySendError(error).reason;
+  }
 }

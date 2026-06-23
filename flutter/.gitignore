@@ -50,6 +50,11 @@ app.*.map.json
 **/linux/
 **/windows/
 
+# Flutter native platform ephemeral/generated files
+**/ephemeral/
+**/GeneratedPluginRegistrant.java
+**/generated_plugin_registrant.*
+
 # Generated files
 *.g.dart
 *.freezed.dart
@@ -61,3 +66,6 @@ coverage/
 
 # Pubspec lock (for packages)
 **/packages/*/pubspec.lock
+
+# Melos generated dependency overrides
+**/pubspec_overrides.yaml

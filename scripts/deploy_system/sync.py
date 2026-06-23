@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Set
 
+from .sync_config import SYNC_EXCLUDED_NAMES, SYNC_EXCLUDED_PATTERNS
+
 
 @dataclass
 class SyncStats:
@@ -178,6 +180,46 @@ def _clean_empty_dirs(directory: Path, verbose: bool) -> None:
                 pass
 
 
+def _derive_ignore_patterns() -> list[str]:
+    """Derive sync ignore patterns from sync_config.
+
+    Directory names are suffixed with '/' so _should_ignore treats them as
+    directory patterns; file names are kept as exact patterns.  File patterns
+    from SYNC_EXCLUDED_PATTERNS are included as-is.
+    """
+    patterns: list[str] = []
+    # Treat well-known directory names as directory patterns.  Some names can
+    # legitimately appear as files (e.g. 'build'), but they are overwhelmingly
+    # directories in this project; flagging them conservatively is safe because
+    # sync ignores the whole directory when copying.
+    directory_names = {
+        "target",
+        ".dart_tool",
+        "build",
+        "ephemeral",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".pytest_cache",
+        ".cache",
+        "coverage",
+        "logs",
+    }
+    for name in sorted(SYNC_EXCLUDED_NAMES):
+        if name in directory_names:
+            patterns.append(f"{name}/")
+        else:
+            patterns.append(name)
+    patterns.extend(SYNC_EXCLUDED_PATTERNS)
+    # VCS metadata must never be copied.
+    patterns.append(".git/")
+    return patterns
+
+
+_COMMON_IGNORE_PATTERNS: list[str] = _derive_ignore_patterns()
+
+
 def sync_rust_source(
     source: Path,
     target: Path,
@@ -185,19 +227,11 @@ def sync_rust_source(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> SyncStats:
-    """Sync Rust source code with appropriate ignore patterns."""
-    ignore_patterns = [
-        "target/",
-        "*.pdb",
-        "*.rlib",
-        "*.lib",
-        ".git/",
-    ]
-
+    """Sync Rust source code with common build-artifact exclusions."""
     return sync_directories(
         source,
         target,
-        ignore_patterns=ignore_patterns,
+        ignore_patterns=_COMMON_IGNORE_PATTERNS,
         delete=True,
         verbose=verbose,
         dry_run=dry_run,
@@ -211,22 +245,11 @@ def sync_flutter_source(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> SyncStats:
-    """Sync Flutter source code with appropriate ignore patterns."""
-    ignore_patterns = [
-        ".dart_tool/",
-        ".packages",
-        ".flutter-plugins",
-        ".flutter-plugins-dependencies",
-        "pubspec.lock",
-        "build/",
-        ".git/",
-        "*.iml",
-    ]
-
+    """Sync Flutter source code with common build-artifact exclusions."""
     return sync_directories(
         source,
         target,
-        ignore_patterns=ignore_patterns,
+        ignore_patterns=_COMMON_IGNORE_PATTERNS,
         delete=True,
         verbose=verbose,
         dry_run=dry_run,
@@ -240,19 +263,11 @@ def sync_spring_ai_source(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> SyncStats:
-    """Sync Spring AI source code with appropriate ignore patterns."""
-    ignore_patterns = [
-        "target/",
-        "*.class",
-        "*.jar",
-        ".mvn/",
-        ".git/",
-    ]
-
+    """Sync Spring AI source code with common build-artifact exclusions."""
     return sync_directories(
         source,
         target,
-        ignore_patterns=ignore_patterns,
+        ignore_patterns=_COMMON_IGNORE_PATTERNS,
         delete=True,
         verbose=verbose,
         dry_run=dry_run,

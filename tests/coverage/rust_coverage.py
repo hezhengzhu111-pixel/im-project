@@ -9,12 +9,16 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_TESTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_TESTS_DIR / "common"))
+sys.path.insert(0, str(_TESTS_DIR))
 from coverage.check_lcov_thresholds import parse_lcov  # noqa: E402
 from gate_common import ROOT, run_step, skip_step, write_gate_reports  # noqa: E402
+from workspace import ensure_work_workspace, setup_isolated_env  # noqa: E402
 
 
 RUST_ROOT = ROOT / "rust"
+RUST_WORK_ROOT = ROOT / "build" / "work" / "rust"
 OUT_DIR = ROOT / "build" / "reports" / "coverage" / "rust"
 THRESHOLDS = {
     "overall": 65.0,
@@ -96,6 +100,12 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     baseline_path = OUT_DIR / "baseline.json"
     existing_baseline = read_existing_baseline(baseline_path)
+
+    # Run all coverage commands in the isolated work copy with caches outside
+    # the source tree so cargo does not create rust/**/target directories.
+    ensure_work_workspace()
+    env = setup_isolated_env()
+
     results = []
     if shutil.which("cargo") is None:
         results.append(skip_step("Rust coverage prerequisites", "cargo is required for Rust coverage", critical=True))
@@ -117,6 +127,7 @@ def main() -> int:
                 ["cargo", "install", "cargo-llvm-cov", "--locked"],
                 cwd=RUST_ROOT,
                 timeout=1800,
+                env=env,
             )
         )
         if results[-1].status == "FAIL":
@@ -125,8 +136,9 @@ def main() -> int:
     component_check = run_step(
         "Check llvm-tools-preview",
         ["rustup", "component", "list", "--installed"],
-        cwd=RUST_ROOT,
+        cwd=RUST_WORK_ROOT,
         timeout=60,
+        env=env,
     )
     results.append(component_check)
     installed = "\n".join(component_check.stdout_tail or [])
@@ -146,25 +158,27 @@ def main() -> int:
             run_step(
                 "Install llvm-tools-preview",
                 ["rustup", "component", "add", "llvm-tools-preview"],
-                cwd=RUST_ROOT,
+                cwd=RUST_WORK_ROOT,
                 timeout=600,
+                env=env,
             )
         )
         if results[-1].status == "FAIL":
             return write_gate_reports("rust-coverage", "coverage", results)
     lcov_path = OUT_DIR / "lcov.info"
-    results.append(run_step("Rust coverage clean", ["cargo", "llvm-cov", "clean", "--workspace"], cwd=RUST_ROOT))
+    results.append(run_step("Rust coverage clean", ["cargo", "llvm-cov", "clean", "--workspace"], cwd=RUST_WORK_ROOT, env=env))
     if results[-1].status == "PASS":
         results.append(
             run_step(
                 "Rust coverage lcov",
                 ["cargo", "llvm-cov", "--workspace", "--lcov", "--output-path", str(lcov_path)],
-                cwd=RUST_ROOT,
+                cwd=RUST_WORK_ROOT,
                 timeout=2400,
+                env=env,
             )
         )
     if results[-1].status == "PASS":
-        results.append(run_step("Rust coverage report", ["cargo", "llvm-cov", "report"], cwd=RUST_ROOT))
+        results.append(run_step("Rust coverage report", ["cargo", "llvm-cov", "report"], cwd=RUST_WORK_ROOT, env=env))
     exit_code = write_gate_reports("rust-coverage", "coverage", results)
     if exit_code != 0:
         return exit_code

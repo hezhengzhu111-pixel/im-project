@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core_flutter/im_core_flutter.dart';
-import 'package:im_shared_features/src/chat/chat.dart';
+import 'package:im_shared_features/chat.dart';
 import '../data/moments_api.dart';
 import '../data/moments_repository.dart';
 import 'composer/composer_provider.dart';

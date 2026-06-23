@@ -293,8 +293,7 @@ class E2eeApi {
   }
 
   /// Get sender keys for a group.
-  Future<List<Map<String, dynamic>>> getGroupSenderKeys(
-      String groupId) async {
+  Future<List<Map<String, dynamic>>> getGroupSenderKeys(String groupId) async {
     final response = await _httpClient.get<Map<String, dynamic>>(
       E2eeEndpoints.groupSenderKeys(groupId),
       fromJson: (json) => json,

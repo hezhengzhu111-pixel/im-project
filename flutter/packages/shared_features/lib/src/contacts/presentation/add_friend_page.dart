@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../../auth/presentation/auth_providers.dart';
-import '../../contacts/presentation/contacts_provider.dart';
-import '../../contacts/presentation/contacts_providers.dart';
+import 'package:im_l10n/im_l10n.dart';
+import 'package:im_ui/im_ui.dart';
+import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/src/core/string_extensions.dart';
+import 'contacts_provider.dart';
+import 'contacts_providers.dart';
 
 class AddFriendPage extends ConsumerStatefulWidget {
   const AddFriendPage({super.key});
@@ -16,19 +19,22 @@ class AddFriendPage extends ConsumerStatefulWidget {
 
 class _AddFriendPageState extends ConsumerState<AddFriendPage> {
   final _searchController = TextEditingController();
-  final _reasonController = TextEditingController();
+  final _requestMessageController = TextEditingController();
   Timer? _debounce;
   List<User> _results = [];
   bool _isSearching = false;
   String? _error;
   User? _selectedUser;
   bool _isSending = false;
+  String _searchType = 'username';
+  bool _requestMessageInitialized = false;
+  final Set<String> _processingRequestIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _reasonController.text = _Strings.defaultReason;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final contactsState = ref.read(contactsStateProvider);
       if (!contactsState.isLoading &&
           contactsState.friends.isEmpty &&
@@ -39,9 +45,19 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_requestMessageInitialized) {
+      _requestMessageController.text =
+          AppLocalizations.of(context)!.contactsFriendRequestReason;
+      _requestMessageInitialized = true;
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
-    _reasonController.dispose();
+    _requestMessageController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -54,17 +70,41 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     return ref.read(currentUserIdProvider) == userId;
   }
 
-  bool _hasSentRequest(ContactsState contactsState, String userId) {
+  FriendRequest? _pendingOutgoingRequest(
+    ContactsState contactsState,
+    String userId,
+  ) {
     final currentUserId = ref.read(currentUserIdProvider);
-    if (currentUserId == null || currentUserId.isEmpty) return false;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    return contactsState.friendRequests
+        .where(
+          (request) =>
+              request.status == 'PENDING' &&
+              request.applicantId == currentUserId &&
+              request.targetUserId == userId,
+        )
+        .firstOrNull;
+  }
 
-    final pendingOutgoing = contactsState.friendRequests.any(
-      (r) =>
-          r.status == 'PENDING' &&
-          r.applicantId == currentUserId &&
-          r.targetUserId == userId,
-    );
-    return pendingOutgoing || contactsState.sentRequestUserIds.contains(userId);
+  FriendRequest? _pendingIncomingRequest(
+    ContactsState contactsState,
+    String userId,
+  ) {
+    final currentUserId = ref.read(currentUserIdProvider);
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    return contactsState.friendRequests
+        .where(
+          (request) =>
+              request.status == 'PENDING' &&
+              request.applicantId == userId &&
+              request.targetUserId == currentUserId,
+        )
+        .firstOrNull;
+  }
+
+  bool _hasSentRequest(ContactsState contactsState, String userId) {
+    return _pendingOutgoingRequest(contactsState, userId) != null ||
+        contactsState.sentRequestUserIds.contains(userId);
   }
 
   void _onSearchChanged(String keyword) {
@@ -90,7 +130,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     try {
       final results = await ref
           .read(contactsStateProvider.notifier)
-          .searchUsers(keyword);
+          .searchUsers(keyword, type: _searchType);
       if (mounted) {
         setState(() {
           _results = results;
@@ -102,7 +142,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       if (mounted) {
         setState(() {
           _isSearching = false;
-          _error = _Strings.searchFailed;
+          _error = AppLocalizations.of(context)!.addFriendSearchFailed;
         });
       }
     }
@@ -114,21 +154,29 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     try {
       await ref.read(contactsStateProvider.notifier).sendFriendRequest(
             user.id,
-            reason: _reasonController.text,
+            reason: _requestMessageController.text,
           );
+      ref.read(contactsStateProvider.notifier).markRequestSent(user.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${_Strings.requestSentPrefix}${user.nickname ?? user.username}',
+              AppLocalizations.of(context)!
+                  .addFriendRequestSent(user.nickname ?? user.username),
             ),
           ),
         );
+        setState(() {
+          _requestMessageController.text =
+              AppLocalizations.of(context)!.contactsFriendRequestReason;
+        });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(_Strings.requestFailed)),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.addFriendRequestFailed),
+          ),
         );
       }
     } finally {
@@ -136,54 +184,126 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     }
   }
 
+  Future<void> _handleIncomingRequest(
+    FriendRequest request, {
+    required bool accept,
+  }) async {
+    if (_processingRequestIds.contains(request.id)) return;
+    setState(() => _processingRequestIds.add(request.id));
+
+    try {
+      final notifier = ref.read(contactsStateProvider.notifier);
+      final success = accept
+          ? await notifier.acceptRequest(request.id)
+          : await notifier.rejectRequest(request.id);
+
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        final fallbackMessage =
+            accept ? loc.contactsAccept : loc.contactsReject;
+        final error = ref.read(contactsStateProvider).error;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? (accept ? loc.contactsAccepted : loc.contactsRejected)
+                  : (error ?? fallbackMessage),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingRequestIds.remove(request.id));
+      }
+    }
+  }
+
+  InputDecoration _searchInputDecoration(AppLocalizations loc) {
+    return InputDecoration(
+      hintText: _searchType == 'username'
+          ? loc.addFriendSearchHint
+          : _searchType == 'email'
+              ? loc.addFriendSearchByEmail
+              : loc.addFriendSearchByPhone,
+      prefixIcon: const Icon(Icons.search),
+      border: const OutlineInputBorder(),
+      suffixIcon: _searchController.text.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _results = [];
+                  _selectedUser = null;
+                  _error = null;
+                });
+              },
+            )
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final contactsState = ref.watch(contactsStateProvider);
-    final theme = Theme.of(context);
-
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text(_Strings.title),
+        title: Text(loc.addFriendTitle),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                      value: 'username',
+                      label: Text(loc.addFriendTypeUsername),
+                    ),
+                    ButtonSegment(
+                      value: 'email',
+                      label: Text(loc.addFriendTypeEmail),
+                    ),
+                    ButtonSegment(
+                      value: 'phone',
+                      label: Text(loc.addFriendTypePhone),
+                    ),
+                  ],
+                  selected: {_searchType},
+                  onSelectionChanged: (selection) {
+                    setState(() => _searchType = selection.first);
+                    if (_searchController.text.isNotEmpty) {
+                      _performSearch(_searchController.text.trim());
+                    }
+                  },
+                ),
+                const SizedBox(height: ImTokens.layoutItemGap),
                 TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: _Strings.searchHint,
-                    prefixIcon: const Icon(Icons.search),
-                    border: const OutlineInputBorder(),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _results = [];
-                                _selectedUser = null;
-                                _error = null;
-                              });
-                            },
-                          )
-                        : null,
-                  ),
+                  decoration: _searchInputDecoration(loc),
                 ),
                 if (_selectedUser != null &&
                     !_isCurrentUser(_selectedUser!.id) &&
                     !_isFriend(contactsState, _selectedUser!.id) &&
-                    !_hasSentRequest(contactsState, _selectedUser!.id)) ...[
-                  const SizedBox(height: 8),
+                    !_hasSentRequest(contactsState, _selectedUser!.id) &&
+                    _pendingIncomingRequest(
+                          contactsState,
+                          _selectedUser!.id,
+                        ) ==
+                        null) ...[
+                  const SizedBox(height: ImTokens.layoutItemGap),
                   TextField(
-                    controller: _reasonController,
-                    decoration: const InputDecoration(
-                      hintText: _Strings.reasonHint,
-                      border: OutlineInputBorder(),
+                    controller: _requestMessageController,
+                    decoration: InputDecoration(
+                      hintText: loc.addFriendVerificationHint,
+                      border: const OutlineInputBorder(),
                       counterText: '',
                     ),
                     maxLength: 100,
@@ -195,15 +315,35 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
           ),
           if (_isSearching)
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(ImTokens.layoutPanelPadding),
               child: CircularProgressIndicator(),
             ),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
+              padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _searchController.text.trim().isEmpty
+                        ? null
+                        : () => _performSearch(_searchController.text.trim()),
+                    child: Text(loc.retry),
+                  ),
+                ],
               ),
             ),
           if (!_isSearching &&
@@ -211,11 +351,11 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               _results.isEmpty &&
               _searchController.text.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(ImTokens.space8),
               child: Text(
-                _Strings.noMatch,
+                loc.addFriendNoMatch,
                 style: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -224,11 +364,11 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               _results.isEmpty &&
               _searchController.text.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(ImTokens.space8),
               child: Text(
-                _Strings.searchPrompt,
+                loc.addFriendSearchPrompt,
                 style: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -238,20 +378,21 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               itemBuilder: (context, index) {
                 final user = _results[index];
                 final isAlreadyFriend = _isFriend(contactsState, user.id);
+                final outgoingRequest =
+                    _pendingOutgoingRequest(contactsState, user.id);
+                final incomingRequest =
+                    _pendingIncomingRequest(contactsState, user.id);
                 final hasSent = _hasSentRequest(contactsState, user.id);
-                final isSelf = _isCurrentUser(user.id);
-
                 return ListTile(
                   selected: _selectedUser?.id == user.id,
                   leading: CircleAvatar(
-                    backgroundImage: user.avatar != null
-                        ? NetworkImage(user.avatar!)
-                        : null,
+                    backgroundImage:
+                        user.avatar != null ? NetworkImage(user.avatar!) : null,
                     child: user.avatar == null
                         ? Text(
                             (user.nickname ?? user.username)
-                                .substring(0, 1)
-                                .toUpperCase(),
+                                .safeFirstCharUpper(),
+                            style: const TextStyle(fontSize: ImTokens.textBase),
                           )
                         : null,
                   ),
@@ -259,20 +400,17 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                     user.nickname ?? user.username,
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  subtitle: Text(
-                    '@${user.username}',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  subtitle: _buildSubtitle(user),
+                  trailing: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    child: _buildTrailing(
+                      user,
+                      outgoingRequest,
+                      incomingRequest,
+                      isAlreadyFriend,
+                      hasSent,
+                      loc,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: _buildTrailing(
-                    user,
-                    isSelf,
-                    isAlreadyFriend,
-                    hasSent,
-                    theme,
                   ),
                   onTap: () {
                     setState(() => _selectedUser = user);
@@ -286,59 +424,88 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     );
   }
 
+  Widget? _buildSubtitle(User user) {
+    final parts = <String>[];
+    parts.add('@${user.username}');
+    if (user.email != null && user.email!.isNotEmpty) {
+      parts.add(user.email!);
+    }
+    if (user.phone != null && user.phone!.isNotEmpty) {
+      parts.add(user.phone!);
+    }
+    return Text(
+      parts.join(' / '),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildTrailing(
     User user,
-    bool isSelf,
+    FriendRequest? outgoingRequest,
+    FriendRequest? incomingRequest,
     bool isAlreadyFriend,
     bool hasSent,
-    ThemeData theme,
+    AppLocalizations loc,
   ) {
-    if (isSelf) {
-      return const Chip(
-        label: Text(_Strings.self),
+    if (_isCurrentUser(user.id)) {
+      return Chip(
+        label: Text(loc.addFriendSelf),
         visualDensity: VisualDensity.compact,
       );
     }
     if (isAlreadyFriend) {
-      return const Chip(
-        label: Text(_Strings.alreadyFriend),
+      return Chip(
+        label: Text(loc.addFriendAlreadyFriend),
         visualDensity: VisualDensity.compact,
+      );
+    }
+    if (incomingRequest != null) {
+      final isBusy = _processingRequestIds.contains(incomingRequest.id);
+      if (isBusy) {
+        return const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: loc.contactsReject,
+            onPressed: () =>
+                _handleIncomingRequest(incomingRequest, accept: false),
+            icon: const Icon(Icons.close),
+          ),
+          IconButton.filledTonal(
+            tooltip: loc.contactsAccept,
+            onPressed: () =>
+                _handleIncomingRequest(incomingRequest, accept: true),
+            icon: const Icon(Icons.check),
+          ),
+        ],
       );
     }
     if (hasSent) {
-      return const Chip(
-        avatar: Icon(Icons.schedule_outlined, size: 16),
-        label: Text(_Strings.pending),
+      return Chip(
+        avatar: const Icon(Icons.schedule_outlined, size: ImTokens.textBase),
+        label: Text(loc.addFriendPendingOutgoing),
         visualDensity: VisualDensity.compact,
       );
     }
-    return ElevatedButton(
-      onPressed:
-          _isSending && _selectedUser?.id == user.id ? null : () => _sendRequest(user),
+    return GradientButton(
+      onPressed: _isSending && _selectedUser?.id == user.id
+          ? null
+          : () => _sendRequest(user),
       child: _isSending && _selectedUser?.id == user.id
           ? const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Text(_Strings.addButton),
+          : Text(loc.addFriendButton),
     );
   }
-}
-
-class _Strings {
-  _Strings._();
-  static const title = 'Add Friend';
-  static const searchHint = 'Search by username';
-  static const reasonHint = 'Verification message (optional)';
-  static const searchPrompt = 'Enter a username to search';
-  static const noMatch = 'No users found';
-  static const searchFailed = 'Search failed. Please try again.';
-  static const requestSentPrefix = 'Request sent to ';
-  static const requestFailed = 'Failed to send request';
-  static const defaultReason = 'Hi, I would like to add you as a friend.';
-  static const self = 'You';
-  static const alreadyFriend = 'Already friend';
-  static const pending = 'Pending';
-  static const addButton = 'Add';
 }

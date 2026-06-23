@@ -7,6 +7,11 @@ import 'ai_settings_provider.dart';
 import 'profile_provider.dart';
 import 'settings_provider.dart';
 
+// Re-export app-level settings providers from the platform layer so that
+// consumers of the settings feature can read/write language and theme.
+export 'package:im_core_flutter/im_core_flutter.dart'
+    show languageProvider, themeModeProvider;
+
 final settingsApiProvider = Provider<SettingsApi>((ref) {
   return SettingsApi(ref.watch(httpClientProvider));
 });

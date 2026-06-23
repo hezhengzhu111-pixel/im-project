@@ -111,6 +111,12 @@ class _FakeWsClientPort implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+
+  @override
+  void dispose() {
+    _eventsController.close();
+    _connectionStateController.close();
+  }
 }
 
 class _FakeE2eeBridge extends E2eeBridge {

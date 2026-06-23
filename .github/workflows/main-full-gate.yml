@@ -10,6 +10,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   FLUTTER_VERSION: "3.29"
+  MYSQL_ROOT_PASSWORD: im-main-full-ci
+  REDIS_PASSWORD: im-main-full-ci
 
 jobs:
   main-full:
@@ -27,17 +29,29 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+          cache-directories: |
+            build/cache/cargo-target
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
+          # Disable flutter-action's built-in caching: it computes a cache key
+          # with hashFiles('**/pubspec.lock'), which fails when generated lock
+          # files live under build/work and avoids relying on committed lock
+          # files that this project treats as source pollution.
+          cache: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Clean accidental source pollution from cache
+        run: python scripts/imctl.py clean source-pollution
 
       - name: Check lifecycle prerequisites
         run: python scripts/imctl.py doctor

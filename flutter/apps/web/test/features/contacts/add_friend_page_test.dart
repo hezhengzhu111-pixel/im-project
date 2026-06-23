@@ -2,14 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/features/auth/domain/auth_status.dart';
-import 'package:im_web/features/auth/presentation/auth_provider.dart';
-import 'package:im_web/features/auth/presentation/auth_providers.dart';
-import 'package:im_web/features/contacts/data/contacts_api.dart';
-import 'package:im_web/features/contacts/presentation/add_friend_page.dart';
-import 'package:im_web/features/contacts/presentation/contacts_provider.dart';
-import 'package:im_web/features/contacts/presentation/contacts_providers.dart';
-import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_l10n/im_l10n.dart';
+import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/contacts.dart';
 
 import '../../helpers/fakes.dart';
 

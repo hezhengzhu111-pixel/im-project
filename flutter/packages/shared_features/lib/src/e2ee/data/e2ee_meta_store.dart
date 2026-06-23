@@ -10,11 +10,9 @@ class E2eeMetaStore {
 
   static const _statusPrefix = 'e2ee:status:';
   static const _remoteDevicePrefix = 'e2ee:remote_device:';
-  static const _remoteUserPrefix = 'e2ee:remote_user:';
   static const _handshakePrefix = 'e2ee:initial_handshake:';
   static const _verifyPhrasePrefix = 'e2ee:verify_phrase:';
   static const _otkPublishedPrefix = 'e2ee:otk_published:';
-  static const _otkMaxPublishedPrefix = 'e2ee:otk_max_published:';
   static const _deviceIdKey = 'e2ee_device_id';
 
   Future<String> getSessionStatus(String sessionId) async {
@@ -31,14 +29,6 @@ class E2eeMetaStore {
 
   Future<void> setRemoteDeviceId(String sessionId, String deviceId) async {
     await _storage.write('$_remoteDevicePrefix$sessionId', deviceId);
-  }
-
-  Future<String?> getRemoteUserId(String sessionId) async {
-    return await _storage.read('$_remoteUserPrefix$sessionId');
-  }
-
-  Future<void> setRemoteUserId(String sessionId, String userId) async {
-    await _storage.write('$_remoteUserPrefix$sessionId', userId);
   }
 
   Future<String?> getPendingHandshake(String sessionId) async {
@@ -70,10 +60,6 @@ class E2eeMetaStore {
     return deviceId;
   }
 
-  Future<void> clearDeviceId() async {
-    await _storage.delete(_deviceIdKey);
-  }
-
   Future<List<int>> getPublishedOtkIds(String deviceId) async {
     final raw = await _storage.read('$_otkPublishedPrefix$deviceId');
     if (raw == null || raw.isEmpty) return [];
@@ -84,23 +70,9 @@ class E2eeMetaStore {
     await _storage.write('$_otkPublishedPrefix$deviceId', ids.join(','));
   }
 
-  /// Highest published OTK ID for [deviceId].
-  ///
-  /// Returns `0` when no OTKs have been published yet.
-  Future<int> getMaxPublishedOtkId(String deviceId) async {
-    final raw = await _storage.read('$_otkMaxPublishedPrefix$deviceId');
-    if (raw == null || raw.isEmpty) return 0;
-    return int.tryParse(raw) ?? 0;
-  }
-
-  Future<void> setMaxPublishedOtkId(String deviceId, int maxId) async {
-    await _storage.write('$_otkMaxPublishedPrefix$deviceId', maxId.toString());
-  }
-
   Future<void> clearSession(String sessionId) async {
     await _storage.delete('$_statusPrefix$sessionId');
     await _storage.delete('$_remoteDevicePrefix$sessionId');
-    await _storage.delete('$_remoteUserPrefix$sessionId');
     await _storage.delete('$_handshakePrefix$sessionId');
     await _storage.delete('$_verifyPhrasePrefix$sessionId');
   }

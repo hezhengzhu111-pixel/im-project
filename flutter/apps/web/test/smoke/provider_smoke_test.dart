@@ -51,7 +51,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> createInboundSession({
     required String sessionId,
@@ -60,7 +61,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     String? localOtkPairBase64,
     required String remoteIdentityKeyBase64,
     required String remoteHandshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> encryptMessage({
     required String stateBase64,
@@ -69,12 +71,14 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String recipientDeviceId,
     required String sessionId,
     String? handshakeBase64,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<Map<String, dynamic>> decryptMessage({
     required String stateBase64,
     required Map<String, dynamic> envelope,
-  }) async => {};
+  }) async =>
+      {};
   @override
   Future<String> exportSessionEnvelope({
     required String stateBase64,
@@ -83,7 +87,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
   @override
   Future<String> restoreSessionEnvelope({
     required String envelopeBase64,
@@ -92,7 +97,8 @@ class _FakeE2eeBridge extends E2eeBridge {
     required String sessionId,
     required String remoteUserId,
     required String remoteDeviceId,
-  }) async => '';
+  }) async =>
+      '';
 }
 
 class _FakeAnalyticsPort implements AnalyticsPort {
@@ -158,10 +164,8 @@ void main() {
         }
       }
 
-      final failures = results.entries
-          .where((e) => !e.value)
-          .map((e) => e.key)
-          .toList();
+      final failures =
+          results.entries.where((e) => !e.value).map((e) => e.key).toList();
 
       expect(failures, isEmpty,
           reason: 'Providers threw during read: $failures');

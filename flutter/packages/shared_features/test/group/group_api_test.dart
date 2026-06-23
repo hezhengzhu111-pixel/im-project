@@ -169,6 +169,29 @@ void main() {
       expect(http.requests.last.$2, '/api/group/g1/add-members');
     });
 
+    test('removeMembers uses POST /api/group/:groupId/remove-members', () async {
+      http.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        expect(path, '/api/group/g1/remove-members');
+        expect(body, {
+          'groupId': 'g1',
+          'memberIds': ['u3'],
+        });
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({}),
+        );
+      };
+
+      await api.removeMembers('g1', ['u3']);
+      expect(http.requests.last.$1, 'POST');
+      expect(http.requests.last.$2, '/api/group/g1/remove-members');
+    });
+
     test('updateGroup uses PUT /api/group/:groupId', () async {
       http.onPut = <T>(
         String path, {

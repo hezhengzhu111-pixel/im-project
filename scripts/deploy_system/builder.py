@@ -14,6 +14,7 @@ from typing import Sequence
 
 from deploy_utils import compose_base_command, DeploymentConfig, fatal, run_command
 from . import paths
+from .flutter_codegen import generate_flutter_core_code
 from .sync import sync_rust_source, sync_flutter_source, sync_spring_ai_source
 from .source_guard import check_source_pollution
 
@@ -24,6 +25,7 @@ class BuildOptions:
     clean: bool = False
     skip_rust: bool = False
     skip_web: bool = False
+    skip_desktop: bool = False
     skip_spring_ai: bool = False
     docker: bool = False
     package_images: bool = False
@@ -48,7 +50,7 @@ def _run(command: Sequence[object], *, cwd: Path, env: dict[str, str] | None = N
     )
 
 
-def _sync_sources(verbose: bool = False) -> None:
+def _sync_sources(verbose: bool = False, *, skip_spring_ai: bool = False) -> None:
     """Sync source code to work directories with appropriate ignore patterns."""
     print("[SYNC] Syncing source code to work directories...")
 
@@ -60,9 +62,9 @@ def _sync_sources(verbose: bool = False) -> None:
     stats = sync_flutter_source(paths.FLUTTER_SOURCE, paths.FLUTTER_WORK, verbose=verbose)
     print(f"[SYNC] Flutter: {stats}")
 
-    # Sync Spring AI
-    stats = sync_spring_ai_source(paths.SPRING_AI_SOURCE, paths.SPRING_AI_WORK, verbose=verbose)
-    print(f"[SYNC] Spring AI: {stats}")
+    if not skip_spring_ai:
+        stats = sync_spring_ai_source(paths.SPRING_AI_SOURCE, paths.SPRING_AI_WORK, verbose=verbose)
+        print(f"[SYNC] Spring AI: {stats}")
 
     # Copy SQL directory (simple copy, no filtering needed)
     if paths.SQL_SOURCE.exists():
@@ -170,11 +172,14 @@ def build_spring_ai() -> None:
 
 
 def build_web(profile: str) -> None:
+    # Ensure im_core generated code exists before any Flutter web build/analysis.
+    generate_flutter_core_code(paths.FLUTTER_WORK / "packages" / "core", env=_flutter_env())
+
     # Build WASM bridge
     wasm_pack = _ensure_tool("wasm-pack", ["wasm-pack"])
     python_cmd = _ensure_tool("Python", ["python", "python3"])
 
-    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-e2ee-wasm"
+    wasm_bridge_dir = paths.RUST_WORK / "crates" / "im-flutter-bridge"
     wasm_output_dir = paths.FLUTTER_WORK / "apps" / "web" / "pkg"
 
     wasm_args = [
@@ -188,7 +193,6 @@ def build_web(profile: str) -> None:
 
     env = _rust_env()
     env["RUSTFLAGS"] = "-C target-feature=-atomics,-bulk-memory,-mutable-globals"
-    env["WASM_OPT"] = "0"
 
     _run(
         [wasm_pack, *wasm_args],
@@ -203,13 +207,25 @@ def build_web(profile: str) -> None:
             [python_cmd, str(patch_script), str(wasm_output_dir / "im_rust_bridge.js")],
             cwd=wasm_bridge_dir,
         )
+        # Guard against deploying an unpatched bridge, which panics at runtime
+        # with "DataCloneError: #<Memory> could not be cloned".
+        _run(
+            [python_cmd, str(patch_script), "--verify", str(wasm_output_dir / "im_rust_bridge.js")],
+            cwd=wasm_bridge_dir,
+        )
 
     # Build Flutter web
     flutter = _ensure_tool("flutter", ["flutter"])
     web_dir = paths.FLUTTER_WORK / "apps" / "web"
     output_dir = paths.DIST_DIR / "flutter" / "web"
+    # Flutter on Windows has trouble writing shaders to a relative output path
+    # outside the app directory. Build into the app-local build/web directory and
+    # copy the result to the dist location afterwards.
+    local_output = web_dir / "build" / "web"
 
     # Clean and rebuild
+    if local_output.exists():
+        shutil.rmtree(local_output)
     if output_dir.exists():
         shutil.rmtree(output_dir)
 
@@ -221,9 +237,9 @@ def build_web(profile: str) -> None:
         capture_output=True,
     ).stdout
 
-    output_arg = f"--output={output_dir}"
+    output_arg = f"--output={local_output}"
     if "--output" not in help_text:
-        output_arg = f"--output-dir={output_dir}"
+        output_arg = f"--output-dir={local_output}"
 
     args = ["build", "web", f"--{profile}", "--pwa-strategy=none", output_arg]
     if "wasm-dry-run" in help_text:
@@ -232,10 +248,48 @@ def build_web(profile: str) -> None:
     _run([flutter, "pub", "get"], cwd=web_dir, env=_flutter_env())
     _run([flutter, *args], cwd=web_dir, env=_flutter_env())
 
-    if not (output_dir / "index.html").is_file():
-        raise RuntimeError(f"Flutter web build did not produce {paths.relative(output_dir / 'index.html')}")
+    if not (local_output / "index.html").is_file():
+        raise RuntimeError(f"Flutter web build did not produce {paths.relative(local_output / 'index.html')}")
 
+    shutil.copytree(local_output, output_dir)
     print(f"[BUILD] Flutter web: {paths.relative(output_dir)}")
+
+
+def build_desktop(profile: str) -> None:
+    """Build Flutter desktop (Windows) app."""
+    flutter = _ensure_tool("flutter", ["flutter"])
+    desktop_dir = paths.FLUTTER_WORK / "apps" / "desktop"
+    output_dir = paths.DIST_DIR / "flutter" / "desktop"
+
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+
+    # Build Rust bridge native library for desktop
+    bridge_dir = paths.RUST_WORK / "crates" / "im-flutter-bridge"
+    env = _rust_env()
+    _run(["cargo", "build", "--release", "-p", "im-flutter-bridge"],
+         cwd=paths.RUST_WORK, env=env)
+
+    # Flutter build output is inside the app directory
+    profile_dir = "Release" if profile == "release" else "Debug"
+    local_build = desktop_dir / "build" / "windows" / "x64" / "runner" / profile_dir
+
+    _run([flutter, "pub", "get"], cwd=desktop_dir, env=_flutter_env())
+    _run([flutter, "build", "windows", f"--{profile}"], cwd=desktop_dir, env=_flutter_env())
+
+    if not local_build.is_dir():
+        raise RuntimeError(f"Flutter desktop build did not produce {paths.relative(local_build)}")
+
+    # Copy Rust bridge DLL to desktop output
+    bridge_dll = paths.CARGO_TARGET / "release" / "im_rust_bridge.dll"
+    if bridge_dll.is_file():
+        shutil.copy2(bridge_dll, local_build / "im_rust_bridge.dll")
+        print(f"[BUILD] Rust bridge DLL: {paths.relative(local_build / 'im_rust_bridge.dll')}")
+    else:
+        print(f"[WARNING] Rust bridge DLL not found at {paths.relative(bridge_dll)}")
+
+    shutil.copytree(local_build, output_dir)
+    print(f"[BUILD] Flutter desktop: {paths.relative(output_dir)}")
 
 
 def build_docker_images(config: DeploymentConfig, services: Sequence[str], *, package_images: bool) -> None:
@@ -253,7 +307,6 @@ def build_docker_images(config: DeploymentConfig, services: Sequence[str], *, pa
         "im-api-server": "im-project-sit/im-api-server:latest",
         "im-server": "im-project-sit/im-server:latest",
         "im-frontend": "im-project-sit/im-frontend:latest",
-        "im-spring-ai": "im-project-sit/im-spring-ai:latest",
     }
 
     generated: dict[str, str] = {}
@@ -305,7 +358,7 @@ def build_all(config: DeploymentConfig, options: BuildOptions) -> None:
         paths.ensure_build_structure()
 
         # Sync source code to work directories
-        _sync_sources(verbose=options.profile == "debug")
+        _sync_sources(verbose=options.profile == "debug", skip_spring_ai=options.skip_spring_ai)
 
         # Build tasks
         tasks: list[tuple[str, callable]] = []
@@ -333,10 +386,11 @@ def build_all(config: DeploymentConfig, options: BuildOptions) -> None:
         if not options.skip_web:
             build_web(options.profile)
 
+        if not options.skip_desktop:
+            build_desktop(options.profile)
+
         if options.docker:
             services = ["im-api-server", "im-server", "im-frontend"]
-            if not options.skip_spring_ai:
-                services.append("im-spring-ai")
             build_docker_images(config, services, package_images=options.package_images)
 
         # Write build manifest

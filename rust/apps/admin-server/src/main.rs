@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod admin_auth;
 mod config;
 mod error;
 mod handlers;
@@ -72,6 +73,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(handlers::health::health_check))
         .route("/ready", get(handlers::health::ready_check))
         .merge(routes::admin::admin_routes())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            admin_auth::auth_middleware,
+        ))
         .with_state(state)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .layer(

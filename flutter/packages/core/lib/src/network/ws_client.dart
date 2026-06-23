@@ -37,4 +37,9 @@ abstract class WsClientPort {
 
   /// Sends a JSON message over the WebSocket connection.
   void send(Map<String, dynamic> message);
+
+  /// Releases any resources held by the WebSocket client.
+  ///
+  /// This is called by the provider lifecycle when the app is disposed.
+  void dispose();
 }

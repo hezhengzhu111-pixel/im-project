@@ -41,7 +41,8 @@ void main() {
     test('reads from --dart-define defaults', () {
       final container = ProviderContainer();
       final config = container.read(appConfigProvider);
-      expect(config.apiBaseUrl, isNotEmpty);
+      // Empty API_BASE_URL defaults to relative path for nginx proxying.
+      expect(config.apiBaseUrl, isEmpty);
       expect(config.wsBaseUrl, isNotEmpty);
       container.dispose();
     });

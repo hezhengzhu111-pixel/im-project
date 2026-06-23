@@ -75,10 +75,15 @@ def safe_print(line: str, *, stream=None) -> None:
     print(safe, file=target)
 
 
-def tail_lines(text: str, limit: int = 40) -> list[str]:
+def tail_lines(text: str, limit: int = 100) -> list[str]:
     if not text:
         return []
     return sanitize(text).splitlines()[-limit:]
+
+
+def _failure_log_path(name: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", name).strip("_")[:80]
+    return REPORT_DIR / "failures" / f"{safe}.log"
 
 
 def command_text(cmd: Sequence[str] | str) -> str:
@@ -126,13 +131,23 @@ def run_step(
             errors="replace",
         )
         duration = time.time() - started
+        status = "PASS" if proc.returncode == 0 else "FAIL"
         stdout = tail_lines(proc.stdout)
         stderr = tail_lines(proc.stderr)
         for line in stdout:
             safe_print(line)
         for line in stderr:
             safe_print(line, stream=sys.stderr)
-        status = "PASS" if proc.returncode == 0 else "FAIL"
+        if status == "FAIL":
+            log_path = _failure_log_path(name)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(
+                f"# {name}\n# command: {sanitize(printable)}\n# cwd: {actual_cwd}\n\n"
+                f"--- stdout ---\n{sanitize(proc.stdout)}\n\n"
+                f"--- stderr ---\n{sanitize(proc.stderr)}\n",
+                encoding="utf-8",
+            )
+            safe_print(f"[FAILURE LOG] {log_path}")
         safe_print(f"{status} {name} ({duration:.2f}s)")
         return StepResult(
             name=name,

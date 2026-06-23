@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_l10n/im_l10n.dart';
 import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/auth.dart';
 import '../helpers/fakes.dart';
@@ -23,6 +24,9 @@ class _FakeWsClient implements WsClientPort {
   Future<void> reconnect() async {}
   @override
   void send(Map<String, dynamic> message) {}
+
+  @override
+  void dispose() {}
 }
 
 Widget _buildApp({
@@ -32,6 +36,9 @@ Widget _buildApp({
   return ProviderScope(
     overrides: overrides,
     child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: child ?? const AddFriendPage(),
     ),
   );
@@ -64,10 +71,11 @@ void main() {
 
       expect(find.byType(TextField), findsOneWidget);
       expect(find.text('Add Friend'), findsOneWidget);
-      expect(find.text('Enter a username to search'), findsOneWidget);
+      expect(find.text('Search by username or nickname'), findsOneWidget);
     });
 
-    testWidgets('shows no match text when search returns empty', (tester) async {
+    testWidgets('shows no match text when search returns empty',
+        (tester) async {
       http.onGet = <T>(
         String path, {
         Map<String, dynamic>? queryParameters,
@@ -93,7 +101,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'nonexistent');
       await tester.pumpAndSettle(const Duration(milliseconds: 600));
 
-      expect(find.text('No users found'), findsOneWidget);
+      expect(find.text('No matching users found'), findsOneWidget);
     });
 
     testWidgets('shows search results and add button', (tester) async {
@@ -163,7 +171,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'test');
       await tester.pumpAndSettle(const Duration(milliseconds: 600));
 
-      expect(find.text('Search failed. Please try again.'), findsOneWidget);
+      expect(find.text('Search failed, please try again'), findsOneWidget);
     });
 
     testWidgets('sendFriendRequest calls API on add tap', (tester) async {
@@ -279,7 +287,7 @@ void main() {
       expect(find.textContaining('TODO'), findsNothing);
     });
 
-    testWidgets('sendFriendRequest success shows Pending state',
+    testWidgets('sendFriendRequest success shows Request sent state',
         (tester) async {
       http.onGet = <T>(
         String path, {
@@ -332,11 +340,11 @@ void main() {
       await tester.tap(find.text('Add'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Request sent'), findsOneWidget);
       expect(find.text('Add'), findsNothing);
     });
 
-    testWidgets('sendFriendRequest failure does not show Pending',
+    testWidgets('sendFriendRequest failure does not show Request sent',
         (tester) async {
       http.onGet = <T>(
         String path, {
@@ -385,9 +393,10 @@ void main() {
       await tester.tap(find.text('Add'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Pending'), findsNothing);
+      expect(find.text('Request sent'), findsNothing);
       expect(find.text('Add'), findsOneWidget);
-      expect(find.text('Failed to send request'), findsOneWidget);
+      expect(find.text('Failed to send request, please try again'),
+          findsOneWidget);
     });
 
     testWidgets('failure allows retry and succeeds on second attempt',
@@ -448,7 +457,7 @@ void main() {
 
       await tester.tap(find.text('Add'));
       await tester.pumpAndSettle();
-      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Request sent'), findsOneWidget);
     });
 
     testWidgets('failure does not change sentRequestUserIds', (tester) async {

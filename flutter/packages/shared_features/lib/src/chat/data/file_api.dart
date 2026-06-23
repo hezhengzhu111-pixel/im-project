@@ -48,8 +48,7 @@ class FileInfoDto {
       size: json['size'] as int? ?? 0,
       url: json['url'] as String?,
       mimeType: json['mimeType'] as String? ?? json['contentType'] as String?,
-      uploadTime:
-          json['uploadTime'] as String? ?? json['createdAt'] as String?,
+      uploadTime: json['uploadTime'] as String? ?? json['createdAt'] as String?,
     );
   }
 }

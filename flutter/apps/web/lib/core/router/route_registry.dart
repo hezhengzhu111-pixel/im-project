@@ -78,4 +78,9 @@ const routeRegistry = <String, RouteEntry>{
     titleKey: 'seoAiSettingsTitle',
     descriptionKey: 'seoAiSettingsDescription',
   ),
+  '/forbidden': RouteEntry(
+    titleKey: 'seoForbiddenTitle',
+    requiresAuth: false,
+    descriptionKey: 'seoForbiddenDescription',
+  ),
 };

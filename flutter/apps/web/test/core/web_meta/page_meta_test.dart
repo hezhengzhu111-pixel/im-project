@@ -92,6 +92,7 @@ void main() {
         '/settings',
         '/settings/profile',
         '/settings/ai',
+        '/forbidden',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.canonicalPath, isNot(contains('localhost')),
@@ -113,6 +114,7 @@ void main() {
         '/settings',
         '/settings/profile',
         '/settings/ai',
+        '/forbidden',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.canonicalPath, path);
@@ -133,6 +135,7 @@ void main() {
         '/settings',
         '/settings/profile',
         '/settings/ai',
+        '/forbidden',
       ]) {
         final meta = metaForPath(path, null);
         expect(meta.og, isNotNull, reason: 'Path $path missing og');

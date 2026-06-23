@@ -17,9 +17,9 @@
 - scripts/deploy_system/legacy.py
 
 ### 新增的配置文件
-- deploy/profiles/local.yml
-- deploy/profiles/sit.yml
-- deploy/profiles/prod.yml
+- scripts/deploy/profiles/local.yml
+- scripts/deploy/profiles/sit.yml
+- scripts/deploy/profiles/prod.yml
 
 ### 新增的模块
 - scripts/deploy_system/profile.py - Profile 配置加载系统

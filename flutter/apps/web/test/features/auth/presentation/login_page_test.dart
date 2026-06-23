@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
+import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/settings/presentation/settings_providers.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 import '../../../helpers/fakes.dart';
@@ -35,12 +36,14 @@ void main() {
         }),
         languageProvider.overrideWith((ref) => 'en'),
       ],
-      child: MaterialApp(
-        locale: const Locale('en'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: ThemeData(extensions: [GlassTheme.light]),
-        home: showLogin ? const LoginPage() : const _FallbackPage(),
+      child: BreakpointScope(
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(extensions: [GlassTheme.light]),
+          home: showLogin ? const LoginPage() : const _FallbackPage(),
+        ),
       ),
     );
   }
@@ -121,6 +124,94 @@ void main() {
 
       // The FormErrorBanner should display the localized error message
       expect(find.text('Invalid username or password.'), findsOneWidget);
+    });
+
+    testWidgets('weak password can be used for login', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // Enter weak password (no digits) - should pass validation for login
+      final usernameField = find.byType(TextFormField).first;
+      final passwordField = find.byType(TextFormField).last;
+      await tester.enterText(usernameField, 'testuser');
+      await tester.enterText(passwordField, 'weakpassword');
+
+      // Tap the login button
+      final loginButton = find.widgetWithText(ElevatedButton, 'Login');
+      await tester.tap(loginButton);
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // Should not show password strength error
+      expect(find.text('Password must contain both letters and digits'),
+          findsNothing);
+    });
+
+    testWidgets('form error is displayed in error banner', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // Configure login to fail with a server error
+      mockRepo.loginError = Exception('HTTP 500 Internal Server Error');
+
+      // Enter credentials
+      final usernameField = find.byType(TextFormField).first;
+      final passwordField = find.byType(TextFormField).last;
+      await tester.enterText(usernameField, 'testuser');
+      await tester.enterText(passwordField, 'password123');
+
+      // Tap the login button
+      final loginButton = find.widgetWithText(ElevatedButton, 'Login');
+      await tester.tap(loginButton);
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // The FormErrorBanner should display the server error message
+      expect(
+          find.text('Server error. Please try again later.'), findsOneWidget);
+    });
+
+    testWidgets('desktop layout shows brand section', (tester) async {
+      // Set a large screen size to trigger desktop layout
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // Should show brand section
+      expect(find.text('Secure · Private · Instant'), findsOneWidget);
+      expect(
+          find.text(
+              'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.'),
+          findsOneWidget);
+
+      // Should show feature items
+      expect(find.text('E2EE Enabled'), findsOneWidget);
+      expect(find.text('Realtime Delivery'), findsOneWidget);
+      expect(find.text('Device Trust'), findsOneWidget);
+
+      // Reset screen size
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    testWidgets('mobile layout shows single card', (tester) async {
+      // Set a small screen size to trigger mobile layout
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      // Should not show brand section
+      expect(find.text('Secure · Private · Instant'), findsNothing);
+
+      // Should show login form
+      expect(find.byType(AuthCard), findsOneWidget);
+      expect(find.byType(TextFormField), findsWidgets);
+
+      // Reset screen size
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
     });
   });
 }

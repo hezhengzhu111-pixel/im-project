@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'group.freezed.dart';
@@ -19,6 +21,8 @@ class Group with _$Group {
   factory Group.fromJson(Map<String, dynamic> json) => _$GroupFromJson(json);
 }
 
+String? _roleFromJson(dynamic value) => value?.toString();
+
 @freezed
 class GroupMember with _$GroupMember {
   const factory GroupMember({
@@ -26,7 +30,7 @@ class GroupMember with _$GroupMember {
     required String userId,
     required String groupId,
     String? nickname,
-    String? role,
+    @JsonKey(fromJson: _roleFromJson) String? role,
     String? joinTime,
   }) = _GroupMember;
 

@@ -5,7 +5,14 @@ import 'package:im_core/core.dart';
 enum OutboxMessageStatus { pending, retrying, sent, failed }
 
 /// Type of outbox events.
-enum OutboxEventType { messageAdded, messageRetrying, messageSent, messageFailed, retryAllStarted, retryAllCompleted }
+enum OutboxEventType {
+  messageAdded,
+  messageRetrying,
+  messageSent,
+  messageFailed,
+  retryAllStarted,
+  retryAllCompleted
+}
 
 /// Event emitted by the outbox when message state changes.
 class OutboxEvent {
@@ -36,9 +43,14 @@ class OutboxMessage {
   final int? duration;
   final Map<String, dynamic>? extra;
 
+  /// Group chat fields.
+  final bool isGroupChat;
+  final String? groupId;
+
   /// E2EE fields.
   final bool isEncrypted;
   final Map<String, dynamic>? e2eeEnvelope;
+  final List<Map<String, dynamic>>? e2eeEnvelopes;
   final String? e2eeDeviceId;
 
   /// Error information.
@@ -62,8 +74,11 @@ class OutboxMessage {
     this.thumbnailUrl,
     this.duration,
     this.extra,
+    this.isGroupChat = false,
+    this.groupId,
     this.isEncrypted = false,
     this.e2eeEnvelope,
+    this.e2eeEnvelopes,
     this.e2eeDeviceId,
     this.lastError,
     this.createdAt,
@@ -92,8 +107,11 @@ class OutboxMessage {
       thumbnailUrl: thumbnailUrl,
       duration: duration,
       extra: extra,
+      isGroupChat: isGroupChat,
+      groupId: groupId,
       isEncrypted: isEncrypted,
       e2eeEnvelope: e2eeEnvelope,
+      e2eeEnvelopes: e2eeEnvelopes,
       e2eeDeviceId: e2eeDeviceId,
       lastError: lastError ?? this.lastError,
       createdAt: createdAt,
@@ -118,8 +136,11 @@ class OutboxMessage {
       'thumbnailUrl': thumbnailUrl,
       'duration': duration,
       'extra': extra,
+      'isGroupChat': isGroupChat,
+      'groupId': groupId,
       'isEncrypted': isEncrypted,
       'e2eeEnvelope': e2eeEnvelope,
+      'e2eeEnvelopes': e2eeEnvelopes,
       'e2eeDeviceId': e2eeDeviceId,
       'lastError': lastError,
       'createdAt': createdAt,
@@ -144,8 +165,13 @@ class OutboxMessage {
       thumbnailUrl: map['thumbnailUrl'] as String?,
       duration: map['duration'] as int?,
       extra: map['extra'] as Map<String, dynamic>?,
+      isGroupChat: map['isGroupChat'] as bool? ?? false,
+      groupId: map['groupId'] as String?,
       isEncrypted: map['isEncrypted'] as bool? ?? false,
       e2eeEnvelope: map['e2eeEnvelope'] as Map<String, dynamic>?,
+      e2eeEnvelopes: (map['e2eeEnvelopes'] as List?)
+          ?.map((item) => Map<String, dynamic>.from(item as Map))
+          .toList(),
       e2eeDeviceId: map['e2eeDeviceId'] as String?,
       lastError: map['lastError'] as String?,
       createdAt: map['createdAt'] as String?,
@@ -191,7 +217,12 @@ abstract class OutboxPort {
   /// Enqueue a message for later delivery.
   Future<void> enqueue(OutboxMessage message);
 
-  /// Retry all failed messages using [sender].
+  /// Retry all retryable outbox messages using [sender].
+  ///
+  /// Retryable messages include [OutboxMessageStatus.pending] and
+  /// [OutboxMessageStatus.failed]. Implementations must NOT retry
+  /// [OutboxMessageStatus.sent] messages and should guard against concurrent
+  /// retry invocations.
   ///
   /// [sender] is a callback that sends a single [OutboxMessage] and returns
   /// the server-acknowledged [Message] on success, or throws on failure.

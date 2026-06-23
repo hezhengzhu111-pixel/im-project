@@ -1,34 +1,58 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core_flutter/im_core_flutter.dart';
 import '../data/ai_api.dart';
 
 class AiSettingsState {
   const AiSettingsState({
     this.loading = false,
+    this.creatingKey = false,
+    this.savingSettings = false,
     this.keys = const [],
     this.aiSettings,
     this.testingKeyId,
+    this.deletingKeyId,
+    this.errorMessage,
+    this.successMessage,
   });
 
   final bool loading;
+  final bool creatingKey;
+  final bool savingSettings;
   final List<AiApiKey> keys;
   final AiSettings? aiSettings;
   final String? testingKeyId;
+  final String? deletingKeyId;
+  final String? errorMessage;
+  final String? successMessage;
 
   AiSettingsState copyWith({
     bool? loading,
+    bool? creatingKey,
+    bool? savingSettings,
     List<AiApiKey>? keys,
     AiSettings? aiSettings,
     String? testingKeyId,
+    String? deletingKeyId,
+    String? errorMessage,
+    String? successMessage,
+    bool clearAiSettings = false,
     bool clearTestingKeyId = false,
+    bool clearDeletingKeyId = false,
+    bool clearMessages = false,
   }) {
     return AiSettingsState(
       loading: loading ?? this.loading,
+      creatingKey: creatingKey ?? this.creatingKey,
+      savingSettings: savingSettings ?? this.savingSettings,
       keys: keys ?? this.keys,
-      aiSettings: aiSettings ?? this.aiSettings,
+      aiSettings: clearAiSettings ? null : (aiSettings ?? this.aiSettings),
       testingKeyId:
           clearTestingKeyId ? null : (testingKeyId ?? this.testingKeyId),
+      deletingKeyId:
+          clearDeletingKeyId ? null : (deletingKeyId ?? this.deletingKeyId),
+      errorMessage: clearMessages ? null : (errorMessage ?? this.errorMessage),
+      successMessage:
+          clearMessages ? null : (successMessage ?? this.successMessage),
     );
   }
 }
@@ -39,30 +63,58 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
   final AiApi _api;
 
   Future<void> loadKeys() async {
-    state = state.copyWith(loading: true);
+    state = state.copyWith(loading: true, clearMessages: true);
     try {
       final keys = await _api.getKeys();
       state = state.copyWith(loading: false, keys: keys);
     } catch (e) {
-      state = state.copyWith(loading: false);
-      rethrow;
+      state = state.copyWith(
+        loading: false,
+        errorMessage: _errorText(e),
+      );
     }
   }
 
-  Future<void> createKey(AiApiKeyCreateRequest request) async {
-    final newKey = await _api.createKey(request);
-    state = state.copyWith(keys: [...state.keys, newKey]);
+  Future<bool> createKey(AiApiKeyCreateRequest request) async {
+    state = state.copyWith(creatingKey: true, clearMessages: true);
+    try {
+      final newKey = await _api.createKey(request);
+      state = state.copyWith(
+        creatingKey: false,
+        keys: [newKey, ...state.keys],
+        successMessage: 'API key saved.',
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        creatingKey: false,
+        errorMessage: _errorText(e),
+      );
+      return false;
+    }
   }
 
-  Future<void> deleteKey(String id) async {
-    await _api.deleteKey(id);
-    state = state.copyWith(
-      keys: state.keys.where((k) => k.id != id).toList(),
-    );
+  Future<bool> deleteKey(String id) async {
+    state = state.copyWith(deletingKeyId: id, clearMessages: true);
+    try {
+      await _api.deleteKey(id);
+      state = state.copyWith(
+        keys: state.keys.where((k) => k.id != id).toList(),
+        clearDeletingKeyId: true,
+        successMessage: 'API key deleted.',
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        clearDeletingKeyId: true,
+        errorMessage: _errorText(e),
+      );
+      return false;
+    }
   }
 
-  Future<void> testKey(String id) async {
-    state = state.copyWith(testingKeyId: id);
+  Future<bool> testKey(String id) async {
+    state = state.copyWith(testingKeyId: id, clearMessages: true);
     try {
       final status = await _api.testKey(id);
       state = state.copyWith(
@@ -74,14 +126,20 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
                     key: k.key,
                     label: k.label,
                     status: status,
-                    createdAt: k.createdAt)
+                    createdAt: k.createdAt,
+                  )
                 : k)
             .toList(),
         clearTestingKeyId: true,
+        successMessage: 'API key test completed.',
       );
+      return true;
     } catch (e) {
-      state = state.copyWith(clearTestingKeyId: true);
-      rethrow;
+      state = state.copyWith(
+        clearTestingKeyId: true,
+        errorMessage: _errorText(e),
+      );
+      return false;
     }
   }
 
@@ -89,52 +147,38 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
     try {
       final settings = await _api.getAiSettings();
       state = state.copyWith(aiSettings: settings);
-    } catch (e, st) {
-      AppLogger.instance.warn('Failed to load AI settings', e, st);
+    } catch (e) {
+      state = state.copyWith(errorMessage: _errorText(e));
     }
   }
 
-  Future<void> updateAiSettings(AiSettings settings) async {
+  Future<bool> updateAiSettings(AiSettings settings) async {
     final previous = state.aiSettings;
-    state = state.copyWith(aiSettings: settings);
+    state = state.copyWith(
+      aiSettings: settings,
+      savingSettings: true,
+      clearMessages: true,
+    );
     try {
       await _api.updateAiSettings(settings);
+      state = state.copyWith(
+        savingSettings: false,
+        successMessage: 'AI settings saved.',
+      );
+      return true;
     } catch (e) {
-      state = state.copyWith(aiSettings: previous);
-      rethrow;
+      state = state.copyWith(
+        aiSettings: previous,
+        clearAiSettings: previous == null,
+        savingSettings: false,
+        errorMessage: _errorText(e),
+      );
+      return false;
     }
   }
 
-  Future<AiApiKey> updateKey(String id, AiApiKeyUpdateRequest request) async {
-    final updated = await _api.updateKey(id, request);
-    state = state.copyWith(
-      keys: state.keys.map((k) => k.id == id ? updated : k).toList(),
-    );
-    return updated;
-  }
-
-  Future<Map<String, dynamic>> createSummary(AiSummaryRequest request) async {
-    return _api.createSummary(request);
-  }
-
-  String buildStreamUrl(String taskId) {
-    return _api.buildStreamUrl(taskId);
-  }
-
-  Future<Map<String, dynamic>> uploadRagDoc(
-      AiRagDocUploadRequest request) async {
-    return _api.uploadRagDoc(request);
-  }
-
-  Future<List<Map<String, dynamic>>> listRagDocs() async {
-    return _api.listRagDocs();
-  }
-
-  Future<void> deleteRagDoc(String id) async {
-    await _api.deleteRagDoc(id);
-  }
-
-  Future<Map<String, dynamic>> queryRag(AiRagQueryRequest request) async {
-    return _api.queryRag(request);
+  String _errorText(Object error) {
+    final text = error.toString().trim();
+    return text.isEmpty ? 'Operation failed.' : text;
   }
 }

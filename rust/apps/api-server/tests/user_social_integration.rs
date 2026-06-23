@@ -893,3 +893,140 @@ async fn test_dismiss_by_non_owner() {
     .await;
     assert_eq!(resp.status, 403);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// POST /api/group/:group_id/remove-members
+// ══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_remove_group_members_by_owner() {
+    let app = create_test_app().await;
+    let passwords = "Pass1234";
+    let owner = register_and_login(&app, &unique_username("rmo"), passwords).await;
+    let member = register_and_login(&app, &unique_username("rmm"), passwords).await;
+
+    let create_resp = post(
+        &app,
+        "/api/group/create",
+        Some(&owner.token),
+        &json!({"groupName": "RemoveGroup", "memberIds": [member.user_id]}),
+    )
+    .await;
+    let group_id: i64 = create_resp.body["data"]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    // verify member is in group
+    let members_resp = post(
+        &app,
+        "/api/group/members/list",
+        Some(&owner.token),
+        &json!({"groupId": group_id}),
+    )
+    .await;
+    assert_eq!(members_resp.status, 200);
+    let members = members_resp.body["data"]["members"].as_array().unwrap();
+    assert!(members.iter().any(|m| {
+        m["userId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(member.user_id))
+    }));
+
+    // owner removes member
+    let remove_resp = post(
+        &app,
+        &format!("/api/group/{group_id}/remove-members"),
+        Some(&owner.token),
+        &json!({"memberIds": [member.user_id]}),
+    )
+    .await;
+    assert_eq!(remove_resp.status, 200);
+    assert_eq!(remove_resp.body["data"], true);
+
+    // verify member no longer in group
+    let members_resp2 = post(
+        &app,
+        "/api/group/members/list",
+        Some(&owner.token),
+        &json!({"groupId": group_id}),
+    )
+    .await;
+    assert_eq!(members_resp2.status, 200);
+    let members2 = members_resp2.body["data"]["members"].as_array().unwrap();
+    assert!(!members2.iter().any(|m| {
+        m["userId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(member.user_id))
+    }));
+
+    // verify removed member cannot send group message
+    let send_resp = post(
+        &app,
+        "/api/message/send/group",
+        Some(&member.token),
+        &json!({"groupId": group_id, "content": "hello", "messageType": "TEXT"}),
+    )
+    .await;
+    assert_eq!(send_resp.status, 403);
+}
+
+#[tokio::test]
+async fn test_remove_group_members_by_non_admin() {
+    let app = create_test_app().await;
+    let passwords = "Pass1234";
+    let owner = register_and_login(&app, &unique_username("rnao"), passwords).await;
+    let member1 = register_and_login(&app, &unique_username("rnam1"), passwords).await;
+    let member2 = register_and_login(&app, &unique_username("rnam2"), passwords).await;
+
+    let create_resp = post(
+        &app,
+        "/api/group/create",
+        Some(&owner.token),
+        &json!({"groupName": "RemoveGroup2", "memberIds": [member1.user_id, member2.user_id]}),
+    )
+    .await;
+    let group_id: i64 = create_resp.body["data"]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    // regular member tries to remove another member
+    let remove_resp = post(
+        &app,
+        &format!("/api/group/{group_id}/remove-members"),
+        Some(&member1.token),
+        &json!({"memberIds": [member2.user_id]}),
+    )
+    .await;
+    assert_eq!(remove_resp.status, 403);
+}
+
+#[tokio::test]
+async fn test_remove_group_owner_forbidden() {
+    let app = create_test_app().await;
+    let passwords = "Pass1234";
+    let owner = register_and_login(&app, &unique_username("rmof"), passwords).await;
+    let member = register_and_login(&app, &unique_username("rmom"), passwords).await;
+
+    let create_resp = post(
+        &app,
+        "/api/group/create",
+        Some(&owner.token),
+        &json!({"groupName": "RemoveOwnerGroup", "memberIds": [member.user_id]}),
+    )
+    .await;
+    let group_id: i64 = create_resp.body["data"]["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    // member tries to remove owner
+    let remove_resp = post(
+        &app,
+        &format!("/api/group/{group_id}/remove-members"),
+        Some(&member.token),
+        &json!({"memberIds": [owner.user_id]}),
+    )
+    .await;
+    assert_eq!(remove_resp.status, 403);
+}

@@ -16,7 +16,7 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TESTS_DIR / "common"))
 
-from gate_common import ROOT, REPORT_DIR, sanitize, tail_lines
+from gate_common import ROOT, REPORT_DIR, resolve_command, sanitize, tail_lines
 from workspace import ensure_work_workspace, setup_isolated_env
 
 # Use build/work isolated copy, never source directory directly.
@@ -33,9 +33,10 @@ FRONTEND_TARGETS = [
 def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> dict:
     """Run a Flutter step and return result."""
     started = time.time()
+    actual_cmd = resolve_command(cmd)
     try:
         proc = subprocess.run(
-            cmd,
+            actual_cmd,
             cwd=str(cwd),
             capture_output=True,
             text=True,
@@ -43,6 +44,7 @@ def run_flutter_step(name: str, cmd: list, cwd: Path, timeout: int = 600, env: d
             encoding="utf-8",
             errors="replace",
             env=env,
+            shell=isinstance(actual_cmd, str),
         )
         duration = time.time() - started
         status = "PASS" if proc.returncode == 0 else "FAIL"

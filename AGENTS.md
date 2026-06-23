@@ -15,9 +15,62 @@
 
 项目强调“源码目录只读构建产物隔离”：所有构建产物、运行时数据、缓存、日志、报告必须落在 `build/` 目录下，禁止污染源码目录。
 
+**强制约定：所有编译、分析、测试必须通过 `scripts/imctl.py` 或 `tests/test.py` 入口执行；禁止在源码目录直接调用 `cargo`、`flutter`、`mvn` 等工具链命令。** 详见第 3 节与第 8 节。
+
 ---
 
-## 2. 关键配置文件
+## 2. 源码目录不可变性（Source Directory Immutability）
+
+源码目录（`rust/`、`flutter/`、`spring-ai/`、`sql/`、`tests/`）必须保持只读。以下文件/目录**禁止**出现在源码目录中：
+
+| 类别 | 禁止出现的文件/目录 |
+| --- | --- |
+| Rust | `target/`、`*.pdb`、`.cargo/config.toml.local`（`rust/vendor/` 为已提交的 vendored 源码，除外） |
+| Flutter/Dart | `.dart_tool/`、`build/`、`pubspec.lock`、`pubspec_overrides.yaml`、`.flutter-plugins`、`.flutter-plugins-dependencies`、`ephemeral/`、`GeneratedPluginRegistrant.java`、`generated_plugin_registrant.*` |
+| Java/Maven | `target/`、`*.class`、`*.jar`、`.mvn/wrapper/maven-wrapper.jar` |
+| Python | `__pycache__/`、`*.pyc`、`.pytest_cache/`、`.cache/` |
+| Node | `node_modules/` |
+| IDE/工具 | `.idea/`、`.vscode/`、`*.iml`、`.DS_Store`、`Thumbs.db` |
+| 通用 | `*.log`、`*.tar`、`*.tar.gz`、`*.zip`、`dist/`、`out/` |
+
+所有构建产物、依赖缓存、生成文件只能出现在 `build/` 下的：`build/work/`、`build/cache/`、`build/dist/`、`build/reports/`、`build/logs/`、`build/runtime/`。
+
+`scripts/deploy_system/source_guard.py` 是污染检测的单一来源，`scripts/deploy_system/sync_config.py` 是同步排除规则的单一来源；两者被 `scripts/imctl.py build` 和 `tests/test.py` 共同使用。
+
+---
+
+## 3. 禁止直接调用工具链
+
+以下命令**禁止**在源码目录执行：
+
+```bash
+# 错误示例 — 会在 rust/ 下生成 target/
+cd rust && cargo build
+
+# 错误示例 — 会在 flutter/apps/web 下生成 .dart_tool/、build/
+cd flutter/apps/web && flutter build web
+
+# 错误示例 — 会在 spring-ai/ 下生成 target/
+cd spring-ai && ./mvnw package
+```
+
+正确做法：统一走脚本入口。
+
+```bash
+# 构建所有组件（自动同步源码到 build/work/ 并设置缓存环境变量）
+python scripts/imctl.py build
+
+# 运行专项门控（同样使用 build/work/ 隔离副本）
+python tests/test.py rust
+python tests/test.py flutter
+python tests/test.py e2ee-rust
+python tests/test.py rust-bridge
+python tests/test.py manifest
+```
+
+---
+
+## 4. 关键配置文件
 
 | 文件 | 作用 |
 |---|---|
@@ -35,7 +88,7 @@
 
 ---
 
-## 3. 仓库目录结构
+## 5. 仓库目录结构
 
 ```
 new-im-project/
@@ -77,7 +130,7 @@ new-im-project/
 
 ---
 
-## 4. `build/` 可写工作区
+## 6. `build/` 可写工作区
 
 `build/` 是项目唯一允许写入生成产物的目录。源码目录（`rust/`、`flutter/`、`spring-ai/`、`sql/`）禁止出现 `target/`、`.dart_tool/`、`node_modules/`、`build/` 等构建产物；仓库已配置 `scripts/deploy_system/source_guard.py` 进行检测。
 
@@ -106,9 +159,9 @@ build/
 
 ---
 
-## 5. 技术栈
+## 7. 技术栈
 
-### 5.1 Rust
+### 7.1 Rust
 
 - **版本**：Edition 2021，Rust toolchain stable。
 - **Web 框架**：Axum 0.7。
@@ -121,7 +174,7 @@ build/
 #![deny(clippy::expect_used)]`、`
 #![deny(clippy::panic)]` 等严格 lint。
 
-### 5.2 Flutter
+### 7.2 Flutter
 
 - **SDK**：`>=3.3.0 <4.0.0`，CI 使用 Flutter 3.29。
 - **状态管理**：flutter_riverpod。
@@ -130,12 +183,12 @@ build/
 - **代码生成**：freezed、json_serializable、build_runner。
 - **分析**：very_good_analysis。
 
-### 5.3 Java / Spring
+### 7.3 Java / Spring
 
 - **Spring AI 服务**：Spring Boot 3.5.14 + Spring AI 1.1.5 + Java 25。
 - **Admin Console 后端**：RuoYi-Vue（Spring Boot 3 分支）+ JDK 17 + MyBatis + Druid。
 
-### 5.4 部署与中间件
+### 7.4 部署与中间件
 
 - **容器化**：Docker、Docker Compose。
 - **中间件**：MySQL 8.0、Redis 7.2（主库 + 群聊热库分片 + 私聊热库分片）。
@@ -143,11 +196,11 @@ build/
 
 ---
 
-## 6. 常用命令
+## 8. 常用命令
 
-所有生命周期操作都通过 `scripts/imctl.py` 和 `tests/test.py` 两个入口完成。
+所有生命周期操作都通过 `scripts/imctl.py` 和 `tests/test.py` 两个入口完成。**不要直接在源码目录执行 `cargo`/`flutter`/`mvn`。**
 
-### 6.1 部署命令
+### 8.1 部署命令
 
 ```bash
 # 完整本地部署（启动中间件 + 初始化数据库 + 启动应用服务）
@@ -186,7 +239,7 @@ python scripts/imctl.py clean source-pollution
 python scripts/imctl.py doctor
 ```
 
-### 6.2 测试命令
+### 8.2 测试命令
 
 ```bash
 # PR 快速门控（Rust fmt/check/test/clippy + Flutter analyze/test）
@@ -208,7 +261,7 @@ python tests/test.py sit
 python tests/test.py gray-release --base-url http://localhost:8082 --db-url mysql://root:xxx@127.0.0.1:3306/service_message_service_db
 ```
 
-### 6.3 Admin Console 本地开发
+### 8.3 Admin Console 本地开发
 
 ```bash
 # Admin Console 独立启动（前端 8088 / 后端 8080 / Rust 管理 8081 / MySQL 3308 / Redis 6381）
@@ -223,11 +276,21 @@ cd admin-console/frontend/ruoyi-vue3 && npm install && npm run dev
 cd admin-console/admin-server && cargo run
 ```
 
+### 8.4 CI / GitHub Actions 说明
+
+GitHub Actions workflow 统一使用脚本入口，不直接调用工具链。
+
+- **Lifecycle prerequisites**：`python scripts/imctl.py doctor` 在 CI 中只执行**必需检查**（Python 版本、PyYAML、runtime 文件生成、项目布局、源码污染）。Docker、部署配置、build context 等仅与本地部署相关的检查会被标记为 `WARN`/`SKIP`，不会阻断 gate。
+- **Python 依赖**：CI 运行前需先执行 `pip install -r scripts/requirements.txt`，确保 `PyYAML` 可用。
+- **Rust cache**：`Swatinem/rust-cache` 必须缓存 `build/cache/cargo-target`，不能缓存 `rust/target`。若缓存误把 `target/` 恢复到源码目录，`python scripts/imctl.py clean source-pollution` 会在 doctor 前清理掉这些误报产物。
+- **Build Artifacts**：该 workflow 需要额外安装 `wasm-pack`（`cargo install wasm-pack --locked`）和 `maven`（`apt-get install maven`），用于构建 Web WASM bridge 和 Spring AI。
+- **Flutter 代码生成**：`flutter/.gitignore` 会忽略 `.freezed.dart` / `.g.dart` 等 generated files，因此 CI 不依赖源码目录中已提交这些文件。所有需要代码生成的 Flutter package（当前为 `packages/core`）必须在隔离的 `build/work` 环境中通过 `deploy_system/flutter_codegen.py` 运行 `build_runner`，确保 `flutter analyze`、`flutter test`、`flutter build` 在 CI 上能正常执行，同时保持源码目录不变。
+
 ---
 
-## 7. 代码风格与开发约定
+## 9. 代码风格与开发约定
 
-### 7.1 Rust
+### 9.1 Rust
 
 - 使用 `cargo fmt` 格式化，`cargo clippy --all-targets -- -D warnings` 作为 CI 门禁。
 - `api-server` 主 crate 禁止使用 `unwrap`、`expect`、`panic`、`todo`、`unimplemented`、`unsafe`、`
@@ -236,23 +299,29 @@ clippy::as_conversions`、`indexing_slicing`。
 - 优先使用 `thiserror` / `anyhow` 进行错误处理。
 - crate 间共享代码优先放入 `rust/crates/im-common`。
 
-### 7.2 Flutter / Dart
+### 9.2 Flutter / Dart
 
 - 使用 `dart format` 格式化；CI 中 `--set-exit-if-changed` 检查格式。
 - 优先使用 `very_good_analysis` 规则集。
 - 平台无关业务逻辑放在 `packages/core`，Flutter 相关实现放在 `packages/core_flutter`，UI 组件放在 `packages/ui`，Rust bridge 调用封装在 `packages/rust_bridge`。
 - 业务数据层禁止直接硬编码非 `/api/` 前缀的旧路径；清单门控会扫描 `legacy` 路径引用。
 
-### 7.3 源码污染防控
+### 9.3 源码污染防控
 
-- 禁止在 `rust/`、`flutter/`、`spring-ai/`、`sql/` 中生成或保留 `target/`、`.dart_tool/`、`node_modules/`、`build/`、`dist/`、`*.log`、`*.tar` 等产物。
-- 每次构建前后 `scripts/deploy_system/builder.py` 会调用 `check_source_pollution`。
-- 如发现污染：
+- 源码目录（`rust/`、`flutter/`、`spring-ai/`、`sql/`、`tests/`）禁止生成或保留 `target/`、`.dart_tool/`、`node_modules/`、`build/`、`dist/`、`*.log`、`*.tar`、`pubspec_overrides.yaml`、`ephemeral/` 等产物（`rust/vendor/` 为已提交的 vendored 源码，除外）。
+- `scripts/deploy_system/source_guard.py` 与 `scripts/deploy_system/sync_config.py` 是污染检测与同步排除规则的单一来源。
+- `python scripts/imctl.py build` 与 `python tests/test.py <gate>` 会在执行前后自动调用 `check_source_pollution()`；若检测到新增污染，门控直接失败。
+- CI 中 Rust cache 只能缓存 `build/cache/cargo-target`；若 `rust/target/` 被缓存恢复到源码目录，会在 doctor 与 gate 运行前被 `python scripts/imctl.py clean source-pollution` 清理。
+- 手动清理：
   ```bash
   python scripts/imctl.py clean source-pollution
   ```
+- 自查命令：
+  ```bash
+  python -c "from scripts.deploy_system.source_guard import check_source_pollution; check_source_pollution('.', True)"
+  ```
 
-### 7.4 环境变量与密钥
+### 9.4 环境变量与密钥
 
 - 敏感配置通过环境变量注入，模板见 `.env.example`。
 - 禁止在源码、测试报告、日志快照中硬编码 token / secret / password / API key；清单门控会扫描相关快照文件。
@@ -260,33 +329,33 @@ clippy::as_conversions`、`indexing_slicing`。
 
 ---
 
-## 8. 测试策略
+## 10. 测试策略
 
-### 8.1 单元 / 静态检查
+### 10.1 单元 / 静态检查
 
 - **Rust**：`cargo fmt --check`、`cargo check --workspace`、`cargo test --workspace`、各 package 的 `cargo clippy -p <pkg> --all-targets -- -D warnings`。
 - **Flutter**：`flutter pub get`、`flutter analyze`、`flutter test`（可选 `--coverage`）。
 
-### 8.2 E2EE 专项
+### 10.2 E2EE 专项
 
 - `tests/test.py e2ee-rust`：针对 `im-e2ee-core`、`im-e2ee-ffi`、`im-e2ee-wasm` 执行 fmt、clippy、test、wasm32 target check。
 
-### 8.3 Rust Bridge
+### 10.3 Rust Bridge
 
 - `tests/test.py rust-bridge`：构建并测试 `im-flutter-bridge`，并对 `flutter/packages/rust_bridge` 执行 pub get / analyze / test。
 
-### 8.4 SIT / 灰度
+### 10.4 SIT / 灰度
 
 - **P0 / P1 SIT**：端到端加密、多设备扇出、群 E2EE、OPK 生命周期、数据库明文扫描等。
 - **Gray Release Gate**：环境预检、PR Fast、覆盖率、Main Full、SIT、Smoke、前端构建验证，最终输出 GO/NO-GO 决策报告。
 
-### 8.5 覆盖率
+### 10.5 覆盖率
 
 - Rust 覆盖率使用 `cargo-llvm-cov`，Flutter 覆盖率使用 `--coverage` + lcov，汇总到 `build/reports/coverage/`。
 
 ---
 
-## 9. 安全与运维注意事项
+## 11. 安全与运维注意事项
 
 - **API 安全**：内部服务间调用使用 `IM_INTERNAL_SECRET` 签名；WebSocket 票据有 TTL。
 - **E2EE 安全**：服务端只负责密钥包、OPK、Sender Key 的存储与转发，不持有私钥；数据库明文扫描是 P1 强制项。
@@ -297,18 +366,19 @@ clippy::as_conversions`、`indexing_slicing`。
 
 ---
 
-## 10. 修改代码前的检查清单
+## 12. 修改代码前的检查清单
 
-- [ ] 是否已阅读相关 `docs/*.md` 文档？
-- [ ] 是否在 `build/work/` 隔离副本上进行构建验证？（`python scripts/imctl.py build`）
+- [ ] 是否已阅读相关 `docs/*.md` 与 `AGENTS.md` 文档？
+- [ ] 是否使用脚本入口进行构建与测试？（`python scripts/imctl.py build`、`python tests/test.py <gate>`）
+- [ ] 是否避免直接在源码目录执行 `cargo`/`flutter`/`mvn`？
 - [ ] 是否运行了对应专项测试？（`python tests/test.py rust|flutter|e2ee-rust|rust-bridge|sit`）
-- [ ] 是否确认没有引入源码污染？（`python scripts/imctl.py clean source-pollution`）
+- [ ] 是否确认没有引入源码污染？（运行前后 `python scripts/imctl.py clean source-pollution` 应报告 0 项）
 - [ ] 是否避免在源码中硬编码密钥、密码、API Key？
 - [ ] 是否在 Admin Console 场景中遵循“查询直连数据库/Redis，写操作必须走云端管理接口”的原则？
 
 ---
 
-## 11. 参考文档
+## 13. 参考文档
 
 - `docs/architecture.md` — 架构说明与目录布局
 - `docs/deployment.md` — 部署命令与 profile 配置

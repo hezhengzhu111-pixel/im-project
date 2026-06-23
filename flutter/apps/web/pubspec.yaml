@@ -28,6 +28,8 @@ dependencies:
     path: ../../packages/shared_features
   im_rust_bridge:
     path: ../../packages/rust_bridge
+  im_l10n:
+    path: ../../packages/l10n
   flutter_riverpod: ^2.4.9
   go_router: ^13.0.0
   dio: ^5.4.0

@@ -99,8 +99,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     _subscribeToWs();
     _subscribeToOutbox();
     _subscribeToNetwork();
-    unawaited(_warmUpE2eeDeviceRegistration());
-    _startE2eePendingPolling();
   }
 
   final MessageApi _messageApi;
@@ -118,37 +116,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   StreamSubscription? _wsStateSubscription;
   StreamSubscription? _outboxSubscription;
   StreamSubscription? _networkSubscription;
-  Timer? _e2eePendingPollTimer;
-  bool _e2eePendingPollInFlight = false;
   final Set<String> _inFlightSendFingerprints = <String>{};
 
   Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
       Map.unmodifiable(state.pendingNegotiations);
-
-  Future<void> _warmUpE2eeDeviceRegistration() async {
-    try {
-      await _e2eeManager.ensureDeviceRegistered();
-    } catch (e, st) {
-      AppLogger.instance
-          .error('E2EE device registration warm-up failed', e, st, 'e2ee');
-    }
-  }
-
-  void _startE2eePendingPolling() {
-    _e2eePendingPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      unawaited(_pollPendingNegotiations());
-    });
-  }
-
-  Future<void> _pollPendingNegotiations() async {
-    if (_e2eePendingPollInFlight) return;
-    _e2eePendingPollInFlight = true;
-    try {
-      await loadPendingNegotiations();
-    } finally {
-      _e2eePendingPollInFlight = false;
-    }
-  }
 
   E2eeNegotiationEvent? get pendingNegotiation =>
       activePendingNegotiation ??
@@ -266,25 +237,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           .error('Failed to initiate E2EE negotiation', e, st, 'e2ee');
       await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'failed');
       return false;
-    }
-  }
-
-  Future<String?> syncEncryptionStatus(String e2eeSessionId) async {
-    if (e2eeSessionId.isEmpty) return null;
-
-    try {
-      final synced = await _e2eeManager.syncSessionStatus(e2eeSessionId);
-      if (synced == 'plaintext') {
-        _removePendingNegotiation(e2eeSessionId);
-      } else if (synced == 'encrypted') {
-        _removePendingNegotiation(e2eeSessionId);
-        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
-      }
-      return synced;
-    } catch (e, st) {
-      AppLogger.instance
-          .error('Failed to sync E2EE session status', e, st, 'e2ee');
-      return null;
     }
   }
 
@@ -687,8 +639,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           content.contains('GROUP') ||
           content.contains('friend') ||
           content.contains('group') ||
-          content.contains('好友申请') ||
-          content.contains('同意') ||
           content.contains('REFRESH_FRIEND')) {
         loadSessions();
       }
@@ -862,7 +812,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final localStatus = await _e2eeMetaStore.getSessionStatus(e2eeSessionId);
       if (localStatus == 'plaintext') continue;
 
-      await syncEncryptionStatus(e2eeSessionId);
+      final synced = await _e2eeManager.syncSessionStatus(e2eeSessionId);
+      if (synced == 'plaintext') {
+        _removePendingNegotiation(e2eeSessionId);
+      } else if (synced == 'encrypted') {
+        _removePendingNegotiation(e2eeSessionId);
+        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
+      }
     }
   }
 
@@ -886,9 +842,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
-      final baseMessages =
-          (page == null) ? <Message>[] : (state.messages[sessionKey] ?? <Message>[]);
-      final sortedHistory = mergeMessagesChronologically(baseMessages, history);
+      final sortedHistory = mergeMessagesChronologically(<Message>[], history);
       final messages = await _decryptLoadedMessages(sortedHistory);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -896,7 +850,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         isLoading: false,
         hasMoreHistoryBySession: {
           ...state.hasMoreHistoryBySession,
-          sessionKey: history.length >= (size ?? 20),
+          sessionKey: messages.length >= (size ?? 20),
         },
         oldestLoadedServerMessageIdBySession: {
           ...state.oldestLoadedServerMessageIdBySession,
@@ -918,9 +872,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
-      final baseMessages =
-          (page == null) ? <Message>[] : (state.messages[sessionKey] ?? <Message>[]);
-      final sortedHistory = mergeMessagesChronologically(baseMessages, history);
+      final sortedHistory = mergeMessagesChronologically(<Message>[], history);
       final messages = await _decryptLoadedMessages(sortedHistory);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
@@ -928,7 +880,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         isLoading: false,
         hasMoreHistoryBySession: {
           ...state.hasMoreHistoryBySession,
-          sessionKey: history.length >= (size ?? 20),
+          sessionKey: messages.length >= (size ?? 20),
         },
         oldestLoadedServerMessageIdBySession: {
           ...state.oldestLoadedServerMessageIdBySession,
@@ -1227,24 +1179,25 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       addMessage(sessionKey, pendingMessage);
 
       Map<String, dynamic>? encryptedEnvelope;
+      List<Map<String, dynamic>>? encryptedDeviceEnvelopes;
       String? encryptedDeviceId;
 
       try {
         Message serverMessage;
         if (e2eeStatus == 'encrypted') {
           final senderDeviceId = await _e2eeMetaStore.getOrCreateDeviceId();
-          final recipientDeviceId =
-              await _e2eeMetaStore.getRemoteDeviceId(e2eeSessionId);
-          if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
-            throw Exception('remote device ID not found for session');
-          }
 
           encryptedDeviceId = senderDeviceId;
-          encryptedEnvelope = await _e2eeManager.encryptToEnvelope(
+          encryptedDeviceEnvelopes =
+              await _e2eeManager.encryptToDeviceEnvelopes(
             sessionId: e2eeSessionId,
             senderDeviceId: senderDeviceId,
-            recipientDeviceId: recipientDeviceId,
+            peerUserId: receiverId,
             plaintext: content,
+          );
+          final primaryEnvelope = encryptedDeviceEnvelopes.first['envelope'];
+          encryptedEnvelope = Map<String, dynamic>.from(
+            primaryEnvelope as Map,
           );
           _updateMessageE2eeMetadata(
             sessionKey: sessionKey,
@@ -1261,6 +1214,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
               encryptedEnvelope,
             ),
             e2eeDeviceId: senderDeviceId,
+            e2eeEnvelopes: encryptedDeviceEnvelopes.length > 1
+                ? encryptedDeviceEnvelopes
+                : null,
             mediaUrl: mediaUrl,
             mediaName: mediaName,
             mediaSize: mediaSize,
@@ -1324,6 +1280,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             isGroupChat: false,
             isEncrypted: e2eeStatus == 'encrypted',
             e2eeEnvelope: encryptedEnvelope,
+            e2eeEnvelopes: encryptedDeviceEnvelopes,
             e2eeDeviceId: encryptedDeviceId,
             mediaUrl: mediaUrl,
             mediaName: mediaName,
@@ -1987,7 +1944,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     _wsStateSubscription?.cancel();
     _outboxSubscription?.cancel();
     _networkSubscription?.cancel();
-    _e2eePendingPollTimer?.cancel();
     super.dispose();
   }
 }

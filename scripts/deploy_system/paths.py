@@ -17,8 +17,8 @@ WORK_DIR = BUILD_DIR / "work"
 # Cache subdirectories
 CARGO_HOME = CACHE_DIR / "cargo-home"
 CARGO_TARGET = CACHE_DIR / "cargo-target"
-PUB_CACHE = CACHE_DIR / "pub"
-MAVEN_REPO = CACHE_DIR / "maven"
+PUB_CACHE = CACHE_DIR / "pub-cache"
+MAVEN_REPO = CACHE_DIR / "maven-repo"
 DOCKER_CACHE = CACHE_DIR / "docker"
 
 # Runtime subdirectories
@@ -28,6 +28,9 @@ MYSQL_DATA = RUNTIME_DIR / "mysql"
 REDIS_DATA = RUNTIME_DIR / "redis"
 FILES_DATA = RUNTIME_DIR / "files"
 RUNTIME_LOGS = RUNTIME_DIR / "logs"
+NGINX_DATA = RUNTIME_DIR / "nginx"
+NGINX_CONF_DATA = NGINX_DATA / "conf"
+NGINX_SSL_DATA = NGINX_DATA / "ssl"
 
 # Generated files
 GENERATED_COMPOSE_FILE = COMPOSE_DIR / "docker-compose.generated.yml"
@@ -56,9 +59,9 @@ MIGRATIONS_DIR = SQL_DIR / "migrations"
 def relative(path: Path) -> str:
     """Return path relative to project root for display."""
     try:
-        return str(path.relative_to(PROJECT_ROOT))
+        return path.relative_to(PROJECT_ROOT).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def ensure_directory(path: Path) -> Path:
@@ -88,5 +91,8 @@ def ensure_build_structure() -> None:
         REDIS_DATA,
         FILES_DATA,
         RUNTIME_LOGS,
+        NGINX_DATA,
+        NGINX_CONF_DATA,
+        NGINX_SSL_DATA,
     ]:
         ensure_directory(directory)

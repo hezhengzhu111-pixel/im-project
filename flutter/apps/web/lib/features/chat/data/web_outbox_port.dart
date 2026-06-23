@@ -79,10 +79,12 @@ class WebOutboxPort implements shared.OutboxPort {
       type: shared.OutboxEventType.retryAllStarted,
     ));
     try {
-      final failed = await _messagesWhere(
-        (message) => message.status == shared.OutboxMessageStatus.failed,
+      final toRetry = await _messagesWhere(
+        (message) =>
+            message.status == shared.OutboxMessageStatus.pending ||
+            message.status == shared.OutboxMessageStatus.failed,
       );
-      for (final message in failed) {
+      for (final message in toRetry) {
         if (!_isOnline()) break;
         await _retryOne(message, sender);
       }
@@ -112,6 +114,18 @@ class WebOutboxPort implements shared.OutboxPort {
     shared.OutboxMessage message,
     Future<Message?> Function(shared.OutboxMessage message) sender,
   ) async {
+    if (message.retryCount >= message.maxRetries) {
+      final failed = message.copyWith(
+        status: shared.OutboxMessageStatus.failed,
+        lastError: 'max_retries_exceeded',
+      );
+      await _save(failed);
+      _eventsController.add(const shared.OutboxEvent(
+        type: shared.OutboxEventType.messageFailed,
+      ));
+      return;
+    }
+
     final retrying = message.copyWith(
       status: shared.OutboxMessageStatus.retrying,
       retryCount: message.retryCount + 1,
@@ -135,7 +149,7 @@ class WebOutboxPort implements shared.OutboxPort {
     } catch (e) {
       final failed = retrying.copyWith(
         status: shared.OutboxMessageStatus.failed,
-        lastError: e.toString(),
+        lastError: shared.RetryableErrorClassifier.safeErrorCode(e),
       );
       await _save(failed);
       _eventsController.add(const shared.OutboxEvent(

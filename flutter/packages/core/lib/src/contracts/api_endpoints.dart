@@ -65,6 +65,8 @@ class GroupEndpoints {
       '/api/group/${Uri.encodeComponent(groupId)}/join';
   static String addMembers(String groupId) =>
       '/api/group/${Uri.encodeComponent(groupId)}/add-members';
+  static String removeMembers(String groupId) =>
+      '/api/group/${Uri.encodeComponent(groupId)}/remove-members';
   static const search = '/api/group/search';
   static String leave(String groupId) =>
       '/api/group/${Uri.encodeComponent(groupId)}/leave';
@@ -114,8 +116,7 @@ class FileEndpoints {
 
 class AiEndpoints {
   static const keys = '/api/ai/keys';
-  static String keyById(String id) =>
-      '/api/ai/keys/${Uri.encodeComponent(id)}';
+  static String keyById(String id) => '/api/ai/keys/${Uri.encodeComponent(id)}';
   static String keyTest(String id) =>
       '/api/ai/keys/${Uri.encodeComponent(id)}/test';
   static const settings = '/api/ai/settings';
