@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import 'package:im_l10n/im_l10n.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_shared_features/auth.dart';
@@ -286,6 +287,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ref.read(settingsStateProvider.notifier).updateGeneralSettings(
               s.general.copyWith(theme: themeValue),
             );
+        // Persist theme to local storage.
+        ref.read(storageProvider).setString('app_theme_mode', themeValue);
       },
     );
   }
@@ -320,6 +323,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ref.read(settingsStateProvider.notifier).updateGeneralSettings(
               s.general.copyWith(language: lang),
             );
+        // Persist language to local storage.
+        ref.read(storageProvider).setString('app_language', lang);
       },
     );
   }
