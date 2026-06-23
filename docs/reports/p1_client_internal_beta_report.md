@@ -9,13 +9,13 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 阶段 5 功能实现 SHA | `db9a28f82213b76e8fad882387bed20a2085b0aa` |
-| 阶段 5 报告提交 SHA | `<待提交>` |
-| 最终验证 HEAD | `db9a28f82213b76e8fad882387bed20a2085b0aa` |
+| 阶段 5 功能实现 SHA | `66941d57402cc40db1fed80099de3659affefb78` |
+| 阶段 5 报告提交 SHA | 见最终验证 HEAD |
+| 最终验证 HEAD | `66941d57402cc40db1fed80099de3659affefb78` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 阶段 2 基线 SHA | `2dd8a78c5c7a7bd50a84ea84b83390cb6cc2e4a0` |
 | 阶段 3 基线 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
-| 阶段 4 基线 SHA | `6920909cdfb626336705e8b2c86e1f2b8994a929` |
+| 阶段 4 基线 SHA | `db9a28f82213b76e8fad882387bed20a2085b0aa` |
 | 后端基线 | `sit-im-api-server-1` @ `localhost:8082` |
 | 数据库 | MySQL 8 @ `localhost:3306/service_message_service_db` |
 | Flutter | 3.44.0 / Dart 3.12.0 |
@@ -201,15 +201,15 @@ python tests/p1/p1_multi_device_smoke.py --base-url http://localhost:8082
 | P0 E2EE 私聊 | CI PASS |
 | P0 跨客户端矩阵 | CI PASS |
 
-### 5.3 GitHub Actions（基于最终验证 HEAD `db9a28f8`）
+### 5.3 GitHub Actions（基于最终验证 HEAD `66941d57`）
 
 | Workflow | Run ID | 结果 |
 | --- | --- | --- |
-| PR Fast Gate | [27969627242](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27969627242) | success |
-| P0 Acceptance Gate | [27969626951](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27969626951) | success |
-| E2EE Rust CI | [27969626466](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27969626466) | success |
-| Rust Bridge CI | [27969626361](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27969626361) | success |
-| Build Artifacts | [27969626465](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27969626465) | success |
+| PR Fast Gate | [27996694659](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27996694659) | success |
+| P0 Acceptance Gate | [27996694691](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27996694691) | success |
+| E2EE Rust CI | [27996694662](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27996694662) | success |
+| Rust Bridge CI | [27996694664](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27996694664) | success |
+| Build Artifacts | [27996694656](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/27996694656) | success |
 
 ---
 
@@ -274,9 +274,9 @@ python tests/p1/p1_multi_device_smoke.py --base-url http://localhost:8082
 ## 附录：P1 阶段 5 commit / PR 信息
 
 ```text
-阶段 5 功能实现 SHA: db9a28f82213b76e8fad882387bed20a2085b0aa
-阶段 5 报告提交 SHA: <待提交>
-最终验证 HEAD: db9a28f82213b76e8fad882387bed20a2085b0aa
+阶段 5 功能实现 SHA: 66941d57402cc40db1fed80099de3659affefb78
+阶段 5 报告提交 SHA: 见最终验证 HEAD
+最终验证 HEAD: 66941d57402cc40db1fed80099de3659affefb78
 修改文件数量: 3
 后端修改: 否
 SQL 修改: 否
