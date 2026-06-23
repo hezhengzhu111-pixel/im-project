@@ -9,7 +9,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前分支 | master |
-| 阶段 7 功能实现 SHA | `<待提交>` |
+| 阶段 7 功能实现 SHA | `f0d3445e8426d0de698becd0ac9467bff6a4b1f4` |
 | 阶段 7 报告提交 SHA | 见最终验证 HEAD |
 | 最终验证 HEAD | `<待 CI 验证>` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
@@ -217,7 +217,7 @@ python tests/p1/p1_client_internal_beta_acceptance.py --base-url http://localhos
 ## 附录：P1 阶段 7 commit / PR 信息
 
 ```text
-阶段 7 功能实现 SHA: <待提交>
+阶段 7 功能实现 SHA: f0d3445e8426d0de698becd0ac9467bff6a4b1f4
 阶段 7 报告提交 SHA: 见最终验证 HEAD
 最终验证 HEAD: <待 CI 验证>
 修改文件数量: 4
