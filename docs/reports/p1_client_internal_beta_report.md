@@ -11,7 +11,7 @@
 | 当前分支 | master |
 | 阶段 6 功能实现 SHA | `bdcea15504b3422de6dcf522703f720f7cab8705` |
 | 阶段 6 报告提交 SHA | 见最终验证 HEAD |
-| 最终验证 HEAD | `4a5a7a1b81730d416522ae0ae201f190d6703d33` |
+| 最终验证 HEAD | `0ab0527e0887cb3a40d3be68f4ae707545d84205` |
 | P0 基线 SHA | `97c82436c1a347a42c442629f5486f1dfaa5b90b` |
 | 阶段 2 基线 SHA | `2dd8a78c5c7a7bd50a84ea84b83390cb6cc2e4a0` |
 | 阶段 3 基线 SHA | `5931be8f9ac64f9f6c442ff82d8bad0f2eee3f56` |
@@ -224,15 +224,15 @@ python tests/p1/p1_notification_smoke.py --base-url http://localhost:8082
 | P0 E2EE 私聊 | CI PASS |
 | P0 跨客户端矩阵 | CI PASS |
 
-### 5.3 GitHub Actions
+### 5.3 GitHub Actions（基于最终验证 HEAD `0ab0527e`）
 
-| Workflow | 结果 |
-| --- | --- |
-| PR Fast Gate | `<待 CI 验证>` |
-| P0 Acceptance Gate | `<待 CI 验证>` |
-| E2EE Rust CI | `<待 CI 验证>` |
-| Rust Bridge CI | `<待 CI 验证>` |
-| Build Artifacts | `<待 CI 验证>` |
+| Workflow | Run ID | 结果 |
+| --- | --- | --- |
+| PR Fast Gate | [28003278828](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28003278828) | success |
+| P0 Acceptance Gate | [28003278822](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28003278822) | success |
+| E2EE Rust CI | [28003278826](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28003278826) | success |
+| Rust Bridge CI | [28003278834](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28003278834) | success |
+| Build Artifacts | [28003278833](https://github.com/hezhengzhu111-pixel/im-project/actions/runs/28003278833) | success |
 
 ---
 
@@ -280,7 +280,7 @@ python tests/p1/p1_notification_smoke.py --base-url http://localhost:8082
 - P1 消息状态 Smoke 回归：**PASS**（14/14）
 - P1 群聊 Smoke 回归：**PASS**（10/10）
 - P1 媒体消息 Smoke 回归：**PASS**（5/5）
-- 核心 CI workflow 结果：`<待 CI 验证>`
+- 核心 CI workflow 结果：PR Fast Gate / P0 Acceptance Gate / E2EE Rust CI / Rust Bridge CI / Build Artifacts **全绿**
 - 源码污染检查：**PASS**
 - 报告自相矛盾：**PASS**
 
@@ -303,7 +303,7 @@ python tests/p1/p1_notification_smoke.py --base-url http://localhost:8082
 ```text
 阶段 6 功能实现 SHA: bdcea15504b3422de6dcf522703f720f7cab8705
 阶段 6 报告提交 SHA: 见最终验证 HEAD
-最终验证 HEAD: 4a5a7a1b81730d416522ae0ae201f190d6703d33
+最终验证 HEAD: 0ab0527e0887cb3a40d3be68f4ae707545d84205
 修改文件数量: 3
 后端修改: 否
 SQL 修改: 否
