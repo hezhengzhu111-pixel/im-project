@@ -25,6 +25,7 @@ class BuildOptions:
     clean: bool = False
     skip_rust: bool = False
     skip_web: bool = False
+    skip_desktop: bool = False
     skip_spring_ai: bool = False
     docker: bool = False
     package_images: bool = False
@@ -254,6 +255,43 @@ def build_web(profile: str) -> None:
     print(f"[BUILD] Flutter web: {paths.relative(output_dir)}")
 
 
+def build_desktop(profile: str) -> None:
+    """Build Flutter desktop (Windows) app."""
+    flutter = _ensure_tool("flutter", ["flutter"])
+    desktop_dir = paths.FLUTTER_WORK / "apps" / "desktop"
+    output_dir = paths.DIST_DIR / "flutter" / "desktop"
+
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+
+    # Build Rust bridge native library for desktop
+    bridge_dir = paths.RUST_WORK / "crates" / "im-flutter-bridge"
+    env = _rust_env()
+    _run(["cargo", "build", "--release", "-p", "im-flutter-bridge"],
+         cwd=paths.RUST_WORK, env=env)
+
+    # Flutter build output is inside the app directory
+    profile_dir = "Release" if profile == "release" else "Debug"
+    local_build = desktop_dir / "build" / "windows" / "x64" / "runner" / profile_dir
+
+    _run([flutter, "pub", "get"], cwd=desktop_dir, env=_flutter_env())
+    _run([flutter, "build", "windows", f"--{profile}"], cwd=desktop_dir, env=_flutter_env())
+
+    if not local_build.is_dir():
+        raise RuntimeError(f"Flutter desktop build did not produce {paths.relative(local_build)}")
+
+    # Copy Rust bridge DLL to desktop output
+    bridge_dll = paths.CARGO_TARGET / "release" / "im_rust_bridge.dll"
+    if bridge_dll.is_file():
+        shutil.copy2(bridge_dll, local_build / "im_rust_bridge.dll")
+        print(f"[BUILD] Rust bridge DLL: {paths.relative(local_build / 'im_rust_bridge.dll')}")
+    else:
+        print(f"[WARNING] Rust bridge DLL not found at {paths.relative(bridge_dll)}")
+
+    shutil.copytree(local_build, output_dir)
+    print(f"[BUILD] Flutter desktop: {paths.relative(output_dir)}")
+
+
 def build_docker_images(config: DeploymentConfig, services: Sequence[str], *, package_images: bool) -> None:
     cmd = [*compose_base_command(config), "build", "--parallel", *services]
     run_command(cmd, cwd=config.project_dir)
@@ -347,6 +385,9 @@ def build_all(config: DeploymentConfig, options: BuildOptions) -> None:
 
         if not options.skip_web:
             build_web(options.profile)
+
+        if not options.skip_desktop:
+            build_desktop(options.profile)
 
         if options.docker:
             services = ["im-api-server", "im-server", "im-frontend"]

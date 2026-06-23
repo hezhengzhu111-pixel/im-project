@@ -475,6 +475,7 @@ def main(argv: list[str] | None = None) -> None:
             clean=args.clean,
             skip_rust=args.docker_only,
             skip_web=args.docker_only,
+            skip_desktop=args.docker_only,
             skip_spring_ai=not profile.include_ai,
             docker=profile.docker_build,
             package_images=args.package_images,

@@ -17,18 +17,28 @@ class App extends ConsumerStatefulWidget {
 }
 
 class _AppState extends ConsumerState<App> {
+  ProviderSubscription<String>? _languageSub;
+  ProviderSubscription<ThemeMode>? _themeSub;
+
   @override
   void initState() {
     super.initState();
     // Listen for language changes and persist
-    ref.listen<String>(languageProvider, (previous, next) {
+    _languageSub = ref.listenManual<String>(languageProvider, (previous, next) {
       widget.settingsPersistence.setLanguage(next);
     });
 
     // Listen for theme changes and persist
-    ref.listen<ThemeMode>(themeModeProvider, (previous, next) {
+    _themeSub = ref.listenManual<ThemeMode>(themeModeProvider, (previous, next) {
       widget.settingsPersistence.setThemeMode(next);
     });
+  }
+
+  @override
+  void dispose() {
+    _languageSub?.close();
+    _themeSub?.close();
+    super.dispose();
   }
 
   @override
